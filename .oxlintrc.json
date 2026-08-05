@@ -1,0 +1,16 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "oxc", "unicorn"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "no-console": "off",
+    "no-unused-vars": ["warn", { "argsIgnorePattern": "^_" }],
+    "no-underscore-dangle": ["warn", { "allow": ["_id", "__v"] }],
+    "typescript/no-explicit-any": "off",
+    "unicorn/no-array-sort": "off"
+  },
+  "ignorePatterns": ["dist", "node_modules", "coverage", "logs"]
+}
