@@ -19,7 +19,13 @@
     "seed": "tsx scripts/seed.ts",
     "prepare": "husky install"
   },
-  "keywords": ["marketplace", "classifieds", "express", "mongodb", "typescript"],
+  "keywords": [
+    "marketplace",
+    "classifieds",
+    "express",
+    "mongodb",
+    "typescript"
+  ],
   "license": "MIT",
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^7.1.1",
@@ -41,6 +47,8 @@
     "pino-http": "^10.1.0",
     "rate-limiter-flexible": "^5.0.3",
     "socket.io": "^4.7.5",
+    "swagger-ui-express": "^4.6.3",
+    "winston": "^3.9.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {
@@ -53,6 +61,7 @@
     "@types/multer": "^1.4.11",
     "@types/node": "^20.14.2",
     "@types/supertest": "^6.0.2",
+    "@types/swagger-ui-express": "^4.1.8",
     "cross-env": "^7.0.3",
     "husky": "^9.0.11",
     "lint-staged": "^15.2.5",
@@ -66,6 +75,9 @@
     "vitest": "^2.0.5"
   },
   "lint-staged": {
-    "*.ts": ["oxlint --fix", "prettier --write"]
+    "*.ts": [
+      "oxlint --fix",
+      "prettier --write"
+    ]
   }
 }

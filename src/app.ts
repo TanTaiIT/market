@@ -11,6 +11,7 @@ import { generateOpenApiDocument } from './config/openapi'
 import featureRoutes from './features' // side-effect: đăng ký schema vào OpenAPI registry
 import { notFound } from './middlewares/notFound.middleware'
 import { errorConverter, errorHandler } from './middlewares/error.middleware'
+import swaggerUi from 'swagger-ui-express'
 
 export function createApp(): Application {
   const app = express()
@@ -26,7 +27,6 @@ export function createApp(): Application {
   app.use(compression())
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: true }))
-  app.use(pinoHttp({ logger }))
 
   // Health check
   app.get('/health', (_req: Request, res: Response) => {
@@ -39,6 +39,12 @@ export function createApp(): Application {
   // OpenAPI (code-first từ Zod) + Scalar API Reference
   const openApiDocument = generateOpenApiDocument()
   app.get('/openapi.json', (_req: Request, res: Response) => res.json(openApiDocument))
+  // Serve Swagger UI at /swagger using the generated OpenAPI document
+  app.use('/swagger', swaggerUi.serve, swaggerUi.setup(openApiDocument))
+
+  // Keep existing docs route (Scalar API Reference) and redirect plain `/docs` to `/docs/`
+  app.get('/docs', (_req: Request, res: Response) => res.redirect('/docs/'))
+
   app.use(
     '/docs',
     apiReference({

@@ -1,11 +1,25 @@
-import pino from 'pino'
+import winston from 'winston'
 import { env } from './env'
 
-export const logger = pino({
+// Remove emoji but keep normal Unicode characters (Vietnamese diacritics allowed)
+function removeEmoji(input: unknown) {
+  return String(input ?? '').replace(/\p{Emoji}/gu, '')
+}
+
+const { combine, timestamp, printf } = winston.format
+
+const consoleFormat = printf(({ level, message, timestamp: ts }) => {
+  const cleaned = typeof message === 'string' ? removeEmoji(message) : message
+  return `${ts} ${level}: ${cleaned}`
+})
+
+export const logger = winston.createLogger({
   level: env.isProd ? 'info' : 'debug',
-  base: { service: 'cho-tot-clone-api' },
-  timestamp: pino.stdTimeFunctions.isoTime,
-  transport: !env.isProd
-    ? { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss' } }
-    : undefined,
+  defaultMeta: { service: 'cho-tot-clone-api' },
+  transports: [
+    new winston.transports.Console({
+      format: combine(timestamp({ format: 'HH:mm:ss' }), consoleFormat),
+      stderrLevels: ['error'],
+    }),
+  ],
 })

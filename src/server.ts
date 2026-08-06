@@ -50,7 +50,6 @@ async function bootstrap() {
       clearTimeout(forceTimer)
       process.exit(0)
     } catch (err) {
-      logger.error({ err }, 'Error during shutdown')
       process.exit(1)
     }
   }
@@ -58,11 +57,9 @@ async function bootstrap() {
   process.on('SIGTERM', () => shutdown('SIGTERM'))
   process.on('SIGINT', () => shutdown('SIGINT'))
   process.on('unhandledRejection', (reason) => {
-    logger.error({ reason }, 'Unhandled rejection')
   })
 }
 
 bootstrap().catch((err) => {
-  logger.error({ err }, 'Fatal bootstrap error')
   process.exit(1)
 })

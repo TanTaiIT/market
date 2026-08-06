@@ -1,30 +1,24 @@
-import Redis from 'ioredis'
-import { env } from './env'
-import { logger } from './logger'
+// Redis connection temporarily disabled.
+// If you want to re-enable Redis, restore the original implementation
+// which used `ioredis` and `env.REDIS_URL`.
 
-let client: Redis | null = null
+import type { Redis } from 'ioredis'
 
 /**
- * Lazily tạo Redis client dùng chung. Trả về null khi không cấu hình REDIS_URL
- * để app vẫn chạy được ở local/dev mà không cần Redis.
+ * Redis is currently disabled at runtime, but we keep the API and
+ * type signatures so other modules can still import `getRedis()` and
+ * safely handle a `null` return value.
  */
 export function getRedis(): Redis | null {
-  if (!env.REDIS_URL) return null
-  if (client) return client
-
-  client = new Redis(env.REDIS_URL, { maxRetriesPerRequest: 2 })
-  client.on('connect', () => logger.info('✅ Redis connected'))
-  client.on('error', (err) => logger.error({ err }, 'Redis error'))
-
-  return client
+  // if (env.REDIS_URL) {
+  //   logger.warn('REDIS_URL is set but Redis client is disabled in source')
+  // }
+  return null
 }
 
 /**
- * Đóng Redis client khi shutdown (graceful).
+ * No-op close function to keep shutdown flow intact.
  */
 export async function closeRedis(): Promise<void> {
-  if (client) {
-    await client.quit()
-    client = null
-  }
+  return
 }

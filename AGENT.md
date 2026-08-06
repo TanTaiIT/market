@@ -47,8 +47,9 @@ Khi tạo feature mới, luôn tạo đủ 5 file trên theo đúng pattern củ
 ## Quy trình khi generate code
 1. Đọc module tương tự đã có trong repo để bám convention (không tự sáng tạo pattern mới).
 2. Sau khi sửa code, chạy `npm run lint` và tự sửa lỗi lint.
-3. Nếu thay đổi schema MongoDB, phải note rõ trong PR description là có cần migration không.
-4. KHÔNG tự ý cài thêm package ngoài package.json hiện có — nếu cần, hỏi trước.
+3. chạy typecheck, nếu có lỗi thì fix lỗi typescript.
+4. Nếu thay đổi schema MongoDB, phải note rõ trong PR description là có cần migration không.
+5. KHÔNG tự ý cài thêm package ngoài package.json hiện có — nếu cần, hỏi trước.
 
 ## Việc AI KHÔNG được tự ý làm
 - Không xóa/sửa migration cũ.
