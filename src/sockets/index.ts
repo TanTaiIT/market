@@ -24,7 +24,9 @@ export function initSockets(httpServer: HttpServer): SocketServer {
     io.adapter(createAdapter(pubClient, subClient))
     logger.info('✅ Socket.IO Redis adapter enabled (multi-instance ready)')
   } else {
-    logger.warn('⏭️  Socket.IO dùng in-memory adapter (không có Redis) - KHÔNG scale nhiều instance')
+    logger.warn(
+      '⏭️  Socket.IO dùng in-memory adapter (không có Redis) - KHÔNG scale nhiều instance',
+    )
   }
 
   // Auth handshake bằng JWT (token gửi qua auth payload của socket.io)
