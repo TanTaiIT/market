@@ -44,10 +44,11 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
    string/Error thường. Handler dùng chung: `src/middlewares/error.middleware.ts`.
 4. Response thành công luôn đi qua `success()`/`created()` trong
    `src/common/utils/apiResponse.ts` → `{ success, message, data, meta? }`.
-5. Route cần đăng nhập → `authenticate`; cần phân quyền → `authorize(ROLES.ADMIN | ...)`.
+5. Route cần đăng nhập → `authenticate`; cần phân quyền → `authorize(ORG_ROLES.OWNER | ...)`.
    Route public tuỳ chọn đăng nhập → `optionalAuth`.
 6. Không hardcode chuỗi trạng thái (`"active"`, `"pending"`...) — dùng const trong
-   `src/common/constants/index.ts` (`LISTING_STATUS`, `LISTING_CONDITION`, `ROLES`).
+   `src/common/constants/index.ts` (`LISTING_STATUS`, `LISTING_CONDITION`, `ORG_ROLES`,
+   `TENANT_STATUS`, `PLATFORM_ADMIN_ROLES`, `NOTIFICATION_SOURCE`).
 7. **Endpoint public không bao giờ được trả tin ngoài `PUBLIC_LISTING_STATUSES`.**
    Filter mặc định nằm ở `buildFilter()` — đừng bỏ nó khi thêm query mới.
 8. Query MongoDB chỉ đọc → cân nhắc `.lean()`. Field dùng để filter/sort phải có index.
@@ -57,6 +58,16 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
 10. Soft delete: model có hook `pre(/^find/)` loại `deletedAt != null`. Hook đó KHÔNG
     áp cho `countDocuments` — model nào đếm thì phải đăng ký thêm `pre('countDocuments')`.
 11. Không commit file `.env` hoặc secret. `.env.example` chỉ chứa placeholder.
+12. **Multi-tenant — SoT: `docs/rules/multi-tenant.convention.md`, đọc TRƯỚC khi chạm dữ
+    liệu khách hàng.** Bốn điều không được quên dù không mở tài liệu:
+    (a) collection nghiệp vụ mới → `schema.plugin(tenantPlugin)`, `chainReadable` mặc định
+    `false`; (b) KHÔNG tự viết filter `organizationId` trong repository/service — scope
+    đến từ context; (c) ghi luôn rơi về org của request, chain là read-only;
+    (d) chạm dữ liệu ngoài request (seed/job/migration) → bọc `runUnscoped('lý do', ...)`,
+    đó là danh sách grep được của mọi lối đi xuyên tenant.
+13. Mọi index trên collection có tenant phải lấy `organizationId` làm khoá đầu tiên.
+    Ngoại lệ duy nhất: TTL index (Mongo không cho compound). Text index bị **cấm** trên
+    collection có tenant — full-text đi đường Atlas Search.
 
 ## Testing
 - Test đặt trong `tests/unit/` (hàm thuần) hoặc `tests/integration/` (đi qua HTTP,

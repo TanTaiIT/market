@@ -5,7 +5,7 @@ import { success, created } from '../../common/utils/apiResponse'
 export const listingController = {
   // POST /listings
   create: catchAsync(async (req, res) => {
-    const listing = await listingService.create(req.body, req.user!.id)
+    const listing = await listingService.create(req.body, req.user!)
     created(res, { message: 'Listing created (pending review)', data: listing })
   }),
 

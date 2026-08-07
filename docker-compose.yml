@@ -6,18 +6,38 @@ services:
     env_file: .env
     # Ghi đè host của .env (vốn trỏ localhost) sang service name của compose network.
     environment:
-      MONGO_URI: mongodb://mongo:27017/cho-tot-clone
+      MONGO_URI: mongodb://mongo:27017/cho-tot-clone?replicaSet=rs0
       REDIS_URL: redis://redis:6379
     depends_on:
-      - mongo
-      - redis
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
 
   mongo:
     image: mongo:7
+    # Replica set là điều kiện bắt buộc của transaction (đăng ký Organization ghi User +
+    # Organization trong một transaction). Single-node rs0 là cấu hình nhỏ nhất chạy được.
+    command: ['--replSet', 'rs0', '--bind_ip_all']
     ports:
       - '27017:27017'
     volumes:
       - mongo-data:/data/db
+    healthcheck:
+      # Tự initiate lần đầu rồi idempotent ở các lần sau. Host quảng bá là `mongo:27017`
+      # nên client chạy NGOÀI compose phải nối bằng `?directConnection=true`.
+      test:
+        [
+          'CMD',
+          'mongosh',
+          '--quiet',
+          '--eval',
+          "try { rs.status().ok } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}).ok }",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
 
   redis:
     image: redis:7-alpine

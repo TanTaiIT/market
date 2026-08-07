@@ -18,6 +18,7 @@
     "test": "cross-env NODE_ENV=test vitest run",
     "test:watch": "cross-env NODE_ENV=test vitest",
     "seed": "tsx scripts/seed.ts",
+    "migrate:tenant": "tsx scripts/migrate-tenant.ts",
     "prepare": "husky"
   },
   "keywords": [

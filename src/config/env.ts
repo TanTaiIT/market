@@ -10,8 +10,14 @@ const envSchema = z.object({
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
 
+  // Domain gốc để tách subdomain -> Organization.slug (vd 'app.com' => hungvuong.app.com).
+  // Bỏ trống ở dev/test: khi đó org lấy từ `orgSlug` trong body login hoặc từ JWT.
+  APP_BASE_DOMAIN: z.string().optional(),
+
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
-  JWT_EXPIRES_IN: z.string().default('7d'),
+  // 15 phút, không phải 7 ngày: suspend một Organization phải có hiệu lực trong vài phút,
+  // và middleware tenant đã check status live nên token ngắn chỉ còn là lớp thứ hai.
+  JWT_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_SECRET: z.string().min(1, 'JWT_REFRESH_SECRET is required'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 

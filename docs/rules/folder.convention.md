@@ -5,6 +5,8 @@ src/
   common/          → code dùng chung toàn dự án, KHÔNG chứa business logic của 1 feature cụ thể
     constants/      → hằng số dùng chung (enum status, role, error code...)
     errors/         → ApiError.ts, index.ts — class lỗi chuẩn dùng xuyên suốt app
+    tenant/         → tenantContext.ts (AsyncLocalStorage), tenantPlugin.ts (fail-closed),
+                      tenant.errors.ts — lớp cách ly tenant, dưới cả repository
     types/          → type/interface dùng chung nhiều feature
     utils/          → hàm tiện ích thuần (formatDate, slugify, paginate...), KHÔNG gọi DB/API
 
@@ -51,7 +53,8 @@ tests/             → NGANG HÀNG src/, không nằm trong src/
 
 ## Danh sách feature hiện có (không tự ý đổi tên/gộp)
 
-`auth`, `category`, `chat`, `listing`, `notification`, `review`, `search`, `upload`, `user`
+`auth`, `category`, `chain`, `chat`, `listing`, `notification`, `organization`,
+`platform-admin`, `review`, `search`, `upload`, `user`
 
 ## Quy tắc bắt buộc
 

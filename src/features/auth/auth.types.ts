@@ -18,6 +18,7 @@ export function toAuthResponseDto(result: AuthResult): AuthResponseDto {
   return {
     user: {
       id: user._id.toString(),
+      organizationId: user.organizationId.toString(),
       name: user.name,
       email: user.email,
       phone: user.phone,

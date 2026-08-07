@@ -57,6 +57,7 @@ export const listingParamsSchema = z.object({ id: objectId })
 export const listingResponseSchema = z
   .object({
     _id: objectId,
+    organizationId: objectId,
     title: z.string(),
     slug: z.string(),
     description: z.string(),
@@ -64,10 +65,10 @@ export const listingResponseSchema = z
     isNegotiable: z.boolean(),
     condition: z.nativeEnum(LISTING_CONDITION),
     images: z.array(z.string().url()),
-    category: z
-      .unknown()
-      .openapi({ description: 'ObjectId, hoặc object đã populate { name, slug }' }),
-    seller: z.unknown().openapi({ description: 'Object đã populate { name, avatar, ratingAvg }' }),
+    category: objectId,
+    seller: objectId,
+    posterName: z.string().openapi({ description: 'Snapshot tên người đăng lúc tạo tin' }),
+    posterContact: z.string().openapi({ description: 'Snapshot liên hệ công khai lúc tạo tin' }),
     location: locationSchema.extend({ type: z.literal('Point') }),
     status: z.nativeEnum(LISTING_STATUS),
     viewCount: z.number(),

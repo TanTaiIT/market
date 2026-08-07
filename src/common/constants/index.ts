@@ -1,12 +1,33 @@
 export { httpStatus } from './httpStatus'
 export type { HttpStatus } from './httpStatus'
 
-export const ROLES = {
-  USER: 'user',
-  ADMIN: 'admin',
+// Quyền TRONG một organization. Thay hẳn ROLES cũ (user|admin|moderator): giữ song song
+// hai từ vựng quyền cho cùng một thứ là cách chắc chắn nhất để phân quyền lệch nhau.
+export const ORG_ROLES = {
+  OWNER: 'owner',
   MODERATOR: 'moderator',
+  MEMBER: 'member',
 } as const
-export type Role = (typeof ROLES)[keyof typeof ROLES]
+export type OrgRole = (typeof ORG_ROLES)[keyof typeof ORG_ROLES]
+
+export const TENANT_STATUS = {
+  ACTIVE: 'active',
+  SUSPENDED: 'suspended',
+} as const
+export type TenantStatus = (typeof TENANT_STATUS)[keyof typeof TENANT_STATUS]
+
+// Bên bán phần mềm — nằm NGOÀI mô hình tenant, không có organizationId.
+export const PLATFORM_ADMIN_ROLES = {
+  SUPER_ADMIN: 'super_admin',
+  SUPPORT: 'support',
+} as const
+export type PlatformAdminRole = (typeof PLATFORM_ADMIN_ROLES)[keyof typeof PLATFORM_ADMIN_ROLES]
+
+export const NOTIFICATION_SOURCE = {
+  ORGANIZATION: 'organization',
+  CHAIN: 'chain',
+} as const
+export type NotificationSource = (typeof NOTIFICATION_SOURCE)[keyof typeof NOTIFICATION_SOURCE]
 
 // Vòng đời tin đăng - tính trước để không phải migrate về sau
 export const LISTING_STATUS = {

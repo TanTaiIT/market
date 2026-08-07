@@ -1,9 +1,27 @@
 # Kiến trúc Multi-tenant: Chain / Organization / User
 
-> Trạng thái: **thiết kế**, chưa implement.
-> Nguồn: tài liệu quyết định nghiệp vụ (7 quyết định đã chốt) + codebase hiện tại.
-> Stack thật của repo: **MongoDB 7 + Mongoose 8 + Express + TypeScript** (KHÔNG phải
-> Postgres/Prisma như tài liệu gốc giả định).
+> Trạng thái: **ĐÃ IMPLEMENT**. Code là SoT — tài liệu này giữ lại phần *vì sao*.
+> Hiện trạng + việc còn nợ → `multi-tenant.implementation.md`.
+> Quy tắc bắt buộc khi viết code mới → `../rules/multi-tenant.convention.md`.
+> Stack: **MongoDB 7 + Mongoose 8 + Express + TypeScript**.
+
+## 0.0 Bản shipped khác thiết kế bên dưới ở đâu
+
+Đọc bảng này trước, nó ghi đè phần tương ứng trong các mục sau.
+
+| Mục | Thiết kế bên dưới | Bản đã ship | Vì sao đổi |
+|---|---|---|---|
+| §2, §3.1 | scope = `{ organizationIds[], writable }` | `{ ownOrgId, chainOrgIds[] }` + option `chainReadable` **theo schema** | Ghi luôn bị ép về `ownOrgId` nên cờ `writable` thành thừa; quyền đọc là thuộc tính của collection (chỉ `Listing`), không phải của route |
+| §6.3 | `GET /chains/:id/listings` | **không tồn tại** | Tin cross-org trong chain đã tự có trong `GET /listings` cho mọi user (quyết định #15) — thêm route riêng là hai đường đọc cho cùng dữ liệu |
+| §5.2 | text index `{ organizationId, title: 'text', ... }` | **không có text index**; `?q=` chạy regex | Scope đọc mặc định là `$in` nhiều org, vi phạm điều kiện prefix-equality của text index → vỡ ngay route tìm kiếm chính. Trần & đường nâng cấp ghi trong `listing.repository.buildFilter` |
+| §4.3, §4.4 | `Listing` populate `seller` | snapshot `posterName` / `posterContact` | Populate cross-org lôi cả email/role của user org khác ra chỉ để hiện tên |
+| §3.2 | `pre('save')` gán `organizationId` | `pre('validate')` | Mongoose chạy validation TRƯỚC pre-save của plugin → `organizationId is required` nổ trước khi hook kịp gán |
+| §3.2 | `estimatedDocumentCount` "chặn ở review" | plugin ném lỗi | Rule nằm trong code rẻ hơn rule nằm trong đầu người review |
+
+Điểm vào: `src/common/tenant/` · `src/middlewares/tenant.middleware.ts` ·
+`src/features/{organization,chain,notification,platform-admin}/` ·
+`scripts/migrate-tenant.ts` · `tests/unit/tenantPlugin.test.ts` ·
+`tests/integration/tenant-isolation.test.ts`.
 
 ---
 
@@ -438,21 +456,29 @@ Migration phải chạy được **lặp lại** (idempotent) — bước 2 dùn
 
 ---
 
-## 9. Vấn đề chặn — cần bạn quyết trước khi code
+## 9. Các vấn đề chặn — đã chốt
 
-1. **Login vào org nào?** (§6.2) — chặn cứng luồng auth. Khuyến nghị: subdomain.
-2. **Chain owner thuộc org nào?** `User.organizationId` là required, nên chain owner
-   buộc phải nằm trong *một* org. Là org "trụ sở" trong chain, hay tạo org riêng cho
-   chain? Tài liệu gốc không nói.
-3. **Super-admin của bên bán phần mềm** (các bạn) đứng ở đâu? Không có org nào chứa
-   được họ. Cần khái niệm thứ ba ngoài Chain/Organization, hoặc một cờ `isPlatformAdmin`.
-4. **`JWT_EXPIRES_IN=7d`** — access token 7 ngày nghĩa là suspend một Organization vẫn
-   mất tới 7 ngày mới có hiệu lực. Multi-tenant nên là 15 phút access + 30 ngày refresh.
-   Cần đổi cùng lúc với việc nhúng `organizationId` vào JWT.
-5. **Suspend có lan xuống không?** `Chain.status = suspended` → các org thành viên có bị
-   khoá theo không? Tài liệu gốc chỉ nói suspend từng cấp, không nói quan hệ.
-6. **Category dùng chung** (quyết định #7) — xác nhận lại. Đảo quyết định sau khi có data
-   là migration đắt nhất trong danh sách này (§4.5).
+1. **Login vào org nào?** Subdomain resolve `Organization.slug` trước khi authenticate
+   (`APP_BASE_DOMAIN`); fallback dev/demo là `orgSlug` trong body login.
+2. **Chain owner thuộc org nào?** Bất kỳ org nào — quyền chain đến từ `Chain.ownerId`,
+   tách hẳn khỏi `role`. `User.organizationId` giữ nguyên required.
+3. **Super-admin bên bán phần mềm** → collection `PlatformAdmin` riêng, JWT
+   `type: 'platform_admin'`, nhánh `/platform-admin/*` không đi qua tenant plugin.
+4. **`JWT_EXPIRES_IN`** → 15 phút. Suspend không đợi token: `resolveTenant` đọc
+   `Organization.status` live (cache TTL 30s) mỗi request.
+5. **Suspend có lan xuống không?** Chưa lan. Org bị suspend bị loại khỏi `chainOrgIds`;
+   `Chain.status = suspended` mới chỉ chặn nhóm route `/chains/*`, chưa khoá org thành viên.
+6. **Category dùng chung** — giữ nguyên quyết định #7, `Category` không có tenant.
+
+### Còn treo (không chặn code hiện tại)
+
+- Cơ chế mời user vào org sẵn có (giờ chỉ tạo được owner qua `POST /auth/register`).
+- Refresh token rotate/revoke — hiện chỉ ký lại, chưa có store.
+- Chuyển `?q=` sang Atlas Search (cần cluster Atlas, không chạy được với
+  `mongodb-memory-server`).
+- Cache `chainOrgIds` + status đang in-memory; cần Redis khi chạy nhiều instance.
+- Billing gắn ở cấp Organization hay Chain.
+- Nhắn tin xuyên org trong cùng chain, hay chỉ hiện `posterContact` tĩnh.
 
 ---
 

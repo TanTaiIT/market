@@ -7,7 +7,7 @@ export const authController = {
   // POST /auth/register
   register: catchAsync(async (req, res) => {
     const result = await authService.register(req.body)
-    created(res, { message: 'Registered successfully', data: toAuthResponseDto(result) })
+    created(res, { message: 'Organization created', data: toAuthResponseDto(result) })
   }),
 
   // POST /auth/login
