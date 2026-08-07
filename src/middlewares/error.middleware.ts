@@ -45,7 +45,7 @@ export function errorHandler(err: ApiError, req: Request, res: Response, _next: 
   const statusCode = err.statusCode ?? httpStatus.INTERNAL_SERVER_ERROR
 
   if (statusCode >= 500) {
-    logger.error({ err, path: req.originalUrl, method: req.method }, err.message)
+    logger.error(err.message, { err, path: req.originalUrl, method: req.method })
   }
 
   res.status(statusCode).json({

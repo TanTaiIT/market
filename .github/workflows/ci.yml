@@ -27,8 +27,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # lint:check / format:check, KHÔNG dùng `npm run lint` — lệnh đó chạy --fix + --write
+      # nên CI sẽ tự sửa file và không bao giờ fail vì lint/format.
       - name: Lint
-        run: npm run lint
+        run: npm run lint:check
+
+      - name: Format check
+        run: npm run format:check
 
       - name: Typecheck
         run: npm run typecheck

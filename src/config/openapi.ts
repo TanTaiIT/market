@@ -1,4 +1,4 @@
-import { z } from 'zod'
+import { z, ZodTypeAny } from 'zod'
 import {
   OpenAPIRegistry,
   OpenApiGeneratorV3,
@@ -17,6 +17,44 @@ export const bearerAuth = registry.registerComponent('securitySchemes', 'bearerA
   type: 'http',
   scheme: 'bearer',
   bearerFormat: 'JWT',
+})
+
+export const errorResponseSchema = z
+  .object({
+    success: z.literal(false),
+    message: z.string(),
+    details: z.array(z.object({ path: z.string(), message: z.string() })).optional(),
+  })
+  .openapi('ErrorResponse')
+
+registry.register('ErrorResponse', errorResponseSchema)
+
+/** Mọi response thành công đều đi qua apiResponse.ts nên có chung vỏ này. */
+export function envelope(data: ZodTypeAny, meta?: ZodTypeAny) {
+  return z.object({
+    success: z.literal(true),
+    message: z.string(),
+    data,
+    ...(meta ? { meta } : {}),
+  })
+}
+
+export function jsonResponse(description: string, schema: ZodTypeAny) {
+  return { description, content: { 'application/json': { schema } } }
+}
+
+/** Response lỗi dùng lại ở gần như mọi endpoint — khai báo một chỗ. */
+export function errorResponse(description: string) {
+  return jsonResponse(description, errorResponseSchema)
+}
+
+export const paginationMetaSchema = z.object({
+  page: z.number(),
+  limit: z.number(),
+  total: z.number(),
+  totalPages: z.number(),
+  hasNextPage: z.boolean(),
+  hasPrevPage: z.boolean(),
 })
 
 /**

@@ -1,4 +1,6 @@
+import { z } from 'zod'
 import { IUserDocument } from '../user/user.model'
+import { authResponseSchema } from './auth.schema'
 
 export interface AuthTokens {
   accessToken: string
@@ -9,20 +11,7 @@ export interface AuthResult extends AuthTokens {
   user: IUserDocument
 }
 
-export interface AuthUserDto {
-  id: string
-  name: string
-  email: string
-  phone?: string
-  avatar: string
-  role: string
-  isEmailVerified: boolean
-}
-
-export interface AuthResponseDto {
-  user: AuthUserDto
-  tokens: AuthTokens
-}
+export type AuthResponseDto = z.infer<typeof authResponseSchema>
 
 export function toAuthResponseDto(result: AuthResult): AuthResponseDto {
   const { user, accessToken, refreshToken } = result

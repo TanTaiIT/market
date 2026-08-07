@@ -2,14 +2,18 @@ import { FilterQuery, SortOrder } from 'mongoose'
 import { Listing, IListing, IListingDocument } from './listing.model'
 import { ListingQuery } from './listing.schema'
 import { PaginationParams } from '../../common/utils/pagination'
+import { LISTING_STATUS, PUBLIC_LISTING_STATUSES, ListingStatus } from '../../common/constants'
+
+/** `status` không nằm trong query schema công khai — chỉ caller nội bộ mới được ép. */
+export type ListingFilterParams = Partial<ListingQuery> & { status?: ListingStatus }
 
 /**
  * Xây filter Mongo từ query đã validate.
  */
-export function buildFilter(params: Partial<ListingQuery>): FilterQuery<IListingDocument> {
-  const filter: FilterQuery<IListingDocument> = {}
+export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDocument> {
+  // Mặc định ACTIVE: thiếu dòng này thì tin draft/pending/rejected/hidden lọt ra API public.
+  const filter: FilterQuery<IListingDocument> = { status: params.status ?? LISTING_STATUS.ACTIVE }
 
-  if (params.status) filter.status = params.status
   if (params.category) filter.category = params.category
   if (params.seller) filter.seller = params.seller
   if (params.condition) filter.condition = params.condition
@@ -37,7 +41,7 @@ export const listingRepository = {
       .populate('seller', 'name avatar ratingAvg')
   },
 
-  async paginate(params: ListingQuery, { skip, limit }: PaginationParams) {
+  async paginate(params: ListingFilterParams, { skip, limit }: PaginationParams) {
     const filter = buildFilter(params)
     const sort: Record<string, SortOrder | { $meta: string }> = params.q
       ? { score: { $meta: 'textScore' } }
@@ -83,8 +87,15 @@ export const listingRepository = {
     return Listing.findByIdAndUpdate(id, update, { new: true, runValidators: true })
   },
 
+  /** Chỉ tăng view + trả tin ở trạng thái public — chặn xem tin chưa duyệt qua đường /:id. */
   incrementView(id: string) {
-    return Listing.findByIdAndUpdate(id, { $inc: { viewCount: 1 } }, { new: true })
+    return Listing.findOneAndUpdate(
+      { _id: id, status: { $in: PUBLIC_LISTING_STATUSES } },
+      { $inc: { viewCount: 1 } },
+      { new: true },
+    )
+      .populate('category', 'name slug')
+      .populate('seller', 'name avatar ratingAvg')
   },
 
   softDelete(id: string) {

@@ -38,7 +38,6 @@ export const listingQuerySchema = z.object({
   seller: objectId.optional(),
   province: z.string().optional(),
   condition: z.nativeEnum(LISTING_CONDITION).optional(),
-  status: z.nativeEnum(LISTING_STATUS).optional(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
 })
@@ -53,6 +52,33 @@ export const nearbyQuerySchema = z.object({
 
 export const listingParamsSchema = z.object({ id: objectId })
 
+// passthrough: model còn field khác và có thể thêm nữa — doc không nên là bản sao
+// phải sửa tay mỗi lần listing.model.ts đổi.
+export const listingResponseSchema = z
+  .object({
+    _id: objectId,
+    title: z.string(),
+    slug: z.string(),
+    description: z.string(),
+    price: z.number(),
+    isNegotiable: z.boolean(),
+    condition: z.nativeEnum(LISTING_CONDITION),
+    images: z.array(z.string().url()),
+    category: z
+      .unknown()
+      .openapi({ description: 'ObjectId, hoặc object đã populate { name, slug }' }),
+    seller: z.unknown().openapi({ description: 'Object đã populate { name, avatar, ratingAvg }' }),
+    location: locationSchema.extend({ type: z.literal('Point') }),
+    status: z.nativeEnum(LISTING_STATUS),
+    viewCount: z.number(),
+    favoriteCount: z.number(),
+    expiresAt: z.string().datetime().optional(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
+  })
+  .passthrough()
+  .openapi('Listing')
+
 export type CreateListingInput = z.infer<typeof createListingSchema>
 export type UpdateListingInput = z.infer<typeof updateListingSchema>
 export type ListingQuery = z.infer<typeof listingQuerySchema>
@@ -60,3 +86,4 @@ export type NearbyQuery = z.infer<typeof nearbyQuerySchema>
 
 registry.register('CreateListing', createListingSchema)
 registry.register('UpdateListing', updateListingSchema)
+registry.register('Listing', listingResponseSchema)

@@ -2,7 +2,6 @@ import express, { Application, Request, Response } from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import compression from 'compression'
-import pinoHttp from 'pino-http'
 import { apiReference } from '@scalar/express-api-reference'
 
 import { env } from './config/env'
@@ -11,7 +10,6 @@ import { generateOpenApiDocument } from './config/openapi'
 import featureRoutes from './features' // side-effect: đăng ký schema vào OpenAPI registry
 import { notFound } from './middlewares/notFound.middleware'
 import { errorConverter, errorHandler } from './middlewares/error.middleware'
-import swaggerUi from 'swagger-ui-express'
 
 export function createApp(): Application {
   const app = express()
@@ -28,6 +26,17 @@ export function createApp(): Application {
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: true }))
 
+  // Access log. Không kéo pino-http/morgan về chỉ để in một dòng mỗi request.
+  app.use((req: Request, res: Response, next) => {
+    const startedAt = Date.now()
+    res.on('finish', () => {
+      logger.info(`${req.method} ${req.originalUrl} ${res.statusCode}`, {
+        ms: Date.now() - startedAt,
+      })
+    })
+    next()
+  })
+
   // Health check
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ success: true, status: 'ok', uptime: process.uptime() })
@@ -39,18 +48,7 @@ export function createApp(): Application {
   // OpenAPI (code-first từ Zod) + Scalar API Reference
   const openApiDocument = generateOpenApiDocument()
   app.get('/openapi.json', (_req: Request, res: Response) => res.json(openApiDocument))
-  // Serve Swagger UI at /swagger using the generated OpenAPI document
-  app.use('/swagger', swaggerUi.serve, swaggerUi.setup(openApiDocument))
-
-  // Keep existing docs route (Scalar API Reference) and redirect plain `/docs` to `/docs/`
-  app.get('/docs', (_req: Request, res: Response) => res.redirect('/docs/'))
-
-  app.use(
-    '/docs',
-    apiReference({
-      spec: { url: '/openapi.json' },
-    }),
-  )
+  app.use('/docs', apiReference({ spec: { url: '/openapi.json' } }))
 
   // 404 + error handlers (đặt cuối cùng)
   app.use(notFound)

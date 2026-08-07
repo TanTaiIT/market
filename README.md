@@ -1,13 +1,14 @@
 # Chợ Tốt Clone — Backend
 
-Marketplace/Classifieds API. Stack **2026**: Express + MongoDB (Mongoose) + **TypeScript**, kiến trúc **feature-based** (`src/features/`).
+Marketplace/Classifieds API. Express + MongoDB (Mongoose) + **TypeScript**, kiến trúc
+**feature-based** (`src/features/`).
 
 - **Validation + OpenAPI**: 1 schema Zod dùng chung (validate + type + docs) — `zod-to-openapi`
 - **Docs**: Scalar API Reference tại `/docs` (spec `/openapi.json`)
-- **Logger**: Pino (JSON structured, `pino-pretty` khi dev)
+- **Logger**: winston (console, có timestamp; access log tự viết trong `app.ts`)
 - **Auth**: JWT access + refresh
 - **Realtime**: Socket.IO (chat)
-- **Cache / rate limit / queue**: Redis + BullMQ (optional ở dev)
+- **Rate limit / socket adapter**: Redis (optional — không có thì fallback in-memory)
 
 ## Yêu cầu
 - Node.js >= 20
@@ -19,7 +20,7 @@ Marketplace/Classifieds API. Stack **2026**: Express + MongoDB (Mongoose) + **Ty
 ```bash
 cp .env.example .env      # sửa MONGO_URI, JWT_SECRET, JWT_REFRESH_SECRET
 npm install
-npm run dev               # ts-node-dev, hot reload
+npm run dev               # tsx watch, hot reload
 ```
 
 Hoặc chạy toàn bộ bằng Docker:
@@ -36,27 +37,31 @@ docker-compose up --build
 
 | Lệnh | Mô tả |
 |---|---|
-| `npm run dev` | Chạy dev (hot reload) |
-| `npm run build` | Biên dịch TS → `dist/` (tsc + tsc-alias) |
+| `npm run dev` | Chạy dev (tsx watch, hot reload) |
+| `npm run build` | Biên dịch TS → `dist/` (`tsconfig.build.json`) |
 | `npm start` | Chạy production từ `dist/` |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | ESLint (flat config) |
-| `npm test` | Jest + ts-jest + mongodb-memory-server |
+| `npm run typecheck` | `tsc --noEmit` (bao gồm cả `tests/` và `scripts/`) |
+| `npm run lint` | oxlint `--fix` + prettier `--write` (dùng khi code) |
+| `npm run lint:check` / `npm run format:check` | Bản chỉ kiểm tra — CI dùng cái này |
+| `npm test` | Vitest + Supertest + mongodb-memory-server |
 | `npm run seed` | Seed dữ liệu mẫu |
 
 ## Cấu trúc
 
 ```
 src/
-├── config/        env, database, logger (pino), redis, openapi
+├── config/        env, database, logger (winston), redis, openapi
 ├── features/      auth, user, listing (core) + category, chat, upload, search, review, notification (skeleton)
 │   └── <feature>/ <feature>.{model,repository,service,controller,routes,schema,types}.ts
 ├── middlewares/   auth, error, notFound, rateLimiter, validate, upload
 ├── common/        errors, utils, constants, types
 ├── sockets/       socket.io (chat)
-├── jobs/          BullMQ (expire listing...)
+├── jobs/          BullMQ (expire listing...) — hiện là skeleton
 ├── app.ts         khởi tạo express
 └── server.ts      entrypoint
+tests/
+├── unit/          hàm thuần
+└── integration/   đi qua HTTP bằng Supertest
 ```
 
 ## Trạng thái module
@@ -74,8 +79,15 @@ src/
 | notification | 🚧 Skeleton (501) | `/notifications` |
 
 > Module skeleton trả `501 Not Implemented` kèm ghi chú TODO trong `*.routes.ts` để triển khai tiếp.
+> Khi làm module `upload` cần cài lại `@aws-sdk/client-s3`; module job cần `bullmq`
+> (đã gỡ khỏi `package.json` vì chưa dùng tới).
 
 ## Ghi chú thiết kế
 - **Listing**: `status` (draft/pending/active/sold/expired/rejected/hidden), `location` GeoJSON + `2dsphere` (tìm gần), `images: string[]` (URL, ảnh thật ở S3/Cloudinary), `expiresAt` TTL index (tự hết hạn), text index (title+description), compound index `(category, status, createdAt)`.
-- **Soft delete**: `deletedAt` cho user & listing (pre-find tự loại trừ).
+- **Visibility**: endpoint public chỉ trả tin có status trong `PUBLIC_LISTING_STATUSES`
+  (`active`, `sold`, `expired`). Client không được tự truyền `?status=`.
+- **Soft delete**: `deletedAt` cho user & listing. Hook `pre(/^find/)` tự loại trừ, và
+  `countDocuments` phải đăng ký hook riêng (regex `/^find/` không khớp).
 - **Response chuẩn**: `{ success, message, data, meta? }`.
+- **Redis là optional**: không set `REDIS_URL` thì rate limit chạy in-memory và Socket.IO
+  dùng adapter in-memory → chỉ đúng khi chạy đúng 1 instance.

@@ -44,11 +44,11 @@ export function initSockets(httpServer: HttpServer): SocketServer {
   })
 
   io.on('connection', (socket) => {
-    logger.debug({ userId: socket.data.userId }, 'socket connected')
+    logger.debug('socket connected', { userId: socket.data.userId })
     registerChatHandlers(io as SocketServer, socket)
 
     socket.on('disconnect', () => {
-      logger.debug({ userId: socket.data.userId }, 'socket disconnected')
+      logger.debug('socket disconnected', { userId: socket.data.userId })
     })
   })
 

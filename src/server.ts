@@ -50,16 +50,20 @@ async function bootstrap() {
       clearTimeout(forceTimer)
       process.exit(0)
     } catch (err) {
+      logger.error('Graceful shutdown failed', { err })
       process.exit(1)
     }
   }
 
   process.on('SIGTERM', () => shutdown('SIGTERM'))
   process.on('SIGINT', () => shutdown('SIGINT'))
+  // Handler này chặn Node crash mặc định -> bắt buộc phải log, không thì lỗi biến mất hoàn toàn.
   process.on('unhandledRejection', (reason) => {
+    logger.error('Unhandled promise rejection', { reason })
   })
 }
 
 bootstrap().catch((err) => {
+  logger.error('Bootstrap failed', { err })
   process.exit(1)
 })

@@ -1,4 +1,5 @@
 import { userService } from './user.service'
+import { toPublicProfileDto } from './user.types'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success } from '../../common/utils/apiResponse'
 
@@ -24,6 +25,6 @@ export const userController = {
   // GET /users/:id  (public profile người bán)
   getById: catchAsync(async (req, res) => {
     const user = await userService.getById(req.params.id)
-    success(res, { message: 'User profile', data: user })
+    success(res, { message: 'User profile', data: toPublicProfileDto(user) })
   }),
 }

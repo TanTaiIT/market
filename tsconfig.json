@@ -4,8 +4,6 @@
     "module": "commonjs",
     "moduleResolution": "node",
     "lib": ["ES2022"],
-    "outDir": "dist",
-    "rootDir": "src",
     "strict": true,
     "noImplicitOverride": true,
     "esModuleInterop": true,
@@ -16,17 +14,8 @@
     "sourceMap": true,
     // Cô lập @types của riêng project này — tránh kéo @types từ node_modules của repo cha
     // (features/API nằm lồng trong repo Vue salon dùng TypeScript 3.6 cũ).
-    "typeRoots": ["./node_modules/@types"],
-    "baseUrl": "src",
-    "paths": {
-      "@config/*": ["config/*"],
-      "@features/*": ["features/*"],
-      "@common/*": ["common/*"],
-      "@middlewares/*": ["middlewares/*"],
-      "@sockets/*": ["sockets/*"],
-      "@jobs/*": ["jobs/*"]
-    }
+    "typeRoots": ["./node_modules/@types"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
 }

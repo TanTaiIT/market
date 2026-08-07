@@ -24,6 +24,25 @@ export const refreshSchema = z
   .strict()
   .openapi('RefreshInput')
 
+// SoT của response auth: auth.types.ts derive type từ đây thay vì khai báo interface song song.
+export const authResponseSchema = z
+  .object({
+    user: z.object({
+      id: z.string(),
+      name: z.string(),
+      email: z.string().email(),
+      phone: z.string().optional(),
+      avatar: z.string(),
+      role: z.string(),
+      isEmailVerified: z.boolean(),
+    }),
+    tokens: z.object({
+      accessToken: z.string(),
+      refreshToken: z.string(),
+    }),
+  })
+  .openapi('AuthResponse')
+
 export type RegisterInput = z.infer<typeof registerSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type RefreshInput = z.infer<typeof refreshSchema>
@@ -31,3 +50,4 @@ export type RefreshInput = z.infer<typeof refreshSchema>
 registry.register('RegisterInput', registerSchema)
 registry.register('LoginInput', loginSchema)
 registry.register('RefreshInput', refreshSchema)
+registry.register('AuthResponse', authResponseSchema)

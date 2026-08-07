@@ -19,6 +19,9 @@ Tài liệu này quy định các nguyên tắc bắt buộc khi viết TypeScri
 
 - Ưu tiên dùng `unknown` thay cho `any` khi cần một kiểu "chưa xác định" nhưng vẫn muốn ép kiểm tra type trước khi sử dụng.
 
+> Lưu ý: `.oxlintrc.json` đang để `typescript/no-explicit-any: "off"`, nên quy tắc này
+> **không được lint chặn tự động** — phải soát ở code review.
+
 ## 2. Kiểu trả về của Function
 
 - Tất cả các `function` được `export` **bắt buộc** phải khai báo kiểu trả về (return type) một cách tường minh.
@@ -58,17 +61,26 @@ Tài liệu này quy định các nguyên tắc bắt buộc khi viết TypeScri
 
 ## 4. DTO Rules
 
-- **Không** trả trực tiếp database document/entity ra ngoài API.
+- **Không** trả trực tiếp database document/entity ra ngoài API, đặc biệt ở endpoint
+  không cần đăng nhập.
 
   ❌ Không nên:
   ```ts
-  return listing;
+  success(res, { data: user })   // lộ email, phone, lastLoginAt của mọi user
   ```
 
   ✅ Nên:
   ```ts
-  return ListingResponseDto.fromEntity(listing);
+  success(res, { data: toPublicProfileDto(user) })
   ```
+
+- Pattern trong repo: DTO + hàm map đặt ở `<feature>.types.ts`, shape do Zod schema
+  trong `<feature>.schema.ts` làm SoT (`type Dto = z.infer<typeof schema>`) để type,
+  runtime và OpenAPI không lệch nhau. Mẫu: `auth.types.ts`, `user.types.ts`.
+
+> Hiện trạng: `auth` và `GET /users/:id` đã dùng DTO. `GET/PATCH /users/me` và các
+> endpoint `listing` vẫn trả document (đã lọc `password` qua `toJSON`) — cần DTO hoá
+> khi có dịp đổi contract.
 
 - Lý do: tránh rò rỉ field nội bộ (internal field), tách biệt schema database khỏi contract API, và cho phép thay đổi cấu trúc database mà không ảnh hưởng đến client.
 
@@ -98,4 +110,6 @@ Tài liệu này quy định các nguyên tắc bắt buộc khi viết TypeScri
 
 ### Ghi chú tuân thủ
 
-Các quy tắc trên là bắt buộc. Nên cấu hình ESLint (`@typescript-eslint/no-explicit-any`, `@typescript-eslint/explicit-function-return-type`...) để tự động phát hiện vi phạm ngay trong quá trình code review và CI/CD.
+Các quy tắc trên là bắt buộc. Repo dùng **oxlint** (`.oxlintrc.json`), không phải ESLint —
+muốn tự động chặn thì bật rule tương ứng ở đó, đừng thêm config ESLint song song.
+`npm run lint:check` + `npm run typecheck` chạy trong CI (`.github/workflows/ci.yml`).

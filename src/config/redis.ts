@@ -1,24 +1,26 @@
-// Redis connection temporarily disabled.
-// If you want to re-enable Redis, restore the original implementation
-// which used `ioredis` and `env.REDIS_URL`.
+import Redis from 'ioredis'
+import { env } from './env'
+import { logger } from './logger'
 
-import type { Redis } from 'ioredis'
+let client: Redis | null = null
 
 /**
- * Redis is currently disabled at runtime, but we keep the API and
- * type signatures so other modules can still import `getRedis()` and
- * safely handle a `null` return value.
+ * Redis là optional. Không set REDIS_URL -> rate limit chạy in-memory và Socket.IO
+ * dùng adapter in-memory, tức là CHỈ đúng khi chạy đúng 1 instance.
  */
 export function getRedis(): Redis | null {
-  // if (env.REDIS_URL) {
-  //   logger.warn('REDIS_URL is set but Redis client is disabled in source')
-  // }
-  return null
+  if (!env.REDIS_URL) return null
+
+  if (!client) {
+    // maxRetriesPerRequest: null -> lệnh chờ reconnect thay vì reject; BullMQ cũng yêu cầu vậy.
+    client = new Redis(env.REDIS_URL, { maxRetriesPerRequest: null })
+    client.on('error', (err) => logger.error('Redis error', { err }))
+  }
+  return client
 }
 
-/**
- * No-op close function to keep shutdown flow intact.
- */
 export async function closeRedis(): Promise<void> {
-  return
+  if (!client) return
+  await client.quit()
+  client = null
 }

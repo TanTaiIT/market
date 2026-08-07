@@ -27,7 +27,8 @@ export interface IUserDocument extends IUser, Document {
 const userSchema = new Schema<IUserDocument>(
   {
     name: { type: String, required: true, trim: true, maxlength: 100 },
-    email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
+    // unique đã tự tạo index — thêm index: true nữa là khai báo trùng, mongoose sẽ warn.
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     phone: { type: String, trim: true, index: true },
     password: { type: String, required: true, select: false, minlength: 6 },
     avatar: { type: String, default: '' },

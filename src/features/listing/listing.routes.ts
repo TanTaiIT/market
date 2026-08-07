@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { Router } from 'express'
 import { listingController } from './listing.controller'
 import {
@@ -6,10 +7,19 @@ import {
   listingQuerySchema,
   nearbyQuerySchema,
   listingParamsSchema,
+  listingResponseSchema,
 } from './listing.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authenticate } from '../../middlewares/auth.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
+import {
+  registry,
+  bearerAuth,
+  envelope,
+  jsonResponse,
+  errorResponse,
+  paginationMetaSchema,
+} from '../../config/openapi'
 
 const router = Router()
 
@@ -38,5 +48,102 @@ router.delete(
   validate({ params: listingParamsSchema }),
   listingController.remove,
 )
+
+// ── OPENAPI ─────────────────────────────────────────────────────────────────
+const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
+const listingResponse = envelope(listingResponseSchema)
+const listSummary = 'Chỉ trả tin ở trạng thái public — không lộ draft/pending/rejected/hidden.'
+
+registry.registerPath({
+  method: 'get',
+  path: '/listings',
+  tags: ['Listing'],
+  summary: 'Danh sách tin đăng (filter + full-text search)',
+  description: listSummary,
+  request: { query: listingQuerySchema },
+  responses: {
+    200: jsonResponse(
+      'Danh sách tin',
+      envelope(z.array(listingResponseSchema), paginationMetaSchema),
+    ),
+    400: errorResponse('Query không hợp lệ'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/listings/nearby',
+  tags: ['Listing'],
+  summary: 'Tin gần một toạ độ (sắp xếp theo khoảng cách)',
+  request: { query: nearbyQuerySchema },
+  responses: {
+    200: jsonResponse(
+      'Danh sách tin gần đó',
+      envelope(z.array(listingResponseSchema), z.object({ page: z.number(), limit: z.number() })),
+    ),
+    400: errorResponse('Toạ độ không hợp lệ'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/listings/{id}',
+  tags: ['Listing'],
+  summary: 'Chi tiết tin đăng (tăng viewCount)',
+  description: listSummary,
+  request: { params: listingParamsSchema },
+  responses: {
+    200: jsonResponse('Chi tiết tin', listingResponse),
+    404: errorResponse('Không tìm thấy tin hoặc tin chưa được public'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/listings',
+  tags: ['Listing'],
+  summary: 'Đăng tin mới (vào trạng thái pending chờ duyệt)',
+  ...protectedRoute,
+  request: { body: { content: { 'application/json': { schema: createListingSchema } } } },
+  responses: {
+    201: jsonResponse('Đã tạo tin', listingResponse),
+    400: errorResponse('Dữ liệu không hợp lệ'),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    429: errorResponse('Quá nhiều request'),
+  },
+})
+
+registry.registerPath({
+  method: 'patch',
+  path: '/listings/{id}',
+  tags: ['Listing'],
+  summary: 'Sửa tin của chính mình',
+  ...protectedRoute,
+  request: {
+    params: listingParamsSchema,
+    body: { content: { 'application/json': { schema: updateListingSchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã cập nhật', listingResponse),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Không phải tin của bạn'),
+    404: errorResponse('Không tìm thấy tin'),
+  },
+})
+
+registry.registerPath({
+  method: 'delete',
+  path: '/listings/{id}',
+  tags: ['Listing'],
+  summary: 'Xoá tin của chính mình (soft delete)',
+  ...protectedRoute,
+  request: { params: listingParamsSchema },
+  responses: {
+    200: jsonResponse('Đã xoá', envelope(z.null())),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Không phải tin của bạn'),
+    404: errorResponse('Không tìm thấy tin'),
+  },
+})
 
 export default router

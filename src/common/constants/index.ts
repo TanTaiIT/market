@@ -20,6 +20,14 @@ export const LISTING_STATUS = {
 } as const
 export type ListingStatus = (typeof LISTING_STATUS)[keyof typeof LISTING_STATUS]
 
+// Trạng thái được phép lộ ra API public. draft/pending/rejected/hidden là nội bộ:
+// lọt ra ngoài nghĩa là người đọc thấy tin chưa duyệt hoặc đã bị từ chối.
+export const PUBLIC_LISTING_STATUSES: ListingStatus[] = [
+  LISTING_STATUS.ACTIVE,
+  LISTING_STATUS.SOLD,
+  LISTING_STATUS.EXPIRED,
+]
+
 export const LISTING_CONDITION = {
   NEW: 'new',
   LIKE_NEW: 'like_new',

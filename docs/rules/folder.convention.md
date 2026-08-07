@@ -11,18 +11,19 @@ src/
   config/          → khởi tạo & cấu hình hạ tầng, KHÔNG chứa business logic
     database.ts     → kết nối MongoDB
     env.ts          → đọc & validate biến môi trường
-    logger.ts        → khởi tạo winston/pino
-    openapi.ts        → cấu hình Swagger/OpenAPI
-    redis.ts          → kết nối Redis
+    logger.ts        → khởi tạo winston
+    openapi.ts        → registry OpenAPI + helper response dùng chung
+    redis.ts          → kết nối Redis (optional, trả null khi không có REDIS_URL)
 
   features/        → MỌI business logic nằm ở đây, chia theo domain/feature
     <feature-name>/
-      <feature>.routes.ts      → định nghĩa endpoint, gắn middleware, KHÔNG xử lý logic
+      <feature>.routes.ts      → định nghĩa endpoint, gắn middleware, registry.registerPath
       <feature>.controller.ts  → nhận req/res, gọi service, format response — KHÔNG query DB trực tiếp
-      <feature>.service.ts     → business logic, gọi model/repository
+      <feature>.service.ts     → business logic, gọi repository
+      <feature>.repository.ts  → toàn bộ truy vấn Mongo của feature
       <feature>.model.ts       → Mongoose schema/model của feature
-      <feature>.validator.ts   → schema validate input (Zod/Joi) cho feature
-      <feature>.types.ts       → type/interface riêng của feature (nếu cần)
+      <feature>.schema.ts      → Zod schema (validate input + component OpenAPI)
+      <feature>.types.ts       → DTO + hàm map document → DTO
     index.ts         → tổng hợp & export router của tất cả feature ra app.ts
 
   jobs/            → cron job, background job, queue consumer (BullMQ...)
@@ -40,10 +41,12 @@ src/
 
   sockets/         → toàn bộ logic Socket.io (namespace, event handler)
 
-  tests/           → test file, cấu trúc mirror theo src/ (VD: tests/features/category/...)
-
   app.ts           → khởi tạo Express app, gắn middleware global, mount router
   server.ts        → entry point, start HTTP server
+
+tests/             → NGANG HÀNG src/, không nằm trong src/
+  unit/            → test hàm thuần (không cần DB/HTTP)
+  integration/     → test đi qua HTTP bằng Supertest + mongodb-memory-server
 ```
 
 ## Danh sách feature hiện có (không tự ý đổi tên/gộp)
@@ -59,9 +62,9 @@ src/
 3. **`config/` chỉ chứa khởi tạo kết nối/cấu hình hạ tầng** (DB, Redis, logger,
    env, Swagger). Không viết business logic ở đây.
 4. Khi tạo feature mới, đặt trong `src/features/<ten-feature>/` và tối thiểu
-   phải có: `routes.ts`, `controller.ts`, `service.ts`, `validator.ts`.
-   `model.ts` chỉ tạo nếu feature có schema Mongo riêng (VD: feature `search`
-   có thể không cần model riêng vì dùng lại model của `listing`).
+   phải có: `routes.ts`, `controller.ts`, `service.ts`, `schema.ts`.
+   `model.ts` + `repository.ts` chỉ tạo nếu feature có schema Mongo riêng (VD:
+   feature `search` có thể không cần model riêng vì dùng lại model của `listing`).
 5. **Đặt tên file**: `<feature>.<layer>.ts`, toàn bộ chữ thường, phân cách
    bằng dấu chấm. Ví dụ đúng: `category.controller.ts`.
    Sai: `CategoryController.ts`, `category_controller.ts`.
@@ -73,9 +76,8 @@ src/
    file job trong `src/jobs/`, nhưng import service từ
    `src/features/<feature>/` để tái sử dụng logic, không viết logic mới
    trong `jobs/`.
-8. **File test** phải đặt trong `tests/` với đường dẫn mirror theo `src/`.
-   Ví dụ: test cho `src/features/category/category.service.ts` →
-   `tests/features/category/category.service.test.ts`.
+8. **File test** đặt trong `tests/unit/` (hàm thuần, không cần DB/HTTP) hoặc
+   `tests/integration/` (gọi endpoint qua Supertest). Tên file: `<đối-tượng>.test.ts`.
 9. **Không tạo thư mục cấp cao mới** (ngang hàng với `common`, `config`,
    `features`, `jobs`, `middlewares`, `sockets`, `tests`) nếu chưa được xác
    nhận. Nếu thấy cần, phải dừng lại và hỏi trước khi tạo.
@@ -89,8 +91,9 @@ src/features/favorite/
   favorite.routes.ts
   favorite.controller.ts
   favorite.service.ts
+  favorite.repository.ts
   favorite.model.ts
-  favorite.validator.ts
+  favorite.schema.ts
 ```
 
 `favorite.routes.ts` được import và mount vào `src/features/index.ts`.

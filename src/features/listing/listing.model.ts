@@ -115,12 +115,17 @@ listingSchema.index({ seller: 1, status: 1, createdAt: -1 }) // tin của 1 ngư
 // TTL: MongoDB tự xoá document khi qua expiresAt (0s sau thời điểm đó)
 listingSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
-listingSchema.pre(/^find/, function excludeDeleted(this: mongoose.Query<unknown, unknown>, next) {
+function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
   if (!this.getOptions().withDeleted) {
     this.where({ deletedAt: null })
   }
   next()
-})
+}
+
+listingSchema.pre(/^find/, excludeDeleted)
+// `countDocuments` KHÔNG khớp /^find/ — thiếu hook này thì total của pagination
+// đếm cả tin đã soft-delete, lệch hẳn với items trả về.
+listingSchema.pre('countDocuments', excludeDeleted)
 
 export const Listing: Model<IListingDocument> = mongoose.model<IListingDocument>(
   'Listing',

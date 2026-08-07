@@ -8,30 +8,37 @@ Tài liệu này quy định các nguyên tắc bắt buộc khi ghi log trong h
 
 - **Không** log plain string thiếu ngữ cảnh và không thể parse tự động.
 
+- Logger là **winston** (`src/config/logger.ts`). Chữ ký là `(message, meta)` —
+  **KHÔNG phải pino** `(meta, message)`. Đảo thứ tự thì winston lấy object làm
+  `message`, in ra `[object Object]` và nuốt luôn chuỗi mô tả.
+
   ❌ Không nên:
-  ```js
-  console.log("User login");
+  ```ts
+  console.log('User login')
+  logger.info({ event: 'user_login', userId }, 'User login')  // pino signature
   ```
 
   ✅ Nên:
-  ```js
-  logger.info({
-    event: "user_login",
-    userId
-  });
+  ```ts
+  logger.info('user_login', { userId })
   ```
 
-- Mỗi log entry nên là một object có cấu trúc, tối thiểu bao gồm:
+- Mỗi log entry gồm:
 
   | Field | Mô tả |
   |---|---|
-  | `event` | Tên sự kiện dạng `snake_case`, mô tả rõ hành động (`user_login`, `order_created`...) |
+  | `message` | Tên sự kiện / mô tả ngắn, tham số **thứ nhất** |
+  | `meta` | Object context ở tham số **thứ hai** (`userId`, `err`, `path`...) |
   | `level` | Mức độ log: `debug` \| `info` \| `warn` \| `error` |
-  | `timestamp` | Thời điểm log được ghi (thường tự động sinh bởi logger) |
-  | `requestId` | Định danh request, phục vụ trace xuyên suốt (xem mục 3) |
-  | *(context fields)* | Các field bổ sung liên quan đến event, ví dụ `userId`, `orderId`... |
+  | `timestamp` | Tự động sinh bởi transport |
+  | `service` | Từ `defaultMeta`, không cần truyền tay |
 
-- Không dùng `console.log` / `console.error` trực tiếp trong code nghiệp vụ. Toàn bộ log phải đi qua module `logger` dùng chung.
+- Truyền `Error` qua meta (`{ err }`) — formatter đã serialize `message` + `stack`;
+  `JSON.stringify` mặc định sẽ trả `{}` vì hai field đó là non-enumerable.
+- Không dùng `console.log` / `console.error` trực tiếp trong code nghiệp vụ (trừ
+  `scripts/`). Toàn bộ log phải đi qua module `logger` dùng chung.
+- Không nuốt lỗi: `catch {}` rỗng hoặc handler `unhandledRejection` rỗng là vi phạm —
+  đã từng làm server chết mà không để lại một dòng log nào.
 
 ## 2. Sensitive Information
 
@@ -44,7 +51,11 @@ Tuyệt đối **không được log** các loại dữ liệu nhạy cảm sau,
 
 Các field thuộc danh sách trên nên được đưa vào cơ chế **redaction/masking tự động** ở tầng logger, thay vì phụ thuộc hoàn toàn vào việc developer tự kiểm soát khi viết code.
 
-## 3. Request Trace
+## 3. Request Trace — 🚧 CHƯA TRIỂN KHAI
+
+> Hiện tại `app.ts` mới có access log (`METHOD path status {ms}`), chưa có `requestId`.
+> Mục này là mục tiêu cần làm, không phải mô tả hiện trạng — đừng viết code giả định
+> `requestId` đã tồn tại.
 
 - Mỗi request đi vào hệ thống bắt buộc phải được gán một `requestId` duy nhất (sinh mới nếu chưa có, hoặc kế thừa từ header như `x-request-id` nếu request đến từ upstream service).
 - `requestId` phải được truyền xuyên suốt qua toàn bộ luồng xử lý, xuất hiện trong **mọi** log entry liên quan đến request đó:
