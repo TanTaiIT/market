@@ -66,12 +66,14 @@ async function publish(listingId: string) {
 beforeAll(async () => {
   // Transaction (đăng ký Organization) đòi replica set — standalone sẽ lỗi ngay.
   mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } })
-  process.env.MONGO_URI = mongod.getUri()
+  // Giữ URI ở biến cục bộ: đọc lại qua process.env cho ra `string | undefined`.
+  const uri = mongod.getUri()
+  process.env.MONGO_URI = uri
   process.env.JWT_SECRET = 'test_secret'
   process.env.JWT_REFRESH_SECRET = 'test_refresh_secret'
   delete process.env.APP_BASE_DOMAIN
 
-  await mongoose.connect(process.env.MONGO_URI)
+  await mongoose.connect(uri)
 
   const { createApp } = await import('../../src/app')
   app = createApp()

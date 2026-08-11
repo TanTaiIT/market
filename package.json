@@ -17,6 +17,7 @@
     "typecheck": "tsc --noEmit",
     "test": "cross-env NODE_ENV=test vitest run",
     "test:watch": "cross-env NODE_ENV=test vitest",
+    "openapi:export": "tsx scripts/export-openapi.ts",
     "seed": "tsx scripts/seed.ts",
     "migrate:tenant": "tsx scripts/migrate-tenant.ts",
     "prepare": "husky"

@@ -43,6 +43,7 @@ const notChainOwner = errorResponse('Không phải chủ chain')
 registry.registerPath({
   method: 'get',
   path: '/chains/{chainId}/stats',
+  operationId: 'chainStats',
   tags: ['Chain'],
   summary: 'Thống kê tổng hợp toàn chain (read-only)',
   ...protectedRoute,
@@ -57,6 +58,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'get',
   path: '/chains/{chainId}/organizations',
+  operationId: 'chainOrganizations',
   tags: ['Chain'],
   summary: 'Danh sách organization trong chain',
   ...protectedRoute,
@@ -71,6 +73,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'post',
   path: '/chains/{chainId}/notifications',
+  operationId: 'chainBroadcast',
   tags: ['Chain'],
   summary: 'Gửi thông báo tới mọi org trong chain (fan-out mỗi org một bản ghi)',
   ...protectedRoute,

@@ -44,6 +44,7 @@ docker-compose up --build
 | `npm run lint` | oxlint `--fix` + prettier `--write` (dùng khi code) |
 | `npm run lint:check` / `npm run format:check` | Bản chỉ kiểm tra — CI dùng cái này |
 | `npm test` | Vitest + Supertest + mongodb-memory-server |
+| `npm run openapi:export` | Xuất spec tĩnh ra `openapi.json` cho client codegen |
 | `npm run seed` | Seed dữ liệu mẫu |
 
 ## Cấu trúc
@@ -71,16 +72,42 @@ tests/
 | auth | ✅ Core | `POST /auth/{register,login,refresh}` |
 | user | ✅ Core | `GET/PATCH/DELETE /users/me`, `GET /users/:id` |
 | listing | ✅ Core | `GET /listings`, `GET /listings/nearby`, `GET/POST/PATCH/DELETE /listings/:id` |
+| notification | ✅ Core | `GET/POST /notifications`, `PATCH /notifications/:id/read` |
+| chain | ✅ Core | `GET /chains/:chainId/{stats,organizations}`, `POST /chains/:chainId/notifications` |
+| platform-admin | ✅ Core | `POST /platform-admin/{auth/login,chains}`, `PATCH /platform-admin/organizations/:id/{chain,status}` |
+| organization | ✅ Core (không có route riêng) | Ghi qua `POST /auth/register`, đọc qua chain & platform-admin |
 | category | 🚧 Skeleton (501) | `/categories` |
-| chat | 🚧 Skeleton (501) | `/chats` (+ socket) |
+| chat | 🚧 Skeleton (501) | `/chats` (realtime đã chạy qua socket) |
 | upload | 🚧 Skeleton (501) | `/uploads` |
 | search | 🚧 Skeleton (501) | `/search` |
 | review | 🚧 Skeleton (501) | `/reviews` |
-| notification | 🚧 Skeleton (501) | `/notifications` |
 
 > Module skeleton trả `501 Not Implemented` kèm ghi chú TODO trong `*.routes.ts` để triển khai tiếp.
+> Chúng **không** có `registerPath` nên không nằm trong OpenAPI spec — danh sách được ghi vào
+> `info.description` của spec để client biết là "chưa có" thay vì "spec thiếu".
 > Khi làm module `upload` cần cài lại `@aws-sdk/client-s3`; module job cần `bullmq`
 > (đã gỡ khỏi `package.json` vì chưa dùng tới).
+
+## OpenAPI cho client codegen
+
+Spec là code-first từ Zod (`@asteasolutions/zod-to-openapi`) — một schema dùng cho cả validate
+runtime và sinh spec, nên không có đường để spec lệch với validation.
+
+| Cách lấy | Dùng khi |
+|---|---|
+| `GET /openapi.json` (server đang chạy) | Xem nhanh, hoặc codegen trỏ thẳng vào URL |
+| `GET /docs` | Scalar API Reference (UI đọc tay) |
+| `npm run openapi:export` → `openapi.json` | Codegen ở repo client **không cần bật server** |
+
+**Hợp đồng với client:** mọi `registerPath` phải có `operationId` — đó là tên hàm sau codegen.
+`openapi:export` fail (exit 1) nếu có operation thiếu `operationId` hoặc bị trùng, nên lỗi này
+không thể lọt sang phía client.
+
+`servers` chỉ là `API_PREFIX` (`/api/v1`) — không chứa host. Client tự set base URL; app mobile
+chạy trên thiết bị thật phải dùng IP LAN, không phải `localhost`.
+
+Script cần `.env` hợp lệ vì `src/config/env.ts` validate env lúc import (thiếu `MONGO_URI` /
+`JWT_SECRET` là `process.exit(1)`), nhưng **không** kết nối MongoDB.
 
 ## Ghi chú thiết kế
 - **Listing**: `status` (draft/pending/active/sold/expired/rejected/hidden), `location` GeoJSON + `2dsphere` (tìm gần), `images: string[]` (URL, ảnh thật ở S3/Cloudinary), `expiresAt` TTL index (tự hết hạn), text index (title+description), compound index `(category, status, createdAt)`.

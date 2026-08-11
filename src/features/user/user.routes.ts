@@ -26,6 +26,7 @@ const meResponse = envelope(meProfileSchema)
 registry.registerPath({
   method: 'get',
   path: '/users/me',
+  operationId: 'userGetMe',
   tags: ['User'],
   summary: 'Hồ sơ của chính mình',
   ...protectedRoute,
@@ -38,6 +39,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'patch',
   path: '/users/me',
+  operationId: 'userUpdateMe',
   tags: ['User'],
   summary: 'Cập nhật hồ sơ của chính mình',
   ...protectedRoute,
@@ -52,6 +54,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'delete',
   path: '/users/me',
+  operationId: 'userDeleteMe',
   tags: ['User'],
   summary: 'Xoá tài khoản (soft delete)',
   ...protectedRoute,
@@ -64,6 +67,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'get',
   path: '/users/{id}',
+  operationId: 'userGetById',
   tags: ['User'],
   summary: 'Hồ sơ công khai của người bán',
   request: { params: userParamsSchema },

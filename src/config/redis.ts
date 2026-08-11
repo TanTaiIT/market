@@ -19,6 +19,17 @@ export function getRedis(): Redis | null {
   return client
 }
 
+/**
+ * Clone client cho API cần connection riêng (vd Socket.IO pub/sub).
+ * Phải gắn lại 'error' handler: ioredis KHÔNG copy listener sang bản duplicate, và
+ * một 'error' event không có handler sẽ thành uncaught exception -> chết process.
+ */
+export function duplicateRedis(base: Redis): Redis {
+  const dup = base.duplicate()
+  dup.on('error', (err) => logger.error('Redis error (duplicate)', { err }))
+  return dup
+}
+
 export async function closeRedis(): Promise<void> {
   if (!client) return
   await client.quit()

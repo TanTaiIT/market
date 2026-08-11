@@ -3,7 +3,7 @@ import { Server as SocketServer } from 'socket.io'
 import { createAdapter } from '@socket.io/redis-adapter'
 import type { Redis } from 'ioredis'
 import { verifyAccessToken } from '../common/utils/jwt'
-import { getRedis } from '../config/redis'
+import { duplicateRedis, getRedis } from '../config/redis'
 import { env } from '../config/env'
 import { logger } from '../config/logger'
 import { registerChatHandlers } from './chat.socket'
@@ -20,7 +20,7 @@ export function initSockets(httpServer: HttpServer): SocketServer {
   // Không có Redis (dev) -> fallback in-memory adapter (chỉ đúng khi 1 instance).
   const pubClient = getRedis()
   if (pubClient) {
-    subClient = pubClient.duplicate()
+    subClient = duplicateRedis(pubClient)
     io.adapter(createAdapter(pubClient, subClient))
     logger.info('✅ Socket.IO Redis adapter enabled (multi-instance ready)')
   } else {

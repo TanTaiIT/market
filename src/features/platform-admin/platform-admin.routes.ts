@@ -63,6 +63,7 @@ const notSuperAdmin = errorResponse('Cần quyền super_admin')
 registry.registerPath({
   method: 'post',
   path: '/platform-admin/auth/login',
+  operationId: 'platformAdminLogin',
   tags: ['PlatformAdmin'],
   summary: 'Đăng nhập bên bán phần mềm (JWT type riêng, không thuộc organization nào)',
   request: { body: { content: { 'application/json': { schema: platformLoginSchema } } } },
@@ -75,6 +76,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'post',
   path: '/platform-admin/chains',
+  operationId: 'platformAdminCreateChain',
   tags: ['PlatformAdmin'],
   summary: 'Tạo chain mới và chỉ định chain owner',
   ...protectedRoute,
@@ -90,6 +92,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'patch',
   path: '/platform-admin/organizations/{organizationId}/chain',
+  operationId: 'platformAdminAssignChain',
   tags: ['PlatformAdmin'],
   summary: 'Gán org vào chain, hoặc tách ra độc lập với chainId = null',
   ...protectedRoute,
@@ -108,6 +111,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'patch',
   path: '/platform-admin/organizations/{organizationId}/status',
+  operationId: 'platformAdminSetOrganizationStatus',
   tags: ['PlatformAdmin'],
   summary: 'Khoá/mở organization — có hiệu lực ngay, không đợi access token hết hạn',
   ...protectedRoute,

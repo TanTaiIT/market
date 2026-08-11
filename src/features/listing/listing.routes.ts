@@ -57,6 +57,7 @@ const listSummary = 'Chỉ trả tin ở trạng thái public — không lộ dr
 registry.registerPath({
   method: 'get',
   path: '/listings',
+  operationId: 'listingList',
   tags: ['Listing'],
   summary: 'Danh sách tin đăng (filter + full-text search)',
   description: listSummary,
@@ -73,6 +74,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'get',
   path: '/listings/nearby',
+  operationId: 'listingNearby',
   tags: ['Listing'],
   summary: 'Tin gần một toạ độ (sắp xếp theo khoảng cách)',
   request: { query: nearbyQuerySchema },
@@ -88,6 +90,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'get',
   path: '/listings/{id}',
+  operationId: 'listingGetById',
   tags: ['Listing'],
   summary: 'Chi tiết tin đăng (tăng viewCount)',
   description: listSummary,
@@ -101,6 +104,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'post',
   path: '/listings',
+  operationId: 'listingCreate',
   tags: ['Listing'],
   summary: 'Đăng tin mới (vào trạng thái pending chờ duyệt)',
   ...protectedRoute,
@@ -116,6 +120,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'patch',
   path: '/listings/{id}',
+  operationId: 'listingUpdate',
   tags: ['Listing'],
   summary: 'Sửa tin của chính mình',
   ...protectedRoute,
@@ -134,6 +139,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'delete',
   path: '/listings/{id}',
+  operationId: 'listingRemove',
   tags: ['Listing'],
   summary: 'Xoá tin của chính mình (soft delete)',
   ...protectedRoute,

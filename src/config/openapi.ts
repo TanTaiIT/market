@@ -58,6 +58,21 @@ export const paginationMetaSchema = z.object({
 })
 
 /**
+ * Module đã mount nhưng chưa triển khai — mọi method trả 501.
+ * Chúng KHÔNG có registerPath nên không xuất hiện trong spec; liệt kê ở đây để client
+ * đọc spec biết là "chưa có", chứ không kết luận sai là "server thiếu endpoint".
+ *
+ * SoT của phần mount: `src/features/index.ts` — thêm/bỏ module thì sửa cả hai chỗ.
+ */
+const NOT_IMPLEMENTED_MODULES = [
+  '/categories — cây danh mục parent-child',
+  '/chats — chat REST (realtime đã chạy qua Socket.IO, không mô tả được bằng OpenAPI)',
+  '/uploads — upload ảnh lên S3',
+  '/search — full-text search',
+  '/reviews — đánh giá người bán',
+]
+
+/**
  * Sinh OpenAPI document từ toàn bộ schema/route đã register.
  * Gọi SAU khi tất cả feature modules đã được import (side-effect register).
  */
@@ -68,7 +83,12 @@ export function generateOpenApiDocument() {
     info: {
       title: 'Chợ Tốt Clone API',
       version: '1.0.0',
-      description: 'Marketplace/Classifieds REST API (code-first OpenAPI từ Zod)',
+      description: [
+        'Marketplace/Classifieds REST API (code-first OpenAPI từ Zod).',
+        '',
+        '**Chưa triển khai — mọi method trả HTTP 501:**',
+        ...NOT_IMPLEMENTED_MODULES.map((m) => `- \`${m}\``),
+      ].join('\n'),
     },
     servers: [{ url: env.API_PREFIX }],
   })

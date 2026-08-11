@@ -1,4 +1,5 @@
-import { defineConfig } from 'vitest/config';
+// Subpath phải là 'vitest/config' — exports map của vitest không có './config.js'.
+import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
@@ -14,4 +15,4 @@ export default defineConfig({
       exclude: ['src/**/*.routes.ts', 'src/config/**'],
     },
   },
-});
+})

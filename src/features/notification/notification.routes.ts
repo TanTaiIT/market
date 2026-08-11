@@ -47,6 +47,7 @@ const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
 registry.registerPath({
   method: 'get',
   path: '/notifications',
+  operationId: 'notificationList',
   tags: ['Notification'],
   summary: 'Thông báo của organization hiện tại (gồm cả bản fan-out từ chain)',
   ...protectedRoute,
@@ -63,6 +64,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'post',
   path: '/notifications',
+  operationId: 'notificationCreate',
   tags: ['Notification'],
   summary: 'Gửi thông báo trong phạm vi organization',
   ...protectedRoute,
@@ -77,6 +79,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'patch',
   path: '/notifications/{id}/read',
+  operationId: 'notificationMarkRead',
   tags: ['Notification'],
   summary: 'Đánh dấu đã đọc',
   ...protectedRoute,

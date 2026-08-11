@@ -13,11 +13,14 @@ router.post('/login', authLimiter, validate({ body: loginSchema }), authControll
 router.post('/refresh', authLimiter, validate({ body: refreshSchema }), authController.refresh)
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
+// `operationId` là tên hàm client sau codegen -> phải ổn định và độc lập với path,
+// đổi path không được kéo theo đổi tên hàm ở mọi consumer.
 const authResponse = envelope(authResponseSchema)
 
 registry.registerPath({
   method: 'post',
   path: '/auth/register',
+  operationId: 'authRegister',
   tags: ['Auth'],
   summary: 'Tạo Organization mới + tài khoản owner đầu tiên',
   request: { body: { content: { 'application/json': { schema: registerSchema } } } },
@@ -32,6 +35,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'post',
   path: '/auth/login',
+  operationId: 'authLogin',
   tags: ['Auth'],
   summary: 'Đăng nhập trong phạm vi một Organization (subdomain hoặc orgSlug)',
   request: { body: { content: { 'application/json': { schema: loginSchema } } } },
@@ -46,6 +50,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'post',
   path: '/auth/refresh',
+  operationId: 'authRefresh',
   tags: ['Auth'],
   summary: 'Lấy cặp token mới từ refresh token',
   request: { body: { content: { 'application/json': { schema: refreshSchema } } } },
