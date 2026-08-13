@@ -5,8 +5,6 @@ const router = Router()
 
 // TODO(category): model dạng cây parent-child (Xe cộ > Ô tô > Sedan),
 // CRUD danh mục, lấy cây danh mục, gán listing theo category.
-router.all('/*', (_req, _res, next) =>
-  next(new NotImplementedError('category module chưa triển khai')),
-)
+router.use((_req, _res, next) => next(new NotImplementedError('category module chưa triển khai')))
 
 export default router

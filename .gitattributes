@@ -1,0 +1,13 @@
+# Prettier chốt `endOfLine: "lf"`, còn Windows với core.autocrlf=true lại checkout ra CRLF,
+# nên `npm run format:check` đỏ trên máy Windows dù CI (ubuntu) vẫn xanh. Ép LF ở cả hai phía
+# để gate cho cùng một kết quả ở mọi nơi.
+* text=auto eol=lf
+
+# File nhị phân: đừng đụng vào byte nào.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary

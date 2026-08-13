@@ -2,7 +2,7 @@ import { Server as HttpServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import { createAdapter } from '@socket.io/redis-adapter'
 import type { Redis } from 'ioredis'
-import { verifyAccessToken } from '../common/utils/jwt'
+import { TOKEN_TYPE, verifyAccessToken } from '../common/utils/jwt'
 import { duplicateRedis, getRedis } from '../config/redis'
 import { env } from '../config/env'
 import { logger } from '../config/logger'
@@ -35,7 +35,12 @@ export function initSockets(httpServer: HttpServer): SocketServer {
     if (!token) return next(new Error('Missing token'))
     try {
       const payload = verifyAccessToken(token)
+      // Cùng một secret ký cả token user lẫn platform-admin, nên `type` là thứ duy nhất chặn
+      // token bên bán phần mềm mở socket của người dùng cuối — giống hệt `authenticate`.
+      if (payload.type !== TOKEN_TYPE.USER) return next(new Error('Invalid token'))
+
       socket.data.userId = payload.sub
+      socket.data.organizationId = payload.organizationId
       socket.data.role = payload.role
       next()
     } catch {
@@ -45,18 +50,13 @@ export function initSockets(httpServer: HttpServer): SocketServer {
 
   io.on('connection', (socket) => {
     logger.debug('socket connected', { userId: socket.data.userId })
-    registerChatHandlers(io as SocketServer, socket)
+    registerChatHandlers(socket)
 
     socket.on('disconnect', () => {
       logger.debug('socket disconnected', { userId: socket.data.userId })
     })
   })
 
-  return io
-}
-
-export function getIO(): SocketServer {
-  if (!io) throw new Error('Socket.IO not initialized')
   return io
 }
 

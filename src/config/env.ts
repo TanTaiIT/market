@@ -40,7 +40,7 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env)
 
 if (!parsed.success) {
-  // eslint-disable-next-line no-console
+  // `logger` import `env` nên chưa tồn tại ở thời điểm này — console là lối duy nhất còn lại.
   console.error('❌ Invalid environment variables:', parsed.error.format())
   process.exit(1)
 }

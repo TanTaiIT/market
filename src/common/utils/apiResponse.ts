@@ -23,7 +23,3 @@ export function created<T>(
 ): Response {
   return success(res, { ...opts, statusCode: 201, message: opts.message ?? 'Created' })
 }
-
-export function noContent(res: Response): Response {
-  return res.status(204).send()
-}
