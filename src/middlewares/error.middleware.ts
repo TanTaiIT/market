@@ -34,13 +34,14 @@ export function errorConverter(err: unknown, _req: Request, _res: Response, next
     message = 'Invalid or expired token'
   }
 
-  next(new ApiError(statusCode, message, { isOperational: false }))
+  next(new ApiError(statusCode, message))
 }
 
 /**
  * Global error handler cuối chuỗi middleware.
+ *
+ * `_next` không dùng nhưng phải khai: Express nhận diện error handler bằng đúng arity 4.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: ApiError, req: Request, res: Response, _next: NextFunction) {
   const statusCode = err.statusCode ?? httpStatus.INTERNAL_SERVER_ERROR
 

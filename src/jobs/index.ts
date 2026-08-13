@@ -15,9 +15,6 @@ export async function initJobs(): Promise<void> {
     return
   }
 
-  // const { Queue, Worker } = await import('bullmq');
-  // const connection = redis;
-  // new Worker('expire-listings', async () => { ... }, { connection });
   logger.info('✅ Jobs initialized')
 }
 

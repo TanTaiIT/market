@@ -5,9 +5,9 @@ import { BadRequestError } from '../common/errors'
 // KHÔNG lưu binary trong MongoDB.
 const storage = multer.memoryStorage()
 
-export const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
-export const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
-export const MAX_FILES = 10
+const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif']
+const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5MB
+const MAX_FILES = 10
 
 export const upload = multer({
   storage,

@@ -14,6 +14,6 @@ export class TenantScopeMissingError extends ApiError {
 /** Ném khi code chạy unscoped nhưng ghi một document không mang organizationId tường minh. */
 export class CrossTenantWriteError extends ApiError {
   constructor(message = 'Unscoped write must set organizationId explicitly') {
-    super(httpStatus.INTERNAL_SERVER_ERROR, message, { isOperational: false })
+    super(httpStatus.INTERNAL_SERVER_ERROR, message)
   }
 }

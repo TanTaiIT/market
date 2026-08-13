@@ -56,6 +56,44 @@ export const LISTING_CONDITION = {
 } as const
 export type ListingCondition = (typeof LISTING_CONDITION)[keyof typeof LISTING_CONDITION]
 
+// Người dùng báo cáo tin hoặc người khác. Danh sách đóng để bàn quản trị lọc và thống kê được
+// — để người dùng gõ tự do thì không nhóm nổi.
+export const REPORT_KIND = {
+  SCAM: 'scam',
+  WRONG_INFO: 'wrong_info',
+  HARASSMENT: 'harassment',
+  BANNED_ITEM: 'banned_item',
+  OTHER: 'other',
+} as const
+export type ReportKind = (typeof REPORT_KIND)[keyof typeof REPORT_KIND]
+
+export const REPORT_TARGET = { LISTING: 'listing', USER: 'user' } as const
+export type ReportTarget = (typeof REPORT_TARGET)[keyof typeof REPORT_TARGET]
+
+export const REPORT_STATUS = {
+  OPEN: 'open',
+  /** Đã xử: gỡ/ẩn đối tượng bị báo cáo. */
+  RESOLVED: 'resolved',
+  /** Đã xem và kết luận báo cáo không đúng. */
+  DISMISSED: 'dismissed',
+} as const
+export type ReportStatus = (typeof REPORT_STATUS)[keyof typeof REPORT_STATUS]
+
+// Vết kiểm toán của thao tác quản trị. Tên dạng `<đối tượng>.<hành động>` để grep ra nhóm.
+export const AUDIT_ACTION = {
+  LISTING_APPROVE: 'listing.approve',
+  LISTING_REJECT: 'listing.reject',
+  LISTING_HIDE: 'listing.hide',
+  LISTING_UNHIDE: 'listing.unhide',
+  LISTING_REMOVE: 'listing.remove',
+  REPORT_RESOLVE: 'report.resolve',
+  REPORT_DISMISS: 'report.dismiss',
+} as const
+export type AuditAction = (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION]
+
+/** Trạng thái bàn duyệt thao tác được — `draft` là của người đăng, quản trị không đụng. */
+export const MODERATABLE_STATUSES = ['pending', 'active', 'rejected', 'hidden'] as const
+
 export const PAGINATION = {
   DEFAULT_PAGE: 1,
   DEFAULT_LIMIT: 20,

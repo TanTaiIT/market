@@ -65,8 +65,6 @@ export const paginationMetaSchema = z.object({
  * SoT của phần mount: `src/features/index.ts` — thêm/bỏ module thì sửa cả hai chỗ.
  */
 const NOT_IMPLEMENTED_MODULES = [
-  '/categories — cây danh mục parent-child',
-  '/chats — chat REST (realtime đã chạy qua Socket.IO, không mô tả được bằng OpenAPI)',
   '/uploads — upload ảnh lên S3',
   '/search — full-text search',
   '/reviews — đánh giá người bán',

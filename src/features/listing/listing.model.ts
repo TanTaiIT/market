@@ -33,6 +33,13 @@ export interface IListing {
   viewCount: number
   favoriteCount: number
   attributes: Map<string, string>
+  /** Vết của lượt duyệt gần nhất. Rỗng với tin chưa ai chạm tới. */
+  moderation?: {
+    reason?: string
+    byUserId?: Types.ObjectId
+    byName?: string
+    at?: Date
+  }
   expiresAt?: Date
   deletedAt: Date | null
   createdAt: Date
@@ -99,6 +106,21 @@ const listingSchema = new Schema<IListingDocument>(
 
     // Thuộc tính động theo category (vd: xe -> {brand, year, km})
     attributes: { type: Map, of: String, default: {} },
+
+    // Lý do từ chối hiện thẳng cho người đăng, nên snapshot tên người duyệt thay vì populate
+    // (§2.3) — và giữ được cả khi tài khoản quản trị đó rời trường.
+    moderation: {
+      type: new Schema(
+        {
+          reason: { type: String, trim: true, maxlength: 300 },
+          byUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+          byName: { type: String, trim: true, maxlength: 100 },
+          at: { type: Date },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
 
     // Tự hết hạn qua TTL index (xem index bên dưới)
     expiresAt: { type: Date },

@@ -35,6 +35,11 @@ export const userRepository = {
     return User.exists({ email: email.toLowerCase(), organizationId, deletedAt: null })
   },
 
+  /** Thẻ "Người dùng" ở bàn quản trị — đếm sống thay vì giữ counter dễ lệch. */
+  countActive(organizationId: OrgId) {
+    return User.countDocuments({ organizationId, isActive: true })
+  },
+
   updateById(id: string, organizationId: OrgId, update: Partial<IUser>) {
     return User.findOneAndUpdate({ _id: id, organizationId }, update, {
       new: true,
