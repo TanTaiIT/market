@@ -2,7 +2,12 @@ import { FilterQuery, Types } from 'mongoose'
 import { Listing, IListing, IListingDocument } from './listing.model'
 import { ListingQuery } from './listing.schema'
 import { PaginationParams } from '../../common/utils/pagination'
-import { LISTING_STATUS, PUBLIC_LISTING_STATUSES, ListingStatus } from '../../common/constants'
+import {
+  LISTING_STATUS,
+  MODERATABLE_STATUSES,
+  PUBLIC_LISTING_STATUSES,
+  ListingStatus,
+} from '../../common/constants'
 import { runUnscoped } from '../../common/tenant/tenantContext'
 
 /** `status` không nằm trong query schema công khai — chỉ caller nội bộ mới được ép. */
@@ -113,6 +118,61 @@ export const listingRepository = {
 
   softDelete(id: string) {
     return Listing.findByIdAndUpdate(id, { deletedAt: new Date() }, { new: true })
+  },
+
+  /**
+   * Danh sách cho bàn duyệt. KHÔNG đi qua `buildFilter`: hàm đó mặc định `status: ACTIVE` để
+   * bảo vệ endpoint public, nên bỏ trống status ở đây sẽ ra "chỉ tin đang hiển thị" thay vì
+   * "mọi trạng thái" — đúng ngược với thứ tab "Tất cả" của bàn duyệt cần.
+   */
+  async paginateForModeration(
+    status: ListingStatus | undefined,
+    { skip, limit }: PaginationParams,
+  ) {
+    const filter: FilterQuery<IListingDocument> = {
+      status: status ?? { $in: [...MODERATABLE_STATUSES] },
+    }
+    const [items, total] = await Promise.all([
+      Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Listing.countDocuments(filter),
+    ])
+    return { items, total }
+  },
+
+  /**
+   * Số liệu cho màn tổng quan của bàn quản trị, gói trong ba aggregate chạy song song.
+   * `tenantPlugin` chèn `$match organizationId` vào đầu mỗi pipeline nên không cần lọc tay.
+   */
+  async statsForModeration(trendDays: number) {
+    const since = new Date(Date.now() - trendDays * 24 * 60 * 60 * 1000)
+
+    const [byStatus, byCategory, byDay] = await Promise.all([
+      Listing.aggregate<{ _id: ListingStatus; count: number }>([
+        { $match: { deletedAt: null } },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      Listing.aggregate<{ _id: Types.ObjectId; count: number }>([
+        { $match: { deletedAt: null } },
+        { $group: { _id: '$category', count: { $sum: 1 } } },
+      ]),
+      Listing.aggregate<{ _id: string; approved: number; pending: number }>([
+        { $match: { deletedAt: null, createdAt: { $gte: since } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            approved: {
+              $sum: { $cond: [{ $eq: ['$status', LISTING_STATUS.ACTIVE] }, 1, 0] },
+            },
+            pending: {
+              $sum: { $cond: [{ $eq: ['$status', LISTING_STATUS.PENDING] }, 1, 0] },
+            },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+    ])
+
+    return { byStatus, byCategory, byDay }
   },
 
   /** Breakdown theo org cho thống kê chain — scope đọc đã do middleware chain quyết định. */

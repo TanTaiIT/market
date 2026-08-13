@@ -10,6 +10,13 @@ import {
 } from './platform-admin.schema'
 import { createChainSchema, chainResponseSchema } from '../chain/chain.schema'
 import { organizationSummarySchema } from '../organization/organization.schema'
+import { categoryController } from '../category/category.controller'
+import {
+  createCategorySchema,
+  updateCategorySchema,
+  categoryParamsSchema,
+  categoryResponseSchema,
+} from '../category/category.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authLimiter } from '../../middlewares/rateLimiter.middleware'
 import { PLATFORM_ADMIN_ROLES } from '../../common/constants'
@@ -53,6 +60,24 @@ router.patch(
   requireSuperAdmin,
   validate({ params: organizationParamsSchema, body: setOrgStatusSchema }),
   platformAdminController.setOrganizationStatus,
+)
+
+// Danh mục là từ điển dùng chung toàn hệ thống (convention §1.3) nên ghi thuộc về bên bán
+// phần mềm, giống chain và trạng thái organization. Đọc thì mở ở `/api/v1/categories`.
+router.post(
+  '/categories',
+  authenticatePlatformAdmin,
+  requireSuperAdmin,
+  validate({ body: createCategorySchema }),
+  categoryController.create,
+)
+
+router.patch(
+  '/categories/:id',
+  authenticatePlatformAdmin,
+  requireSuperAdmin,
+  validate({ params: categoryParamsSchema, body: updateCategorySchema }),
+  categoryController.update,
 )
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
@@ -124,6 +149,46 @@ registry.registerPath({
     401: errorResponse('Thiếu hoặc sai access token'),
     403: notSuperAdmin,
     404: errorResponse('Không tìm thấy organization'),
+  },
+})
+
+const categoryResponse = envelope(categoryResponseSchema)
+
+registry.registerPath({
+  method: 'post',
+  path: '/platform-admin/categories',
+  operationId: 'platformAdminCreateCategory',
+  tags: ['PlatformAdmin'],
+  summary: 'Tạo danh mục dùng chung toàn hệ thống',
+  ...protectedRoute,
+  request: { body: { content: { 'application/json': { schema: createCategorySchema } } } },
+  responses: {
+    201: jsonResponse('Đã tạo danh mục', categoryResponse),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: notSuperAdmin,
+    409: errorResponse('Slug danh mục đã tồn tại'),
+  },
+})
+
+registry.registerPath({
+  method: 'patch',
+  path: '/platform-admin/categories/{id}',
+  operationId: 'platformAdminUpdateCategory',
+  tags: ['PlatformAdmin'],
+  summary: 'Đổi tên/icon/thứ tự, hoặc bật-tắt một danh mục',
+  description:
+    'Không có endpoint xoá: gỡ danh mục khỏi lưu thông bằng `isActive: false`, vì tin đã đăng ' +
+    'vẫn tham chiếu tới nó.',
+  ...protectedRoute,
+  request: {
+    params: categoryParamsSchema,
+    body: { content: { 'application/json': { schema: updateCategorySchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã cập nhật', categoryResponse),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: notSuperAdmin,
+    404: errorResponse('Không tìm thấy danh mục'),
   },
 })
 

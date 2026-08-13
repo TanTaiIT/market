@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import request from 'supertest'
-import mongoose, { Types } from 'mongoose'
+import mongoose from 'mongoose'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import type { Application } from 'express'
 
 let app: Application
 let mongod: MongoMemoryReplSet
 
-const CATEGORY_ID = new Types.ObjectId().toString()
+// Danh mục có thật, tạo trong beforeAll: `listingService.create` từ chối categoryId không
+// trỏ tới danh mục nào. Category là từ điển dùng chung nên nó nằm ngoài mọi tenant.
+let CATEGORY_ID = ''
 // Cùng một email ở hai org phải tạo được hai tài khoản riêng (quyết định #2).
 const SHARED_EMAIL = 'owner@example.com'
 const PASSWORD = 'password123'
@@ -77,6 +79,10 @@ beforeAll(async () => {
 
   const { createApp } = await import('../../src/app')
   app = createApp()
+
+  const { Category } = await import('../../src/features/category/category.model')
+  const category = await Category.create({ name: 'Đồ dùng', slug: 'do-dung' })
+  CATEGORY_ID = category._id.toString()
 
   Object.assign(orgA, await registerOrg('org-a'))
   Object.assign(orgB, await registerOrg('org-b'))

@@ -9,6 +9,8 @@ import uploadRoutes from './upload/upload.routes'
 import searchRoutes from './search/search.routes'
 import reviewRoutes from './review/review.routes'
 import notificationRoutes from './notification/notification.routes'
+import moderationRoutes from './moderation/moderation.routes'
+import reportRoutes from './report/report.routes'
 
 const router = Router()
 
@@ -16,12 +18,16 @@ const router = Router()
 router.use('/auth', authRoutes)
 router.use('/users', userRoutes)
 router.use('/listings', listingRoutes)
-router.use('/chains', chainRoutes)
-router.use('/notifications', notificationRoutes)
-
-// --- Skeleton modules (trả 501 cho tới khi triển khai) ---
 router.use('/categories', categoryRoutes)
 router.use('/chats', chatRoutes)
+router.use('/chains', chainRoutes)
+router.use('/notifications', notificationRoutes)
+router.use('/reports', reportRoutes)
+
+// --- Bàn quản trị của một trường (owner | moderator) ---
+router.use('/moderation', moderationRoutes)
+
+// --- Skeleton modules (trả 501 cho tới khi triển khai) ---
 router.use('/uploads', uploadRoutes)
 router.use('/search', searchRoutes)
 router.use('/reviews', reviewRoutes)

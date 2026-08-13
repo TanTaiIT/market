@@ -1,0 +1,66 @@
+import { categoryRepository } from './category.repository'
+import { CategoryQuery, CreateCategoryInput, UpdateCategoryInput } from './category.schema'
+import { toCategoryDto } from './category.types'
+import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
+import { slugify } from '../../common/utils/slugify'
+import { logger } from '../../config/logger'
+
+export const categoryService = {
+  async list(query: CategoryQuery) {
+    const categories = await categoryRepository.list({ includeInactive: query.includeInactive })
+    return categories.map(toCategoryDto)
+  },
+
+  async getById(id: string) {
+    const category = await categoryRepository.findById(id)
+    if (!category) throw new NotFoundError('Category not found')
+    return toCategoryDto(category)
+  },
+
+  /**
+   * Tin chỉ được gắn vào danh mục đang bật. Gọi từ `listingService` — chỗ duy nhất chặn được
+   * `categoryId` đúng định dạng 24 hex nhưng không trỏ tới danh mục nào.
+   */
+  async assertUsable(categoryId: string) {
+    const exists = await categoryRepository.existsActive(categoryId)
+    if (!exists) throw new BadRequestError('Danh mục không tồn tại hoặc đã ngừng sử dụng')
+  },
+
+  async create(input: CreateCategoryInput, actorId: string) {
+    const slug = input.slug ?? slugify(input.name)
+    if (!slug)
+      throw new BadRequestError('Không sinh được slug từ tên này, truyền `slug` tường minh')
+
+    // Slug là khoá tra cứu ổn định của từ điển chung, nên trùng là chặn ở service chứ không
+    // để rơi xuống lỗi duplicate key 11000 của Mongo — thông điệp ở đó không đọc được.
+    if (await categoryRepository.existsBySlug(slug)) {
+      throw new ConflictError(`Danh mục với slug "${slug}" đã tồn tại`)
+    }
+
+    const category = await categoryRepository.create({
+      name: input.name,
+      slug,
+      icon: input.icon,
+      order: input.order,
+    })
+
+    logger.info('platform-admin category-create', { adminId: actorId, slug, name: input.name })
+    return toCategoryDto(category)
+  },
+
+  /**
+   * Không cho đổi `slug`: nó là khoá tra cứu mà client (app mobile, bàn quản trị) có thể đã
+   * cache. Đổi tên hiển thị dùng `name`.
+   */
+  async update(id: string, input: UpdateCategoryInput, actorId: string) {
+    const category = await categoryRepository.updateById(id, input)
+    if (!category) throw new NotFoundError('Category not found')
+
+    logger.info('platform-admin category-update', {
+      adminId: actorId,
+      categoryId: id,
+      changed: Object.keys(input),
+    })
+    return toCategoryDto(category)
+  },
+}

@@ -3,10 +3,15 @@ import { listingRepository } from './listing.repository'
 import { CreateListingInput, UpdateListingInput, ListingQuery, NearbyQuery } from './listing.schema'
 import { IListing } from './listing.model'
 import { userRepository } from '../user/user.repository'
+import { categoryService } from '../category/category.service'
 import { NotFoundError, ForbiddenError } from '../../common/errors'
-import { LISTING_STATUS } from '../../common/constants'
+import { LISTING_STATUS, ListingStatus } from '../../common/constants'
 import { slugifyWithSuffix } from '../../common/utils/slugify'
-import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
+import {
+  parsePagination,
+  buildPaginationMeta,
+  PaginationParams,
+} from '../../common/utils/pagination'
 
 const LISTING_TTL_DAYS = 30
 
@@ -52,6 +57,11 @@ async function assertOwner(id: string, userId: string) {
 
 export const listingService = {
   async create(input: CreateListingInput, author: ListingAuthor) {
+    // Zod chỉ chốt được `categoryId` đúng dạng 24 hex. Không kiểm tra ở đây thì một id hợp lệ
+    // về hình thức nhưng không trỏ tới danh mục nào vẫn tạo ra tin — và tin đó rơi khỏi mọi
+    // bộ lọc danh mục mà không ai biết vì sao.
+    await categoryService.assertUsable(input.categoryId)
+
     const seller = await userRepository.findById(author.id, author.organizationId)
     if (!seller) throw new NotFoundError('User not found')
 
@@ -89,8 +99,19 @@ export const listingService = {
     return listing
   },
 
+  /**
+   * Đọc tin mà KHÔNG tăng lượt xem — dành cho feature khác cần kiểm tra tin tồn tại (vd chat
+   * mở hội thoại). Dùng `getByIdAndTrackView` ở đó sẽ thổi phồng lượt xem mỗi lần bấm nhắn tin.
+   */
+  async getById(id: string) {
+    const listing = await listingRepository.findById(id)
+    if (!listing) throw new NotFoundError('Listing not found')
+    return listing
+  },
+
   async update(id: string, userId: string, input: UpdateListingInput) {
     await assertOwner(id, userId)
+    if (input.categoryId) await categoryService.assertUsable(input.categoryId)
 
     const { categoryId, location, attributes, ...rest } = input
     const update: Partial<IListing> = { ...rest }
@@ -104,5 +125,48 @@ export const listingService = {
   async remove(id: string, userId: string) {
     await assertOwner(id, userId)
     return listingRepository.softDelete(id)
+  },
+
+  /* ------------------------- dành cho bàn quản trị ------------------------- */
+  /*
+   * Bốn hàm dưới đây là seam cho feature `moderation`, không phải API công khai: chúng ép
+   * `status` tường minh, thứ mà `listingQuerySchema` cố tình không cho client đặt (quy tắc 7
+   * của AGENT — endpoint public không bao giờ trả tin ngoài PUBLIC_LISTING_STATUSES).
+   *
+   * Chúng KHÔNG ghi vết kiểm toán: audit thuộc về `moderation`, và để listing gọi ngược lên
+   * đó sẽ tạo vòng import.
+   */
+
+  listForModeration(status: ListingStatus | undefined, pagination: PaginationParams) {
+    return listingRepository.paginateForModeration(status, pagination)
+  },
+
+  async setModerationStatus(
+    id: string,
+    next: { status: ListingStatus; reason?: string; byUserId: string; byName: string },
+  ) {
+    const listing = await listingRepository.findById(id)
+    if (!listing) throw new NotFoundError('Listing not found')
+
+    const updated = await listingRepository.updateById(id, {
+      status: next.status,
+      moderation: {
+        reason: next.reason,
+        byUserId: new Types.ObjectId(next.byUserId),
+        byName: next.byName,
+        at: new Date(),
+      },
+    })
+    return updated!
+  },
+
+  async removeByModerator(id: string) {
+    const listing = await listingRepository.findById(id)
+    if (!listing) throw new NotFoundError('Listing not found')
+    return listingRepository.softDelete(id)
+  },
+
+  moderationStats(trendDays: number) {
+    return listingRepository.statsForModeration(trendDays)
   },
 }

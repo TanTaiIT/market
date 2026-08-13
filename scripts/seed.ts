@@ -8,6 +8,7 @@ import { Organization } from '../src/features/organization/organization.model'
 import { Chain } from '../src/features/chain/chain.model'
 import { Notification } from '../src/features/notification/notification.model'
 import { PlatformAdmin } from '../src/features/platform-admin/platform-admin.model'
+import { Category } from '../src/features/category/category.model'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
 import {
   LISTING_STATUS,
@@ -86,10 +87,19 @@ async function seed() {
       Chain.deleteMany({}),
       Notification.deleteMany({}),
       PlatformAdmin.deleteMany({}),
+      Category.deleteMany({}),
     ])
 
     const chainId = new Types.ObjectId()
-    const categoryId = new Types.ObjectId() // chưa có module category
+
+    // Danh mục là từ điển dùng chung, không thuộc org nào — khớp bốn chip lọc bên app mobile.
+    const categories = await Category.insertMany([
+      { name: 'Sách vở', slug: 'sach-vo', icon: '📚', order: 1 },
+      { name: 'Xe đạp', slug: 'xe-dap', icon: '🚲', order: 2 },
+      { name: 'Điện tử', slug: 'dien-tu', icon: '💻', order: 3 },
+      { name: 'Đồ dùng', slug: 'do-dung', icon: '🎒', order: 4 },
+    ])
+    const categoryId = categories[0]._id
 
     const hungVuong = await createOrgWithOwner({
       name: 'Trường Hùng Vương',
@@ -125,7 +135,9 @@ async function seed() {
     })
   })
 
-  console.log('Seeded: 1 chain (hung-vuong + cao-thang), 1 org độc lập (xyz), 15 listings.')
+  console.log(
+    'Seeded: 4 danh mục, 1 chain (hung-vuong + cao-thang), 1 org độc lập (xyz), 15 listings.',
+  )
   console.log(
     `Login: POST /auth/login { orgSlug: "hung-vuong", email: "owner@hung-vuong.local", password: "${PASSWORD}" }`,
   )

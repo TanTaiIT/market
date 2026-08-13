@@ -7,6 +7,7 @@ import { duplicateRedis, getRedis } from '../config/redis'
 import { env } from '../config/env'
 import { logger } from '../config/logger'
 import { registerChatHandlers } from './chat.socket'
+import { setSocketServer } from './emit'
 
 let io: SocketServer | null = null
 let subClient: Redis | null = null
@@ -15,6 +16,8 @@ export function initSockets(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
     cors: { origin: env.CORS_ORIGINS, credentials: true },
   })
+  // `chat.service` phát tin qua đây sau khi lưu — xem ghi chú cắt vòng import trong emit.ts.
+  setSocketServer(io)
 
   // Redis adapter: bắt buộc khi chạy >1 instance để emit tới client ở instance khác.
   // Không có Redis (dev) -> fallback in-memory adapter (chỉ đúng khi 1 instance).
@@ -67,6 +70,7 @@ export async function closeSockets(): Promise<void> {
   if (io) {
     await io.close()
     io = null
+    setSocketServer(null)
   }
   if (subClient) {
     await subClient.quit()
