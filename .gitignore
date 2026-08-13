@@ -5,6 +5,8 @@ dist/
 logs/
 *.log
 coverage/
+# Dump dữ liệu thật lấy từ Atlas trước khi seed — chứa email, hash mật khẩu, nội dung chat.
+backup/
 .DS_Store
 .idea/
 .vscode/

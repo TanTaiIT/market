@@ -969,6 +969,11 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 2000
+          },
+          "clientMsgId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
           }
         },
         "required": [
@@ -1039,6 +1044,9 @@
             "type": "string"
           },
           "text": {
+            "type": "string"
+          },
+          "clientMsgId": {
             "type": "string"
           },
           "createdAt": {

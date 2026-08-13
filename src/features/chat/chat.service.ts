@@ -126,6 +126,7 @@ export const chatService = {
       senderId,
       senderName: me?.name ?? '',
       text: input.text,
+      clientMsgId: input.clientMsgId,
     })
 
     await chatRepository.touch(id, {

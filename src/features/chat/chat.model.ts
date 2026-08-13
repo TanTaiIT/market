@@ -92,6 +92,17 @@ export interface IMessage {
   senderId: Types.ObjectId
   senderName: string
   text: string
+  /**
+   * Id do client tự sinh trước khi gửi, server chỉ lưu và trả lại nguyên vẹn.
+   *
+   * Client vẽ bong bóng tin nhắn ngay lúc bấm gửi, lúc đó chưa có `_id` nào cả. Khi bản thật
+   * quay về (REST hoặc socket), nó cần nhận ra "đây chính là bong bóng kia" để thay tại chỗ —
+   * không có mã này thì chỉ còn cách dò theo nội dung, và bong bóng bị thay bằng một phần tử
+   * mang khoá khác khiến danh sách dựng lại đúng dòng vừa gửi.
+   *
+   * Tuỳ chọn: tin từ client cũ hoặc từ đường khác vẫn hợp lệ khi thiếu nó.
+   */
+  clientMsgId?: string
   createdAt: Date
   updatedAt: Date
 }
@@ -106,6 +117,7 @@ const messageSchema = new Schema<IMessageDocument>(
     senderId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     senderName: { type: String, required: true, trim: true, maxlength: 100 },
     text: { type: String, required: true, trim: true, maxlength: 2000 },
+    clientMsgId: { type: String, trim: true, maxlength: 64 },
   },
   { timestamps: true },
 )

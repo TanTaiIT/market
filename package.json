@@ -19,6 +19,7 @@
     "test:watch": "cross-env NODE_ENV=test vitest",
     "openapi:export": "tsx scripts/export-openapi.ts",
     "seed": "tsx scripts/seed.ts",
+    "seed:bulk": "tsx scripts/seed-bulk.ts",
     "migrate:tenant": "tsx scripts/migrate-tenant.ts",
     "prepare": "husky"
   },

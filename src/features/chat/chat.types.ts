@@ -39,6 +39,7 @@ export function toMessageDto(message: IMessageDocument): MessageDto {
     senderId: message.senderId.toString(),
     senderName: message.senderName,
     text: message.text,
+    clientMsgId: message.clientMsgId,
     createdAt: message.createdAt.toISOString(),
   }
 }

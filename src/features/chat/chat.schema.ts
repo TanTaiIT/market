@@ -11,6 +11,9 @@ export const openConversationSchema = z
 export const sendMessageSchema = z
   .object({
     text: z.string().trim().min(1, 'Tin nhắn không được rỗng').max(2000),
+    // Server không sinh, không kiểm tra ý nghĩa, chỉ trả lại nguyên vẹn để client ghép bong
+    // bóng lạc quan với bản thật. `.strict()` ở đây nên thiếu khai báo là request bị 400.
+    clientMsgId: z.string().trim().min(1).max(64).optional(),
   })
   .strict()
   .openapi('SendMessage')
@@ -45,6 +48,8 @@ export const messageResponseSchema = z
     senderId: objectId,
     senderName: z.string(),
     text: z.string(),
+    // Chỉ có ở tin do client đời mới gửi — client dùng nó làm khoá ổn định cho danh sách.
+    clientMsgId: z.string().optional(),
     createdAt: z.string().datetime(),
   })
   .openapi('Message')
