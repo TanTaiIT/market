@@ -38,7 +38,10 @@ function toListingDoc(
     seller: new Types.ObjectId(author.id),
     posterName: poster.name,
     posterContact: poster.contact,
-    location: { type: 'Point', ...input.location },
+    // Bỏ HẲN key khi không có toạ độ. Spread thẳng `...input.location` sẽ đẻ ra subdoc
+    // `{ type: 'Point' }` rỗng coordinates, mà `coordinates` bên trong vẫn là required -> ném
+    // ValidationError ngay cả khi bản thân `location` đã optional.
+    ...(input.location && { location: { type: 'Point' as const, ...input.location } }),
     attributes: input.attributes ? new Map(Object.entries(input.attributes)) : new Map(),
     status: LISTING_STATUS.PENDING,
     expiresAt,
@@ -136,6 +139,16 @@ export const listingService = {
    * Chúng KHÔNG ghi vết kiểm toán: audit thuộc về `moderation`, và để listing gọi ngược lên
    * đó sẽ tạo vòng import.
    */
+
+  /** Tin của chính mình — `sellerId` lấy từ token, không nhận từ query, nên không xem trộm được. */
+  async listMine(sellerId: string, query: ListingQuery) {
+    const pagination = parsePagination(query)
+    const { items, total } = await listingRepository.paginateMine(sellerId, pagination)
+    return {
+      items,
+      meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
+    }
+  },
 
   listForModeration(status: ListingStatus | undefined, pagination: PaginationParams) {
     return listingRepository.paginateForModeration(status, pagination)

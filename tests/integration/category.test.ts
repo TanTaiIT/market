@@ -195,3 +195,77 @@ describe('Listing — ràng buộc categoryId', () => {
     expect(res.status).toBe(400)
   })
 })
+
+describe('Listing — toạ độ là tuỳ chọn', () => {
+  const activeCategoryId = async () => {
+    const categories = await request(app).get('/api/v1/categories').expect(200)
+    return categories.body.data[0].id as string
+  }
+
+  it('tạo được tin khi bỏ trống location — app chưa có bản đồ để lấy toạ độ', async () => {
+    const body: Record<string, unknown> = listingBody(await activeCategoryId())
+    delete body.location
+
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set({ Authorization: `Bearer ${userToken}` })
+      .send(body)
+
+    expect(res.status).toBe(201)
+    // Phải VẮNG hẳn, không phải `{ type: 'Point' }` rỗng coordinates: subdoc nửa vời sẽ lọt
+    // vào index 2dsphere và làm $near trả rác.
+    expect(res.body.data.location).toBeUndefined()
+  })
+
+  it('vẫn từ chối toạ độ sai ngưỡng — optional chỉ cho phép VẮNG, không cho phép sai', async () => {
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set({ Authorization: `Bearer ${userToken}` })
+      .send({
+        ...listingBody(await activeCategoryId()),
+        // Vĩ độ 999 vượt ngưỡng 90. Đây cũng là hình dạng của lỗi đảo [lat, lng] thành [lng, lat].
+        location: { coordinates: [106.7, 999] },
+      })
+
+    expect(res.status).toBe(400)
+  })
+})
+
+describe('GET /listings/mine — chủ tin thấy tin đang chờ duyệt', () => {
+  it('trả tin pending mà /listings công khai giấu đi', async () => {
+    const categories = await request(app).get('/api/v1/categories').expect(200)
+    const created = await request(app)
+      .post('/api/v1/listings')
+      .set({ Authorization: `Bearer ${userToken}` })
+      .send(listingBody(categories.body.data[0].id))
+      .expect(201)
+
+    const id = created.body.data._id
+    expect(created.body.data.status).toBe('pending')
+
+    const mine = await request(app)
+      .get('/api/v1/listings/mine')
+      .set({ Authorization: `Bearer ${userToken}` })
+      .expect(200)
+    expect(mine.body.data.map((l: { _id: string }) => l._id)).toContain(id)
+
+    // Cùng lúc đó danh sách công khai vẫn phải giấu nó — /mine không được nới lỏng chỗ này.
+    const publicList = await request(app)
+      .get('/api/v1/listings')
+      .set({ Authorization: `Bearer ${userToken}` })
+      .expect(200)
+    expect(publicList.body.data.map((l: { _id: string }) => l._id)).not.toContain(id)
+  })
+
+  it('đòi token — chủ tin lấy từ access token nên không thể xem trộm bằng query', async () => {
+    await request(app).get('/api/v1/listings/mine').expect(401)
+  })
+
+  it('không bị nuốt thành /listings/:id — route phải khai trước', async () => {
+    const res = await request(app)
+      .get('/api/v1/listings/mine')
+      .set({ Authorization: `Bearer ${userToken}` })
+    // Rơi vào `/:id` thì validate ObjectId sẽ ném 400 vì "mine" không phải 24 hex.
+    expect(res.status).not.toBe(400)
+  })
+})

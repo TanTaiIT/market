@@ -22,7 +22,9 @@ export const createListingSchema = z
     condition: z.nativeEnum(LISTING_CONDITION).optional(),
     categoryId: objectId,
     images: z.array(z.string().url()).min(1).max(12),
-    location: locationSchema,
+    // Tuỳ chọn: app chưa có bản đồ nên không lấy được toạ độ. Tin không toạ độ vẫn hợp lệ,
+    // chỉ là `/listings/nearby` không thấy nó — thà thiếu còn hơn chèn toạ độ bịa vào 2dsphere.
+    location: locationSchema.optional(),
     attributes: z.record(z.string()).optional(),
   })
   .strict()
@@ -69,7 +71,7 @@ export const listingResponseSchema = z
     seller: objectId,
     posterName: z.string().openapi({ description: 'Snapshot tên người đăng lúc tạo tin' }),
     posterContact: z.string().openapi({ description: 'Snapshot liên hệ công khai lúc tạo tin' }),
-    location: locationSchema.extend({ type: z.literal('Point') }),
+    location: locationSchema.extend({ type: z.literal('Point') }).optional(),
     status: z.nativeEnum(LISTING_STATUS),
     viewCount: z.number(),
     favoriteCount: z.number(),

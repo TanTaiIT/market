@@ -28,7 +28,8 @@ export interface IListing {
   seller: Types.ObjectId
   posterName: string
   posterContact: string
-  location: IGeoLocation
+  /** Vắng khi client không gửi toạ độ — tin đó nằm ngoài tầm `$near`, xem listing.schema. */
+  location?: IGeoLocation
   status: ListingStatus
   viewCount: number
   favoriteCount: number
@@ -93,7 +94,7 @@ const listingSchema = new Schema<IListingDocument>(
     posterName: { type: String, required: true, trim: true, maxlength: 100 },
     posterContact: { type: String, default: '', trim: true, maxlength: 50 },
 
-    location: { type: locationSchema, required: true },
+    location: { type: locationSchema, required: false },
 
     status: {
       type: String,
