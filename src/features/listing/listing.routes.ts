@@ -26,6 +26,11 @@ const router = Router()
 // Public
 router.get('/', validate({ query: listingQuerySchema }), listingController.list)
 router.get('/nearby', validate({ query: nearbyQuerySchema }), listingController.nearby)
+
+// Tin của chính mình, mọi trạng thái. PHẢI khai trước `/:id` — Express khớp theo thứ tự, đăng
+// sau thì `mine` bị nuốt thành `:id` rồi rụng ở validate ObjectId với lỗi 400 khó hiểu.
+router.get('/mine', authenticate, validate({ query: listingQuerySchema }), listingController.mine)
+
 router.get('/:id', validate({ params: listingParamsSchema }), listingController.getById)
 
 // Protected (chủ tin)
@@ -68,6 +73,26 @@ registry.registerPath({
       envelope(z.array(listingResponseSchema), paginationMetaSchema),
     ),
     400: errorResponse('Query không hợp lệ'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/listings/mine',
+  operationId: 'listingMine',
+  tags: ['Listing'],
+  summary: 'Tin của chính mình (mọi trạng thái, kể cả pending chờ duyệt)',
+  description:
+    'Khác /listings ở chỗ KHÔNG lọc về active — người đăng phải thấy được tin mình vừa ghim ' +
+    'trong lúc nó còn nằm ở hàng đợi duyệt. Chủ tin lấy từ access token, không nhận qua query.',
+  ...protectedRoute,
+  request: { query: listingQuerySchema },
+  responses: {
+    200: jsonResponse(
+      'Danh sách tin của bạn',
+      envelope(z.array(listingResponseSchema), paginationMetaSchema),
+    ),
+    401: errorResponse('Thiếu hoặc sai access token'),
   },
 })
 

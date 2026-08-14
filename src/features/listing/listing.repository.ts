@@ -125,6 +125,20 @@ export const listingRepository = {
    * bảo vệ endpoint public, nên bỏ trống status ở đây sẽ ra "chỉ tin đang hiển thị" thay vì
    * "mọi trạng thái" — đúng ngược với thứ tab "Tất cả" của bàn duyệt cần.
    */
+  /**
+   * Tin của chính người đăng, MỌI trạng thái. Cố tình không đi qua `buildFilter`: hàm đó mặc
+   * định `status: ACTIVE`, mà tin vừa đăng luôn là `pending` — chủ tin không thấy tin mình vừa
+   * ghim thì nhìn hệt như đăng hụt.
+   */
+  async paginateMine(sellerId: string, { skip, limit }: PaginationParams) {
+    const filter: FilterQuery<IListingDocument> = { seller: sellerId }
+    const [items, total] = await Promise.all([
+      Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Listing.countDocuments(filter),
+    ])
+    return { items, total }
+  },
+
   async paginateForModeration(
     status: ListingStatus | undefined,
     { skip, limit }: PaginationParams,

@@ -15,6 +15,12 @@ export const listingController = {
     success(res, { message: 'Listings', data: items, meta })
   }),
 
+  // GET /listings/mine
+  mine: catchAsync(async (req, res) => {
+    const { items, meta } = await listingService.listMine(req.user!.id, req.query as never)
+    success(res, { message: 'My listings', data: items, meta })
+  }),
+
   // GET /listings/nearby
   nearby: catchAsync(async (req, res) => {
     const { items, meta } = await listingService.nearby(req.query as never)
