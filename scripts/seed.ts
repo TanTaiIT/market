@@ -10,6 +10,7 @@ import { Notification } from '../src/features/notification/notification.model'
 import { PlatformAdmin } from '../src/features/platform-admin/platform-admin.model'
 import { Category } from '../src/features/category/category.model'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
+import { assertDisposableDb } from './assertDisposableDb'
 import {
   LISTING_STATUS,
   LISTING_CONDITION,
@@ -77,6 +78,9 @@ function buildListings(
 }
 
 async function seed() {
+  // Trước cả `connect`: chốt phải chặn từ lúc chưa đụng gì tới DB.
+  assertDisposableDb('seed')
+
   await mongoose.connect(env.MONGO_URI)
   console.log('Connected. Seeding...')
 

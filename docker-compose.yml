@@ -3,9 +3,16 @@ services:
     build: .
     ports:
       - '5000:5000'
+    # CHỈ dùng cho local. Thứ tự ưu tiên của Docker là `environment` > `env_file` > `ENV` của
+    # Dockerfile, nên `env_file` sẽ nuốt mất `ENV NODE_ENV=production` trong image. Deploy thật
+    # phải đặt biến qua secret manager của nơi chạy, KHÔNG dùng lại file này kèm `env_file`.
     env_file: .env
     # Ghi đè host của .env (vốn trỏ localhost) sang service name của compose network.
     environment:
+      # Khai báo tường minh thay vì để `.env` quyết định ngầm: `env.isDev` điều khiển việc
+      # đính stack trace vào response lỗi (error.middleware.ts) và log level (logger.ts) —
+      # hai thứ không được phép phụ thuộc vào một file không nằm trong git.
+      NODE_ENV: development
       MONGO_URI: mongodb://mongo:27017/cho-tot-clone?replicaSet=rs0
       REDIS_URL: redis://redis:6379
     depends_on:

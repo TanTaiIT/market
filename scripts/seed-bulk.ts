@@ -14,6 +14,7 @@ import { Conversation, Message } from '../src/features/chat/chat.model'
 import { Report } from '../src/features/report/report.model'
 import { AuditLog } from '../src/features/moderation/moderation.model'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
+import { assertDisposableDb } from './assertDisposableDb'
 import {
   LISTING_STATUS,
   LISTING_CONDITION,
@@ -657,6 +658,9 @@ const EDGE_CASES: Array<{ label: string; apply: (doc: ListingSeed, ctx: EdgeCont
 // ── MAIN ────────────────────────────────────────────────────────────
 
 async function seedBulk() {
+  // Trước cả `connect`: chốt phải chặn từ lúc chưa đụng gì tới DB.
+  assertDisposableDb('seed:bulk')
+
   await mongoose.connect(env.MONGO_URI)
   console.log(`Connected. Seeding ${TOTAL_LISTINGS} listings...`)
 

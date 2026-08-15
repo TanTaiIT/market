@@ -45,7 +45,33 @@ docker-compose up --build
 | `npm run lint:check` / `npm run format:check` | Bản chỉ kiểm tra — CI dùng cái này |
 | `npm test` | Vitest + Supertest + mongodb-memory-server |
 | `npm run openapi:export` | Xuất spec tĩnh ra `openapi.json` cho client codegen |
-| `npm run seed` | Seed dữ liệu mẫu |
+| `npm run seed` | Seed dữ liệu mẫu — **xoá sạch collection trước khi ghi** |
+| `npm run seed:bulk` | Seed khối lượng lớn — **xoá sạch collection trước khi ghi** |
+
+### Chốt an toàn của seed
+
+Hai lệnh seed gọi `deleteMany({})` trên toàn bộ collection, nên chúng từ chối chạy khi
+`MONGO_URI` trỏ ra ngoài `localhost` / `127.0.0.1` / `mongo` (service của docker-compose),
+hoặc khi `NODE_ENV=production` — xem `scripts/assertDisposableDb.ts`.
+
+Cần seed một DB từ xa thật thì phải nói rõ ý định trên dòng lệnh:
+
+```bash
+SEED_ALLOW_REMOTE=yes npm run seed
+```
+
+Đặt biến đó vào `.env` là vô hiệu hoá chốt vĩnh viễn — đừng làm.
+
+## Môi trường
+
+`.env` chỉ dành cho local. Production đặt biến qua secret manager của nơi deploy, không dùng
+lại file này: chung một `.env` nghĩa là `JWT_SECRET` của production nằm sẵn trên máy dev, và
+token ký ở máy dev sẽ hợp lệ thật trên production.
+
+`docker-compose.yml` cũng là stack local. Nó nạp `env_file: .env`, mà thứ tự ưu tiên của
+Docker là `environment` > `env_file` > `ENV` của Dockerfile — nên `env_file` sẽ nuốt mất
+`ENV NODE_ENV=production` trong image. Vì vậy compose khai `NODE_ENV` tường minh, và deploy
+thật thì đừng dùng lại file compose này kèm `env_file`.
 
 ## Cấu trúc
 
