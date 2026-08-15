@@ -101,7 +101,11 @@ registry.registerPath({
   path: '/listings/nearby',
   operationId: 'listingNearby',
   tags: ['Listing'],
-  summary: 'Tin gần một toạ độ (sắp xếp theo khoảng cách)',
+  summary: 'Tin cùng khu vực (xã trước, rồi tới tỉnh)',
+  description:
+    'Không dùng toạ độ: "gần" ở đây là cùng địa giới hành chính. Lọc trong `province`, tin ' +
+    'cùng `ward` được xếp lên trước — không lọc cứng theo xã vì xã thưa tin sẽ ra màn rỗng. ' +
+    'Truyền `exclude` là id tin đang xem để nó không tự hiện trong danh sách của chính mình.',
   request: { query: nearbyQuerySchema },
   responses: {
     200: jsonResponse(

@@ -158,7 +158,7 @@ const listingBody = (categoryId: string) => ({
   price: 250000,
   categoryId,
   images: ['https://example.com/a.jpg'],
-  location: { coordinates: [106.7, 10.77] as [number, number], province: 'Hồ Chí Minh' },
+  location: { province: 'Hồ Chí Minh' as const, ward: 'Phường Bến Thành' },
 })
 
 describe('Listing — ràng buộc categoryId', () => {
@@ -196,13 +196,13 @@ describe('Listing — ràng buộc categoryId', () => {
   })
 })
 
-describe('Listing — toạ độ là tuỳ chọn', () => {
+describe('Listing — khu vực là tuỳ chọn, và không còn toạ độ', () => {
   const activeCategoryId = async () => {
     const categories = await request(app).get('/api/v1/categories').expect(200)
     return categories.body.data[0].id as string
   }
 
-  it('tạo được tin khi bỏ trống location — app chưa có bản đồ để lấy toạ độ', async () => {
+  it('tạo được tin khi bỏ trống location — người đăng không bắt buộc khai khu vực', async () => {
     const body: Record<string, unknown> = listingBody(await activeCategoryId())
     delete body.location
 
@@ -212,19 +212,43 @@ describe('Listing — toạ độ là tuỳ chọn', () => {
       .send(body)
 
     expect(res.status).toBe(201)
-    // Phải VẮNG hẳn, không phải `{ type: 'Point' }` rỗng coordinates: subdoc nửa vời sẽ lọt
-    // vào index 2dsphere và làm $near trả rác.
+    // Phải VẮNG hẳn chứ không phải subdoc rỗng: tin không khai khu vực và tin khai rỗng phải
+    // là cùng một thứ khi lọc theo tỉnh.
     expect(res.body.data.location).toBeUndefined()
   })
 
-  it('vẫn từ chối toạ độ sai ngưỡng — optional chỉ cho phép VẮNG, không cho phép sai', async () => {
+  it('lưu đúng tỉnh + xã đã gửi', async () => {
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set({ Authorization: `Bearer ${userToken}` })
+      .send(listingBody(await activeCategoryId()))
+
+    expect(res.status).toBe(201)
+    expect(res.body.data.location).toMatchObject({
+      province: 'Hồ Chí Minh',
+      ward: 'Phường Bến Thành',
+    })
+  })
+
+  it('từ chối `coordinates` — geo đã bỏ hẳn, client bản cũ phải nhận 400 thay vì bị cắt im lặng', async () => {
     const res = await request(app)
       .post('/api/v1/listings')
       .set({ Authorization: `Bearer ${userToken}` })
       .send({
         ...listingBody(await activeCategoryId()),
-        // Vĩ độ 999 vượt ngưỡng 90. Đây cũng là hình dạng của lỗi đảo [lat, lng] thành [lng, lat].
-        location: { coordinates: [106.7, 999] },
+        location: { province: 'Hồ Chí Minh', coordinates: [106.7, 10.77] },
+      })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('từ chối tỉnh ngoài danh sách 34 đơn vị', async () => {
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set({ Authorization: `Bearer ${userToken}` })
+      .send({
+        ...listingBody(await activeCategoryId()),
+        location: { province: 'Bình Dương' },
       })
 
     expect(res.status).toBe(400)

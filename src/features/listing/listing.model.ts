@@ -4,15 +4,22 @@ import {
   LISTING_CONDITION,
   ListingStatus,
   ListingCondition,
+  VN_PROVINCE_NAMES,
+  VnProvinceName,
 } from '../../common/constants'
 import { tenantPlugin } from '../../common/tenant/tenantPlugin'
 
-export interface IGeoLocation {
-  type: 'Point'
-  coordinates: [number, number] // [longitude, latitude]
+/**
+ * Địa chỉ hành chính thuần, không có toạ độ — xem lý do bỏ geo ở `listing.schema.ts`.
+ * Tên `IListingLocation` chứ không phải `IGeoLocation`: nó không còn là GeoJSON nữa, giữ tên
+ * cũ sẽ khiến người sau tưởng vẫn `$near` được.
+ */
+export interface IListingLocation {
   address?: string
-  province?: string
-  district?: string
+  /** Danh sách đóng 34 tỉnh/thành sau sáp nhập 01/07/2025 — validate ở `listing.schema.ts`. */
+  province?: VnProvinceName
+  /** Cấp thứ hai của mô hình 2 cấp (không còn quận/huyện ở giữa). */
+  ward?: string
 }
 
 export interface IListing {
@@ -28,8 +35,8 @@ export interface IListing {
   seller: Types.ObjectId
   posterName: string
   posterContact: string
-  /** Vắng khi client không gửi toạ độ — tin đó nằm ngoài tầm `$near`, xem listing.schema. */
-  location?: IGeoLocation
+  /** Vắng khi người đăng không chọn khu vực — tin đó không lên bộ lọc tỉnh lẫn `/listings/nearby`. */
+  location?: IListingLocation
   status: ListingStatus
   viewCount: number
   favoriteCount: number
@@ -51,13 +58,13 @@ export interface IListingDocument extends IListing, Document {
   _id: Types.ObjectId
 }
 
-const locationSchema = new Schema<IGeoLocation>(
+const locationSchema = new Schema<IListingLocation>(
   {
-    type: { type: String, enum: ['Point'], default: 'Point' },
-    coordinates: { type: [Number], required: true }, // [lng, lat]
     address: { type: String, trim: true },
-    province: { type: String, trim: true },
-    district: { type: String, trim: true },
+    // enum lặp lại tầng zod là cố ý: seed/job/migration ghi thẳng qua Mongoose, không đi qua
+    // `validate()`, nên đây là chốt chặn duy nhất cho các lối ghi không phải HTTP.
+    province: { type: String, trim: true, enum: VN_PROVINCE_NAMES },
+    ward: { type: String, trim: true },
   },
   { _id: false },
 )
@@ -152,8 +159,10 @@ listingSchema.index({ organizationId: 1, status: 1, createdAt: -1 })
 listingSchema.index({ organizationId: 1, category: 1, status: 1, createdAt: -1 })
 listingSchema.index({ organizationId: 1, seller: 1, status: 1, createdAt: -1 })
 listingSchema.index({ organizationId: 1, 'location.province': 1, status: 1, createdAt: -1 })
+// `/listings/nearby` xếp tin cùng xã lên trước, nên `location.ward` là field lọc thật sự và
+// phải có index riêng — không dựa vào index province ở trên được.
+listingSchema.index({ organizationId: 1, 'location.ward': 1, status: 1, createdAt: -1 })
 listingSchema.index({ organizationId: 1, price: 1, status: 1 })
-listingSchema.index({ organizationId: 1, location: '2dsphere' })
 
 // Slug chỉ unique TRONG org, và tin đã xoá không giữ chỗ slug vĩnh viễn.
 listingSchema.index(

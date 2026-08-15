@@ -21,6 +21,8 @@ import {
   PLATFORM_ADMIN_ROLES,
   ListingStatus,
   ListingCondition,
+  VnProvinceName,
+  wardsOf,
 } from '../src/common/constants'
 
 /**
@@ -110,13 +112,17 @@ const CATALOG: Record<CategorySlug, { nouns: string[]; brands: string[] }> = {
   },
 }
 
-const PROVINCES = [
-  { province: 'Hồ Chí Minh', district: 'Quận 1', lng: 106.7009, lat: 10.7769 },
-  { province: 'Hà Nội', district: 'Ba Đình', lng: 105.8342, lat: 21.0278 },
-  { province: 'Đà Nẵng', district: 'Hải Châu', lng: 108.2208, lat: 16.0471 },
-  { province: 'Cần Thơ', district: 'Ninh Kiều', lng: 105.7469, lat: 10.0452 },
-  { province: 'Hải Phòng', district: 'Lê Chân', lng: 106.6881, lat: 20.8449 },
-]
+// Kiểu VnProvinceName cố ý không phải string: gõ sai tên tỉnh ở đây là lỗi typecheck,
+// thay vì seed chạy trót lọt rồi bộ lọc trả rỗng lúc chạy thật.
+const PROVINCES: VnProvinceName[] = ['Hồ Chí Minh', 'Hà Nội', 'Đà Nẵng', 'Cần Thơ', 'Hải Phòng']
+
+/**
+ * Lấy xã thật từ bảng hành chính thay vì bịa tên: `/listings/nearby` xếp tin cùng xã lên
+ * trước, nên seed phải có nhiều tin trùng xã thì mới thử được thứ tự đó. Giới hạn 6 xã đầu
+ * mỗi tỉnh để tin dồn lại chứ không rải mỏng khắp 168 xã.
+ */
+const WARDS_PER_PROVINCE = 6
+const wardPool = (province: VnProvinceName) => wardsOf(province).slice(0, WARDS_PER_PROVINCE)
 
 const FAMILY_NAMES = ['Nguyễn', 'Trần', 'Lê', 'Phạm', 'Hoàng', 'Vũ', 'Đặng', 'Bùi', 'Đỗ', 'Ngô']
 const MIDDLE_NAMES = ['Văn', 'Thị', 'Hữu', 'Minh', 'Thanh', 'Quốc', 'Gia', 'Bảo']
@@ -362,11 +368,9 @@ type ListingSeed = {
   posterName: string
   posterContact: string
   location: {
-    type: 'Point'
-    coordinates: [number, number]
     address: string
-    province: string
-    district: string
+    province: VnProvinceName
+    ward: string
   }
   status: ListingStatus
   viewCount: number
@@ -395,7 +399,7 @@ function buildListing(
   const catalog = CATALOG[categorySlug]
   const brand = pick(catalog.brands)
   const seller = pick(org.sellers)
-  const place = pick(PROVINCES)
+  const province = pick(PROVINCES)
 
   const title = `${pick(catalog.nouns)} ${brand}`.slice(0, 150)
   slugCounter += 1
@@ -425,14 +429,9 @@ function buildListing(
     posterName: seller.name,
     posterContact: seller.phone,
     location: {
-      type: 'Point',
-      coordinates: [
-        place.lng + faker.number.float({ min: -0.05, max: 0.05, fractionDigits: 4 }),
-        place.lat + faker.number.float({ min: -0.05, max: 0.05, fractionDigits: 4 }),
-      ],
       address: `${faker.number.int({ min: 1, max: 300 })} đường ${pick(GIVEN_NAMES)}`,
-      province: place.province,
-      district: place.district,
+      province,
+      ward: pick(wardPool(province)),
     },
     status,
     viewCount: faker.number.int({ min: 0, max: 4000 }),
@@ -641,8 +640,7 @@ const EDGE_CASES: Array<{ label: string; apply: (doc: ListingSeed, ctx: EdgeCont
       doc.title = 'Trống cajon giao tại Hải Phòng'
       doc.status = LISTING_STATUS.ACTIVE
       doc.location.province = 'Hải Phòng'
-      doc.location.district = 'Lê Chân'
-      doc.location.coordinates = [106.6881, 20.8449]
+      doc.location.ward = wardsOf('Hải Phòng')[0]
     },
   },
   {

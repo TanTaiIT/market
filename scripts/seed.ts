@@ -15,6 +15,7 @@ import {
   LISTING_CONDITION,
   ORG_ROLES,
   PLATFORM_ADMIN_ROLES,
+  wardsOf,
 } from '../src/common/constants'
 
 const PASSWORD = 'password123'
@@ -49,7 +50,9 @@ function buildListings(
   orgId: Types.ObjectId,
   categoryId: Types.ObjectId,
 ) {
-  return Array.from({ length: 5 }).map(() => {
+  // Rải qua 4 xã đầu của TP.HCM thay vì dồn hết một chỗ: `/listings/nearby` xếp tin cùng xã
+  // lên trước, fixture mà chung một xã thì không thấy được thứ tự đó có chạy hay không.
+  return Array.from({ length: 5 }).map((_, index) => {
     const title = faker.commerce.productName()
     return {
       organizationId: orgId,
@@ -65,9 +68,8 @@ function buildListings(
       posterContact: owner.phone ?? '',
       status: LISTING_STATUS.ACTIVE,
       location: {
-        type: 'Point' as const,
-        coordinates: [106.7 + Math.random() * 0.1, 10.77 + Math.random() * 0.1],
-        province: 'Hồ Chí Minh',
+        province: 'Hồ Chí Minh' as const,
+        ward: wardsOf('Hồ Chí Minh')[index % 4],
       },
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
     }

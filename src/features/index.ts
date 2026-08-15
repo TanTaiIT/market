@@ -11,6 +11,7 @@ import reviewRoutes from './review/review.routes'
 import notificationRoutes from './notification/notification.routes'
 import moderationRoutes from './moderation/moderation.routes'
 import reportRoutes from './report/report.routes'
+import locationRoutes from './location/location.routes'
 
 const router = Router()
 
@@ -23,6 +24,8 @@ router.use('/chats', chatRoutes)
 router.use('/chains', chainRoutes)
 router.use('/notifications', notificationRoutes)
 router.use('/reports', reportRoutes)
+// Từ điển hành chính, không thuộc tenant nào — cùng nhóm "dùng chung" với /categories.
+router.use('/locations', locationRoutes)
 
 // --- Bàn quản trị của một trường (owner | moderator) ---
 router.use('/moderation', moderationRoutes)

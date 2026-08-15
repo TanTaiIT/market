@@ -38,10 +38,9 @@ function toListingDoc(
     seller: new Types.ObjectId(author.id),
     posterName: poster.name,
     posterContact: poster.contact,
-    // Bỏ HẲN key khi không có toạ độ. Spread thẳng `...input.location` sẽ đẻ ra subdoc
-    // `{ type: 'Point' }` rỗng coordinates, mà `coordinates` bên trong vẫn là required -> ném
-    // ValidationError ngay cả khi bản thân `location` đã optional.
-    ...(input.location && { location: { type: 'Point' as const, ...input.location } }),
+    // Bỏ HẲN key khi người đăng không chọn khu vực, thay vì ghi một subdoc rỗng — tin không
+    // có `location` và tin có `location: {}` phải là cùng một thứ khi lọc.
+    ...(input.location && { location: input.location }),
     attributes: input.attributes ? new Map(Object.entries(input.attributes)) : new Map(),
     status: LISTING_STATUS.PENDING,
     expiresAt,
@@ -84,11 +83,11 @@ export const listingService = {
 
   async nearby(query: NearbyQuery) {
     const pagination = parsePagination(query)
-    const items = await listingRepository.findNearby(
+    const items = await listingRepository.findByArea(
       {
-        lng: query.lng,
-        lat: query.lat,
-        maxDistance: query.maxDistance,
+        province: query.province,
+        ward: query.ward,
+        exclude: query.exclude,
         extra: { status: LISTING_STATUS.ACTIVE },
       },
       pagination,
@@ -119,7 +118,7 @@ export const listingService = {
     const { categoryId, location, attributes, ...rest } = input
     const update: Partial<IListing> = { ...rest }
     if (categoryId) update.category = new Types.ObjectId(categoryId)
-    if (location) update.location = { type: 'Point', ...location }
+    if (location) update.location = location
     if (attributes) update.attributes = new Map(Object.entries(attributes))
 
     return listingRepository.updateById(id, update)

@@ -1,16 +1,46 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { LISTING_STATUS, LISTING_CONDITION } from '../../common/constants'
+import {
+  LISTING_STATUS,
+  LISTING_CONDITION,
+  VN_PROVINCE_NAMES,
+  isWardOfProvince,
+} from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
-const locationSchema = z.object({
-  coordinates: z
-    .tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)])
-    .openapi({ description: '[longitude, latitude]', example: [106.700981, 10.776889] }),
-  address: z.string().max(255).optional(),
-  province: z.string().max(100).optional(),
-  district: z.string().max(100).optional(),
+/**
+ * Địa chỉ hành chính, KHÔNG có toạ độ. App không xin quyền định vị nên toạ độ chỉ có hai
+ * đường: bỏ trống (tin rơi khỏi mọi tìm kiếm theo vị trí) hoặc bịa ra điểm tham chiếu tỉnh
+ * (làm bẩn 2dsphere). Bỏ hẳn geo và tìm "tin gần đây" theo xã/tỉnh là đường thứ ba, đúng với
+ * cách người mua thật sự nghĩ: "có ai bán cái này gần chỗ mình không".
+ */
+const locationSchema = z
+  .object({
+    address: z.string().max(255).optional(),
+    province: z.enum(VN_PROVINCE_NAMES).optional().openapi({ example: 'Hồ Chí Minh' }),
+    // Không enum như `province`: 3.321 phường/xã nhồi vào OpenAPI sẽ phình spec và SDK sinh ra
+    // một union khổng lồ. Ràng buộc "xã thuộc đúng tỉnh" nằm ở FE, nơi đã có sẵn bảng tra.
+    ward: z.string().max(100).optional().openapi({ example: 'Phường Bến Thành' }),
+  })
+  // `.strict()` chứ không để zod lặng lẽ cắt bỏ: client bản cũ vẫn gửi `coordinates` phải nhận
+  // 400 để biết mà sửa, chứ không phải tưởng đã gửi vị trí thành công rồi đi tìm mãi không thấy.
+  .strict()
+
+/**
+ * Chốt cặp tỉnh/xã khớp nhau. Thiếu bước này thì `{ province: 'Hà Nội', ward: 'Phường Vũng Tàu' }`
+ * lưu được, và `/listings/nearby` xếp hạng theo một cái xã không tồn tại trong tỉnh đó.
+ * Chỉ dùng cho ĐẦU VÀO — schema response giữ nguyên object thuần để zod-to-openapi sinh ra
+ * `Listing` không kèm ràng buộc chỉ có ý nghĩa lúc ghi.
+ */
+const locationInputSchema = locationSchema.superRefine((loc, ctx) => {
+  if (loc.province && loc.ward && !isWardOfProvince(loc.province, loc.ward)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['ward'],
+      message: `"${loc.ward}" không thuộc ${loc.province}`,
+    })
+  }
 })
 
 export const createListingSchema = z
@@ -22,9 +52,9 @@ export const createListingSchema = z
     condition: z.nativeEnum(LISTING_CONDITION).optional(),
     categoryId: objectId,
     images: z.array(z.string().url()).min(1).max(12),
-    // Tuỳ chọn: app chưa có bản đồ nên không lấy được toạ độ. Tin không toạ độ vẫn hợp lệ,
-    // chỉ là `/listings/nearby` không thấy nó — thà thiếu còn hơn chèn toạ độ bịa vào 2dsphere.
-    location: locationSchema.optional(),
+    // Tuỳ chọn: tin không có khu vực vẫn hợp lệ, chỉ là nó không lên được bộ lọc theo tỉnh
+    // và không xuất hiện ở `/listings/nearby` của ai cả.
+    location: locationInputSchema.optional(),
     attributes: z.record(z.string()).optional(),
   })
   .strict()
@@ -38,16 +68,22 @@ export const listingQuerySchema = z.object({
   q: z.string().optional(),
   category: objectId.optional(),
   seller: objectId.optional(),
-  province: z.string().optional(),
+  province: z.enum(VN_PROVINCE_NAMES).optional(),
   condition: z.nativeEnum(LISTING_CONDITION).optional(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
 })
 
+/**
+ * "Gần đây" = cùng địa giới hành chính, không phải cùng bán kính. `ward` chỉ để XẾP TRƯỚC
+ * chứ không lọc cứng: lọc cứng theo xã thì ở xã thưa tin người dùng nhận màn rỗng, trong khi
+ * tin ở xã bên cạnh vẫn là thứ họ muốn thấy.
+ */
 export const nearbyQuerySchema = z.object({
-  lng: z.coerce.number().min(-180).max(180),
-  lat: z.coerce.number().min(-90).max(90),
-  maxDistance: z.coerce.number().positive().max(50000).optional(),
+  province: z.enum(VN_PROVINCE_NAMES).openapi({ example: 'Hồ Chí Minh' }),
+  ward: z.string().max(100).optional().openapi({ example: 'Phường Bến Thành' }),
+  /** Id tin đang xem — để nó không tự xuất hiện trong danh sách "tin gần đây" của chính nó. */
+  exclude: objectId.optional(),
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
 })
@@ -71,7 +107,7 @@ export const listingResponseSchema = z
     seller: objectId,
     posterName: z.string().openapi({ description: 'Snapshot tên người đăng lúc tạo tin' }),
     posterContact: z.string().openapi({ description: 'Snapshot liên hệ công khai lúc tạo tin' }),
-    location: locationSchema.extend({ type: z.literal('Point') }).optional(),
+    location: locationSchema.optional(),
     status: z.nativeEnum(LISTING_STATUS),
     viewCount: z.number(),
     favoriteCount: z.number(),

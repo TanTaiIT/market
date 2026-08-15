@@ -24,7 +24,7 @@ function listingPayload(title: string) {
     price: 1000000,
     categoryId: CATEGORY_ID,
     images: ['https://example.com/a.jpg'],
-    location: { coordinates: [106.7, 10.77], province: 'Hồ Chí Minh' },
+    location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
   }
 }
 

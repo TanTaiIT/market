@@ -61,7 +61,7 @@ async function createListing(token: string, title: string) {
       price: 150000,
       categoryId,
       images: ['https://example.com/a.jpg'],
-      location: { coordinates: [106.7, 10.77], province: 'Hồ Chí Minh' },
+      location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
     })
     .expect(201)
   return res.body.data._id as string

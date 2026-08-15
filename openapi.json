@@ -362,46 +362,57 @@
           "location": {
             "type": "object",
             "properties": {
-              "coordinates": {
-                "type": "array",
-                "items": {
-                  "anyOf": [
-                    {
-                      "type": "number",
-                      "minimum": -180,
-                      "maximum": 180
-                    },
-                    {
-                      "type": "number",
-                      "minimum": -90,
-                      "maximum": 90
-                    }
-                  ]
-                },
-                "minItems": 2,
-                "maxItems": 2,
-                "description": "[longitude, latitude]",
-                "example": [
-                  106.700981,
-                  10.776889
-                ]
-              },
               "address": {
                 "type": "string",
                 "maxLength": 255
               },
               "province": {
                 "type": "string",
-                "maxLength": 100
+                "enum": [
+                  "Hà Nội",
+                  "Cao Bằng",
+                  "Tuyên Quang",
+                  "Lào Cai",
+                  "Điện Biên",
+                  "Lai Châu",
+                  "Sơn La",
+                  "Thái Nguyên",
+                  "Lạng Sơn",
+                  "Quảng Ninh",
+                  "Bắc Ninh",
+                  "Phú Thọ",
+                  "Hải Phòng",
+                  "Hưng Yên",
+                  "Ninh Bình",
+                  "Thanh Hóa",
+                  "Nghệ An",
+                  "Hà Tĩnh",
+                  "Quảng Trị",
+                  "Huế",
+                  "Đà Nẵng",
+                  "Quảng Ngãi",
+                  "Gia Lai",
+                  "Đắk Lắk",
+                  "Khánh Hòa",
+                  "Lâm Đồng",
+                  "Đồng Nai",
+                  "Tây Ninh",
+                  "Hồ Chí Minh",
+                  "Đồng Tháp",
+                  "Vĩnh Long",
+                  "An Giang",
+                  "Cần Thơ",
+                  "Cà Mau"
+                ],
+                "example": "Hồ Chí Minh"
               },
-              "district": {
+              "ward": {
                 "type": "string",
-                "maxLength": 100
+                "maxLength": 100,
+                "example": "Phường Bến Thành"
               }
             },
-            "required": [
-              "coordinates"
-            ]
+            "additionalProperties": false
           },
           "attributes": {
             "type": "object",
@@ -464,46 +475,57 @@
           "location": {
             "type": "object",
             "properties": {
-              "coordinates": {
-                "type": "array",
-                "items": {
-                  "anyOf": [
-                    {
-                      "type": "number",
-                      "minimum": -180,
-                      "maximum": 180
-                    },
-                    {
-                      "type": "number",
-                      "minimum": -90,
-                      "maximum": 90
-                    }
-                  ]
-                },
-                "minItems": 2,
-                "maxItems": 2,
-                "description": "[longitude, latitude]",
-                "example": [
-                  106.700981,
-                  10.776889
-                ]
-              },
               "address": {
                 "type": "string",
                 "maxLength": 255
               },
               "province": {
                 "type": "string",
-                "maxLength": 100
+                "enum": [
+                  "Hà Nội",
+                  "Cao Bằng",
+                  "Tuyên Quang",
+                  "Lào Cai",
+                  "Điện Biên",
+                  "Lai Châu",
+                  "Sơn La",
+                  "Thái Nguyên",
+                  "Lạng Sơn",
+                  "Quảng Ninh",
+                  "Bắc Ninh",
+                  "Phú Thọ",
+                  "Hải Phòng",
+                  "Hưng Yên",
+                  "Ninh Bình",
+                  "Thanh Hóa",
+                  "Nghệ An",
+                  "Hà Tĩnh",
+                  "Quảng Trị",
+                  "Huế",
+                  "Đà Nẵng",
+                  "Quảng Ngãi",
+                  "Gia Lai",
+                  "Đắk Lắk",
+                  "Khánh Hòa",
+                  "Lâm Đồng",
+                  "Đồng Nai",
+                  "Tây Ninh",
+                  "Hồ Chí Minh",
+                  "Đồng Tháp",
+                  "Vĩnh Long",
+                  "An Giang",
+                  "Cần Thơ",
+                  "Cà Mau"
+                ],
+                "example": "Hồ Chí Minh"
               },
-              "district": {
+              "ward": {
                 "type": "string",
-                "maxLength": 100
+                "maxLength": 100,
+                "example": "Phường Bến Thành"
               }
             },
-            "required": [
-              "coordinates"
-            ]
+            "additionalProperties": false
           },
           "attributes": {
             "type": "object",
@@ -574,53 +596,57 @@
           "location": {
             "type": "object",
             "properties": {
-              "coordinates": {
-                "type": "array",
-                "items": {
-                  "anyOf": [
-                    {
-                      "type": "number",
-                      "minimum": -180,
-                      "maximum": 180
-                    },
-                    {
-                      "type": "number",
-                      "minimum": -90,
-                      "maximum": 90
-                    }
-                  ]
-                },
-                "minItems": 2,
-                "maxItems": 2,
-                "description": "[longitude, latitude]",
-                "example": [
-                  106.700981,
-                  10.776889
-                ]
-              },
               "address": {
                 "type": "string",
                 "maxLength": 255
               },
               "province": {
                 "type": "string",
-                "maxLength": 100
-              },
-              "district": {
-                "type": "string",
-                "maxLength": 100
-              },
-              "type": {
-                "type": "string",
                 "enum": [
-                  "Point"
-                ]
+                  "Hà Nội",
+                  "Cao Bằng",
+                  "Tuyên Quang",
+                  "Lào Cai",
+                  "Điện Biên",
+                  "Lai Châu",
+                  "Sơn La",
+                  "Thái Nguyên",
+                  "Lạng Sơn",
+                  "Quảng Ninh",
+                  "Bắc Ninh",
+                  "Phú Thọ",
+                  "Hải Phòng",
+                  "Hưng Yên",
+                  "Ninh Bình",
+                  "Thanh Hóa",
+                  "Nghệ An",
+                  "Hà Tĩnh",
+                  "Quảng Trị",
+                  "Huế",
+                  "Đà Nẵng",
+                  "Quảng Ngãi",
+                  "Gia Lai",
+                  "Đắk Lắk",
+                  "Khánh Hòa",
+                  "Lâm Đồng",
+                  "Đồng Nai",
+                  "Tây Ninh",
+                  "Hồ Chí Minh",
+                  "Đồng Tháp",
+                  "Vĩnh Long",
+                  "An Giang",
+                  "Cần Thơ",
+                  "Cà Mau"
+                ],
+                "example": "Hồ Chí Minh"
+              },
+              "ward": {
+                "type": "string",
+                "maxLength": 100,
+                "example": "Phường Bến Thành"
               }
             },
-            "required": [
-              "coordinates",
-              "type"
-            ]
+            "additionalProperties": false
           },
           "status": {
             "type": "string",
@@ -1319,6 +1345,129 @@
           "createdAt"
         ]
       },
+      "Province": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "enum": [
+              "Hà Nội",
+              "Cao Bằng",
+              "Tuyên Quang",
+              "Lào Cai",
+              "Điện Biên",
+              "Lai Châu",
+              "Sơn La",
+              "Thái Nguyên",
+              "Lạng Sơn",
+              "Quảng Ninh",
+              "Bắc Ninh",
+              "Phú Thọ",
+              "Hải Phòng",
+              "Hưng Yên",
+              "Ninh Bình",
+              "Thanh Hóa",
+              "Nghệ An",
+              "Hà Tĩnh",
+              "Quảng Trị",
+              "Huế",
+              "Đà Nẵng",
+              "Quảng Ngãi",
+              "Gia Lai",
+              "Đắk Lắk",
+              "Khánh Hòa",
+              "Lâm Đồng",
+              "Đồng Nai",
+              "Tây Ninh",
+              "Hồ Chí Minh",
+              "Đồng Tháp",
+              "Vĩnh Long",
+              "An Giang",
+              "Cần Thơ",
+              "Cà Mau"
+            ],
+            "description": "Giá trị lưu vào location.province"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "Tên đầy đủ theo văn bản hành chính"
+          },
+          "formerNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tỉnh cũ đã nhập vào đơn vị này từ 01/07/2025 — hợp lệ để hiển thị"
+          },
+          "aliases": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Gọi tắt / tên thành phố quen thuộc — chỉ dùng để dò tìm"
+          }
+        },
+        "required": [
+          "name",
+          "fullName",
+          "formerNames",
+          "aliases"
+        ]
+      },
+      "WardList": {
+        "type": "object",
+        "properties": {
+          "province": {
+            "type": "string",
+            "enum": [
+              "Hà Nội",
+              "Cao Bằng",
+              "Tuyên Quang",
+              "Lào Cai",
+              "Điện Biên",
+              "Lai Châu",
+              "Sơn La",
+              "Thái Nguyên",
+              "Lạng Sơn",
+              "Quảng Ninh",
+              "Bắc Ninh",
+              "Phú Thọ",
+              "Hải Phòng",
+              "Hưng Yên",
+              "Ninh Bình",
+              "Thanh Hóa",
+              "Nghệ An",
+              "Hà Tĩnh",
+              "Quảng Trị",
+              "Huế",
+              "Đà Nẵng",
+              "Quảng Ngãi",
+              "Gia Lai",
+              "Đắk Lắk",
+              "Khánh Hòa",
+              "Lâm Đồng",
+              "Đồng Nai",
+              "Tây Ninh",
+              "Hồ Chí Minh",
+              "Đồng Tháp",
+              "Vĩnh Long",
+              "An Giang",
+              "Cần Thơ",
+              "Cà Mau"
+            ]
+          },
+          "wards": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "province",
+          "wards"
+        ]
+      },
       "PlatformAdminLogin": {
         "type": "object",
         "properties": {
@@ -1922,7 +2071,43 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "Hà Nội",
+                "Cao Bằng",
+                "Tuyên Quang",
+                "Lào Cai",
+                "Điện Biên",
+                "Lai Châu",
+                "Sơn La",
+                "Thái Nguyên",
+                "Lạng Sơn",
+                "Quảng Ninh",
+                "Bắc Ninh",
+                "Phú Thọ",
+                "Hải Phòng",
+                "Hưng Yên",
+                "Ninh Bình",
+                "Thanh Hóa",
+                "Nghệ An",
+                "Hà Tĩnh",
+                "Quảng Trị",
+                "Huế",
+                "Đà Nẵng",
+                "Quảng Ngãi",
+                "Gia Lai",
+                "Đắk Lắk",
+                "Khánh Hòa",
+                "Lâm Đồng",
+                "Đồng Nai",
+                "Tây Ninh",
+                "Hồ Chí Minh",
+                "Đồng Tháp",
+                "Vĩnh Long",
+                "An Giang",
+                "Cần Thơ",
+                "Cà Mau"
+              ]
             },
             "required": false,
             "name": "province",
@@ -2185,7 +2370,43 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "Hà Nội",
+                "Cao Bằng",
+                "Tuyên Quang",
+                "Lào Cai",
+                "Điện Biên",
+                "Lai Châu",
+                "Sơn La",
+                "Thái Nguyên",
+                "Lạng Sơn",
+                "Quảng Ninh",
+                "Bắc Ninh",
+                "Phú Thọ",
+                "Hải Phòng",
+                "Hưng Yên",
+                "Ninh Bình",
+                "Thanh Hóa",
+                "Nghệ An",
+                "Hà Tĩnh",
+                "Quảng Trị",
+                "Huế",
+                "Đà Nẵng",
+                "Quảng Ngãi",
+                "Gia Lai",
+                "Đắk Lắk",
+                "Khánh Hòa",
+                "Lâm Đồng",
+                "Đồng Nai",
+                "Tây Ninh",
+                "Hồ Chí Minh",
+                "Đồng Tháp",
+                "Vĩnh Long",
+                "An Giang",
+                "Cần Thơ",
+                "Cà Mau"
+              ]
             },
             "required": false,
             "name": "province",
@@ -2309,39 +2530,71 @@
         "tags": [
           "Listing"
         ],
-        "summary": "Tin gần một toạ độ (sắp xếp theo khoảng cách)",
+        "summary": "Tin cùng khu vực (xã trước, rồi tới tỉnh)",
+        "description": "Không dùng toạ độ: \"gần\" ở đây là cùng địa giới hành chính. Lọc trong `province`, tin cùng `ward` được xếp lên trước — không lọc cứng theo xã vì xã thưa tin sẽ ra màn rỗng. Truyền `exclude` là id tin đang xem để nó không tự hiện trong danh sách của chính mình.",
         "parameters": [
           {
             "schema": {
-              "type": "number",
-              "nullable": true,
-              "minimum": -180,
-              "maximum": 180
+              "type": "string",
+              "enum": [
+                "Hà Nội",
+                "Cao Bằng",
+                "Tuyên Quang",
+                "Lào Cai",
+                "Điện Biên",
+                "Lai Châu",
+                "Sơn La",
+                "Thái Nguyên",
+                "Lạng Sơn",
+                "Quảng Ninh",
+                "Bắc Ninh",
+                "Phú Thọ",
+                "Hải Phòng",
+                "Hưng Yên",
+                "Ninh Bình",
+                "Thanh Hóa",
+                "Nghệ An",
+                "Hà Tĩnh",
+                "Quảng Trị",
+                "Huế",
+                "Đà Nẵng",
+                "Quảng Ngãi",
+                "Gia Lai",
+                "Đắk Lắk",
+                "Khánh Hòa",
+                "Lâm Đồng",
+                "Đồng Nai",
+                "Tây Ninh",
+                "Hồ Chí Minh",
+                "Đồng Tháp",
+                "Vĩnh Long",
+                "An Giang",
+                "Cần Thơ",
+                "Cà Mau"
+              ],
+              "example": "Hồ Chí Minh"
             },
-            "required": false,
-            "name": "lng",
+            "required": true,
+            "name": "province",
             "in": "query"
           },
           {
             "schema": {
-              "type": "number",
-              "nullable": true,
-              "minimum": -90,
-              "maximum": 90
+              "type": "string",
+              "maxLength": 100,
+              "example": "Phường Bến Thành"
             },
             "required": false,
-            "name": "lat",
+            "name": "ward",
             "in": "query"
           },
           {
             "schema": {
-              "type": "number",
-              "minimum": 0,
-              "exclusiveMinimum": true,
-              "maximum": 50000
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
             },
             "required": false,
-            "name": "maxDistance",
+            "name": "exclude",
             "in": "query"
           },
           {
@@ -4739,6 +4992,148 @@
           },
           "404": {
             "description": "Không tìm thấy báo cáo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/locations/provinces": {
+      "get": {
+        "operationId": "locationProvinces",
+        "tags": [
+          "Location"
+        ],
+        "summary": "34 tỉnh/thành sau sáp nhập 01/07/2025",
+        "description": "Danh sách đóng dùng cho ô chọn khu vực. `name` chính là giá trị hợp lệ của `location.province` khi đăng tin và của `?province=` khi lọc — client không được tự chế biến thể có tiền tố \"TP.\" hay \"Tỉnh\".",
+        "responses": {
+          "200": {
+            "description": "Danh sách tỉnh/thành",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Province"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/locations/wards": {
+      "get": {
+        "operationId": "locationWards",
+        "tags": [
+          "Location"
+        ],
+        "summary": "Phường/xã của một tỉnh",
+        "description": "Mô hình 2 cấp: không còn quận/huyện ở giữa. Trả kèm `province` để client cache theo tỉnh mà không phải tự ghép lại khoá.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Hà Nội",
+                "Cao Bằng",
+                "Tuyên Quang",
+                "Lào Cai",
+                "Điện Biên",
+                "Lai Châu",
+                "Sơn La",
+                "Thái Nguyên",
+                "Lạng Sơn",
+                "Quảng Ninh",
+                "Bắc Ninh",
+                "Phú Thọ",
+                "Hải Phòng",
+                "Hưng Yên",
+                "Ninh Bình",
+                "Thanh Hóa",
+                "Nghệ An",
+                "Hà Tĩnh",
+                "Quảng Trị",
+                "Huế",
+                "Đà Nẵng",
+                "Quảng Ngãi",
+                "Gia Lai",
+                "Đắk Lắk",
+                "Khánh Hòa",
+                "Lâm Đồng",
+                "Đồng Nai",
+                "Tây Ninh",
+                "Hồ Chí Minh",
+                "Đồng Tháp",
+                "Vĩnh Long",
+                "An Giang",
+                "Cần Thơ",
+                "Cà Mau"
+              ],
+              "example": "Hồ Chí Minh"
+            },
+            "required": true,
+            "name": "province",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách phường/xã",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/WardList"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Tên tỉnh không nằm trong danh sách 34 đơn vị",
             "content": {
               "application/json": {
                 "schema": {

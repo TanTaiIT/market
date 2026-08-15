@@ -1,6 +1,10 @@
 export { httpStatus } from './httpStatus'
 export type { HttpStatus } from './httpStatus'
 
+export { VN_PROVINCES, VN_PROVINCE_NAMES } from './vnProvince'
+export type { VnProvinceName } from './vnProvince'
+export { wardsOf, isWardOfProvince } from './vnWard'
+
 // Quyền TRONG một organization. Thay hẳn ROLES cũ (user|admin|moderator): giữ song song
 // hai từ vựng quyền cho cùng một thứ là cách chắc chắn nhất để phân quyền lệch nhau.
 export const ORG_ROLES = {

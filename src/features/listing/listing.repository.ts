@@ -71,24 +71,46 @@ export const listingRepository = {
   },
 
   /**
-   * Tìm tin gần một toạ độ (mét). $near tự sắp xếp theo khoảng cách.
+   * "Gần đây" theo địa giới hành chính thay cho `$near`: lọc trong tỉnh, rồi xếp tin CÙNG XÃ
+   * lên trước. Không lọc cứng theo xã vì xã thưa tin sẽ ra màn rỗng, trong khi tin ở xã bên
+   * cạnh vẫn đúng thứ người mua muốn thấy.
    */
-  findNearby(
-    args: { lng: number; lat: number; maxDistance?: number; extra?: FilterQuery<IListingDocument> },
+  async findByArea(
+    args: {
+      province: string
+      ward?: string
+      exclude?: string
+      extra?: FilterQuery<IListingDocument>
+    },
     { skip, limit }: PaginationParams,
   ) {
-    const { lng, lat, maxDistance = 10000, extra = {} } = args
-    return Listing.find({
-      ...extra,
-      location: {
-        $near: {
-          $geometry: { type: 'Point', coordinates: [lng, lat] },
-          $maxDistance: maxDistance,
-        },
-      },
-    })
-      .skip(skip)
-      .limit(limit)
+    const { province, ward, exclude, extra = {} } = args
+    const base: FilterQuery<IListingDocument> = { ...extra, 'location.province': province }
+    if (exclude) base._id = { $ne: new Types.ObjectId(exclude) }
+
+    if (!ward) {
+      return Listing.find(base).sort({ createdAt: -1 }).skip(skip).limit(limit)
+    }
+
+    // Hai truy vấn `find` chứ không phải một `aggregate` xếp hạng: pipeline aggregate được
+    // tenantPlugin chèn `organizationId` nhưng KHÔNG dính hook soft-delete của model, nên tin
+    // đã xoá sẽ lọt ra. Đường này chạy qua `find`/`countDocuments` — cả hai đều đủ hook.
+    const inWard = { ...base, 'location.ward': ward }
+    const outWard = { ...base, 'location.ward': { $ne: ward } }
+
+    const head = await Listing.find(inWard).sort({ createdAt: -1 }).skip(skip).limit(limit)
+    if (head.length >= limit) return head
+
+    // Tổng số tin cùng xã là mốc để cắt offset giữa hai tập, nhưng CHỈ cần khi đã sang trang:
+    // ở trang đầu offset của tập sau luôn bằng 0, đếm thêm một lượt là thừa đúng ở ca hay gặp nhất.
+    const wardTotal = skip > 0 ? await Listing.countDocuments(inWard) : 0
+
+    const tail = await Listing.find(outWard)
+      .sort({ createdAt: -1 })
+      .skip(Math.max(0, skip - wardTotal))
+      .limit(limit - head.length)
+
+    return [...head, ...tail]
   },
 
   updateById(id: string, update: Partial<IListing>) {
