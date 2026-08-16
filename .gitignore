@@ -1,7 +1,11 @@
 node_modules/
 dist/
+# Mọi file env đều chứa MONGO_URI (kèm mật khẩu cluster) hoặc JWT secret — chỉ `*.example`
+# được commit. Pattern phải phủ cả `.env.development` / `.env.production` / `.env.bak`.
 .env
-.env.local
+.env.*
+!.env.example
+!.env.*.example
 logs/
 *.log
 coverage/

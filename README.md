@@ -18,9 +18,10 @@ Marketplace/Classifieds API. Express + MongoDB (Mongoose) + **TypeScript**, ki�
 ## Bắt đầu
 
 ```bash
-cp .env.example .env      # sửa MONGO_URI, JWT_SECRET, JWT_REFRESH_SECRET
+cp .env.example .env                            # phần dùng chung (PORT, API_PREFIX, token TTL)
+cp .env.development.example .env.development    # sửa MONGO_URI (db market-dev) + JWT secret
 npm install
-npm run dev               # tsx watch, hot reload
+npm run dev               # tsx watch, hot reload — NODE_ENV=development
 ```
 
 Hoặc chạy toàn bộ bằng Docker:
@@ -37,9 +38,10 @@ docker-compose up --build
 
 | Lệnh | Mô tả |
 |---|---|
-| `npm run dev` | Chạy dev (tsx watch, hot reload) |
+| `npm run dev` | Chạy dev (tsx watch, hot reload) — `NODE_ENV=development` → db `market-dev` |
 | `npm run build` | Biên dịch TS → `dist/` (`tsconfig.build.json`) |
-| `npm start` | Chạy production từ `dist/` |
+| `npm start` | Chạy từ `dist/`, `NODE_ENV` lấy từ môi trường (Dockerfile đặt `production`) |
+| `npm run start:prod` | Chạy thử bản build ở mode production trên máy local → db `market-pro` |
 | `npm run typecheck` | `tsc --noEmit` (bao gồm cả `tests/` và `scripts/`) |
 | `npm run lint` | oxlint `--fix` + prettier `--write` (dùng khi code) |
 | `npm run lint:check` / `npm run format:check` | Bản chỉ kiểm tra — CI dùng cái này |
@@ -50,28 +52,54 @@ docker-compose up --build
 
 ### Chốt an toàn của seed
 
-Hai lệnh seed gọi `deleteMany({})` trên toàn bộ collection, nên chúng từ chối chạy khi
-`MONGO_URI` trỏ ra ngoài `localhost` / `127.0.0.1` / `mongo` (service của docker-compose),
-hoặc khi `NODE_ENV=production` — xem `scripts/assertDisposableDb.ts`.
+Hai lệnh seed gọi `deleteMany({})` trên toàn bộ collection, nên `scripts/assertDisposableDb.ts`
+chặn theo TÊN DB và HOST của `MONGO_URI`:
 
-Cần seed một DB từ xa thật thì phải nói rõ ý định trên dòng lệnh:
+| DB trong URI | Kết quả |
+|---|---|
+| `market-pro`, `market` | **Chặn cứng** — `SEED_ALLOW_REMOTE` cũng không mở được |
+| `market-dev` | Chạy thẳng, dù host là Atlas |
+| Tên khác + host `localhost` / `127.0.0.1` / `mongo` | Chạy thẳng |
+| Tên khác + host từ xa, hoặc `NODE_ENV=production` | Cần override |
+
+Trường hợp cần override thì phải nói rõ ý định trên dòng lệnh:
 
 ```bash
 SEED_ALLOW_REMOTE=yes npm run seed
 ```
 
-Đặt biến đó vào `.env` là vô hiệu hoá chốt vĩnh viễn — đừng làm.
+Đặt biến đó vào file `.env*` là vô hiệu hoá chốt vĩnh viễn — đừng làm.
 
 ## Môi trường
 
-`.env` chỉ dành cho local. Production đặt biến qua secret manager của nơi deploy, không dùng
-lại file này: chung một `.env` nghĩa là `JWT_SECRET` của production nằm sẵn trên máy dev, và
-token ký ở máy dev sẽ hợp lệ thật trên production.
+Config tách theo `NODE_ENV`. `src/config/env.ts` nạp lần lượt, dotenv **không** ghi đè biến đã
+có, nên thứ tự nạp chính là thứ tự ưu tiên:
 
-`docker-compose.yml` cũng là stack local. Nó nạp `env_file: .env`, mà thứ tự ưu tiên của
-Docker là `environment` > `env_file` > `ENV` của Dockerfile — nên `env_file` sẽ nuốt mất
-`ENV NODE_ENV=production` trong image. Vì vậy compose khai `NODE_ENV` tường minh, và deploy
-thật thì đừng dùng lại file compose này kèm `env_file`.
+```text
+biến thật (shell / secret manager) > .env.<mode>.local > .env.<mode> > .env.local > .env
+```
+
+| Lệnh | mode | File riêng | Database |
+|---|---|---|---|
+| `npm run dev` | `development` | `.env.development` | `market-dev` |
+| `npm run start:prod` | `production` | `.env.production` | `market-pro` |
+| `npm test` | `test` | — | `mongodb-memory-server` |
+
+`NODE_ENV` chỉ đến từ lệnh chạy (`cross-env` trong `package.json`) hoặc secret manager, **không**
+từ file `.env*`: chính nó chọn file nào được nạp, nên để file tự khai là vòng tròn. Nếu một file
+`.env*` khai `NODE_ENV` khác mode đang chạy, `env.ts` thoát ngay thay vì chạy với danh tính sai.
+
+`.env` giữ phần dùng chung và không phải secret (`PORT`, `API_PREFIX`, TTL token). `MONGO_URI` và
+`JWT_SECRET` nằm ở file từng môi trường — đó là hai thứ phân biệt dev với production. Mọi file
+`.env*` đều gitignore, chỉ `*.example` được commit.
+
+Production thật đặt biến qua secret manager của nơi deploy, không mang `.env.production` lên
+server: chung một bộ secret nghĩa là token ký ở máy dev hợp lệ thật trên production.
+
+`docker-compose.yml` là stack local. Nó nạp `env_file: [.env, .env.development]`, mà thứ tự ưu
+tiên của Docker là `environment` > `env_file` > `ENV` của Dockerfile — nên `env_file` sẽ nuốt mất
+`ENV NODE_ENV=production` trong image. Vì vậy compose khai `NODE_ENV` tường minh, và deploy thật
+thì đừng dùng lại file compose này kèm `env_file`.
 
 ## Cấu trúc
 

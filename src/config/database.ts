@@ -10,7 +10,12 @@ export async function connectDB(): Promise<void> {
       maxPoolSize: 20,
       serverSelectionTimeoutMS: 5000,
     })
-    logger.info('✅ MongoDB connected')
+    // Log TÊN DATABASE, không phải "connected" suông: dev và production dùng chung một cluster
+    // và chỉ khác nhau ở tên db, nên đây là chỗ duy nhất xác nhận được mình đang nối đúng chỗ.
+    logger.info('✅ MongoDB connected', {
+      db: mongoose.connection.name,
+      nodeEnv: env.NODE_ENV,
+    })
   } catch (err) {
     logger.error('❌ MongoDB connection failed', { err })
     process.exit(1)

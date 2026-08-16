@@ -6,7 +6,12 @@ services:
     # CHỈ dùng cho local. Thứ tự ưu tiên của Docker là `environment` > `env_file` > `ENV` của
     # Dockerfile, nên `env_file` sẽ nuốt mất `ENV NODE_ENV=production` trong image. Deploy thật
     # phải đặt biến qua secret manager của nơi chạy, KHÔNG dùng lại file này kèm `env_file`.
-    env_file: .env
+    # Hai file vì config đã tách theo môi trường: `.env` giữ phần dùng chung, `.env.development`
+    # giữ JWT secret + MONGO_URI của dev. Compose nạp `env_file` chứ không chạy qua
+    # `src/config/env.ts`, nên phải liệt kê tay đúng cặp file của mode development.
+    env_file:
+      - .env
+      - .env.development
     # Ghi đè host của .env (vốn trỏ localhost) sang service name của compose network.
     environment:
       # Khai báo tường minh thay vì để `.env` quyết định ngầm: `env.isDev` điều khiển việc
