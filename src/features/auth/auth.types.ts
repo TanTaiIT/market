@@ -18,13 +18,13 @@ export function toAuthResponseDto(result: AuthResult): AuthResponseDto {
   return {
     user: {
       id: user._id.toString(),
-      organizationId: user.organizationId.toString(),
       name: user.name,
       email: user.email,
       phone: user.phone,
       avatar: user.avatar,
-      role: user.role,
-      isEmailVerified: user.isEmailVerified,
+      // Boolean dẫn xuất từ `emailVerifiedAt` chứ không phải cột thứ hai: hai cột cho cùng một
+      // sự thật là hai cột sẽ lệch nhau.
+      isEmailVerified: Boolean(user.emailVerifiedAt),
     },
     tokens: { accessToken, refreshToken },
   }

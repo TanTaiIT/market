@@ -1,5 +1,18 @@
 # Organization & Chain — phân tích hiện trạng (đọc từ code)
 
+> ⚠️ **ĐÃ LỖI THỜI kể từ v2 (2026-08-16)** — đây là ảnh chụp hiện trạng TRƯỚC v2, giữ lại để
+> đối chiếu. Những phần nay đã sai:
+>
+> - `chain` (§2, §3, §5.2, §5.3, §10.1) — đã gỡ hẳn.
+> - `users.organizationId` + `ORG_ROLES` (§2.1, §5, §7) — tài khoản nay là toàn cục; thân phận
+>   ở `memberships`, quyền hạn ở `role_grants`.
+> - Nhánh `platform-admin` (§6.6, §7, §10.7) — đã xoá, `master` là một grant scope `system`.
+> - §10.8 "duyệt tin ẩn danh phụ thuộc subdomain" — đã sửa: khách đọc được tin công khai đã duyệt
+>   mà không cần org.
+>
+> Phần còn đúng: cơ chế `tenantPlugin` fail-closed và cách đọc `runUnscoped`.
+> Trạng thái đích → `v2-org-permission.plan.md`.
+
 > **Vị trí trong bộ tài liệu**: `multi-tenant.md` = *vì sao* · `multi-tenant.implementation.md`
 > = *báo cáo đợt triển khai đó* · `../rules/multi-tenant.convention.md` = *lần sau phải làm gì*
 > · **file này = business + thiết kế đang thực sự chạy trong `src/` hôm nay**.

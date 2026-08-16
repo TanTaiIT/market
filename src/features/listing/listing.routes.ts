@@ -3,6 +3,7 @@ import { Router } from 'express'
 import { listingController } from './listing.controller'
 import {
   createListingSchema,
+  quotaStatusSchema,
   updateListingSchema,
   listingQuerySchema,
   nearbyQuerySchema,
@@ -30,6 +31,8 @@ router.get('/nearby', validate({ query: nearbyQuerySchema }), listingController.
 // Tin của chính mình, mọi trạng thái. PHẢI khai trước `/:id` — Express khớp theo thứ tự, đăng
 // sau thì `mine` bị nuốt thành `:id` rồi rụng ở validate ObjectId với lỗi 400 khó hiểu.
 router.get('/mine', authenticate, validate({ query: listingQuerySchema }), listingController.mine)
+// Trạng thái quota — client hiện "còn N slot" thay vì để người dùng đoán vì sao bị chặn (§8.4).
+router.get('/quota', authenticate, listingController.quota)
 
 router.get('/:id', validate({ params: listingParamsSchema }), listingController.getById)
 
@@ -179,6 +182,19 @@ registry.registerPath({
     403: errorResponse('Không phải tin của bạn'),
     404: errorResponse('Không tìm thấy tin'),
   },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/listings/quota',
+  operationId: 'listingQuota',
+  tags: ['Listing'],
+  summary: 'Còn bao nhiêu slot đăng tin',
+  description:
+    'Hiện trạng quota để client nói rõ "bạn có N/M tin chờ duyệt" — thiếu nó thì khi người ' +
+    'duyệt bận cả tuần, người dùng chỉ thấy mình bị chặn mà không hiểu vì sao.',
+  ...protectedRoute,
+  responses: { 200: jsonResponse('Trạng thái quota', envelope(quotaStatusSchema)) },
 })
 
 export default router

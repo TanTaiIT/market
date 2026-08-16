@@ -1,5 +1,8 @@
 # Thiết kế dữ liệu cho Bàn quản trị (admin console)
 
+> ⚠️ **ĐÃ LỖI THỜI kể từ v2** — mô tả mô hình v1 (chain, 1 user ↔ 1 org, nhánh
+> platform-admin). Riêng `Chain.features.crossOrgChat` không còn tồn tại; công tắc chat xuyên org chưa có bản thay thế. Trạng thái đích: `v2-org-permission.plan.md`.
+
 > Bộ ba tài liệu multi-tenant trả lời *vì sao / hiện trạng / lần sau phải làm gì*. File này
 > hẹp hơn: **UI bàn quản trị cần dữ liệu gì, và schema hiện tại phải đổi thế nào để đỡ được.**
 >

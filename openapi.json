@@ -55,50 +55,9 @@
           "message"
         ]
       },
-      "Organization": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "chainId": {
-            "type": "string",
-            "nullable": true
-          },
-          "status": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "slug",
-          "chainId",
-          "status"
-        ]
-      },
       "RegisterInput": {
         "type": "object",
         "properties": {
-          "organizationName": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 150,
-            "example": "Trường Hùng Vương"
-          },
-          "organizationSlug": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 40,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
-            "example": "hung-vuong"
-          },
           "name": {
             "type": "string",
             "minLength": 1,
@@ -108,7 +67,7 @@
           "email": {
             "type": "string",
             "format": "email",
-            "example": "owner@example.com"
+            "example": "nguyenvana@example.com"
           },
           "phone": {
             "type": "string",
@@ -123,7 +82,6 @@
           }
         },
         "required": [
-          "organizationName",
           "name",
           "email",
           "password"
@@ -133,12 +91,6 @@
       "LoginInput": {
         "type": "object",
         "properties": {
-          "orgSlug": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 40,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
-          },
           "email": {
             "type": "string",
             "format": "email"
@@ -176,9 +128,6 @@
               "id": {
                 "type": "string"
               },
-              "organizationId": {
-                "type": "string"
-              },
               "name": {
                 "type": "string"
               },
@@ -192,20 +141,15 @@
               "avatar": {
                 "type": "string"
               },
-              "role": {
-                "type": "string"
-              },
               "isEmailVerified": {
                 "type": "boolean"
               }
             },
             "required": [
               "id",
-              "organizationId",
               "name",
               "email",
               "avatar",
-              "role",
               "isEmailVerified"
             ]
           },
@@ -298,9 +242,6 @@
               "phone": {
                 "type": "string"
               },
-              "role": {
-                "type": "string"
-              },
               "isEmailVerified": {
                 "type": "boolean"
               },
@@ -310,12 +251,228 @@
             },
             "required": [
               "email",
-              "role",
               "isEmailVerified",
               "isActive"
             ]
           }
         ]
+      },
+      "Organization": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "orgType": {
+            "type": "string",
+            "enum": [
+              "school",
+              "company",
+              "community",
+              "generic"
+            ]
+          },
+          "verificationTier": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "claimed",
+              "verified"
+            ]
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "orgType",
+          "verificationTier",
+          "provinceCode",
+          "status"
+        ]
+      },
+      "OrganizationLookup": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "district": {
+            "type": "string",
+            "nullable": true
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "allowJoinRequests": {
+            "type": "boolean"
+          },
+          "allowOutsiderPosts": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "slug",
+          "district",
+          "provinceCode",
+          "allowJoinRequests",
+          "allowOutsiderPosts"
+        ]
+      },
+      "MyOrganization": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "provinceCode",
+          "role",
+          "unitId"
+        ]
+      },
+      "SlugAvailability": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "invalid",
+              "reserved",
+              "taken"
+            ]
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "slug",
+          "available"
+        ]
+      },
+      "CreateOrganization": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150,
+            "example": "THPT Lý Thường Kiệt"
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 40,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
+            "example": "thpt-ly-thuong-kiet"
+          },
+          "orgType": {
+            "type": "string",
+            "enum": [
+              "school",
+              "company",
+              "community",
+              "generic"
+            ]
+          },
+          "ownerEmail": {
+            "type": "string",
+            "format": "email"
+          },
+          "provinceCode": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "district": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "name",
+          "ownerEmail"
+        ],
+        "additionalProperties": false
+      },
+      "SetOrganizationStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "ChangeOrganizationSlug": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 40,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+          }
+        },
+        "required": [
+          "slug"
+        ],
+        "additionalProperties": false
       },
       "CreateListing": {
         "type": "object",
@@ -419,6 +576,58 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "org_internal",
+              "public"
+            ]
+          },
+          "provinceCode": {
+            "type": "string",
+            "enum": [
+              "Hà Nội",
+              "Cao Bằng",
+              "Tuyên Quang",
+              "Lào Cai",
+              "Điện Biên",
+              "Lai Châu",
+              "Sơn La",
+              "Thái Nguyên",
+              "Lạng Sơn",
+              "Quảng Ninh",
+              "Bắc Ninh",
+              "Phú Thọ",
+              "Hải Phòng",
+              "Hưng Yên",
+              "Ninh Bình",
+              "Thanh Hóa",
+              "Nghệ An",
+              "Hà Tĩnh",
+              "Quảng Trị",
+              "Huế",
+              "Đà Nẵng",
+              "Quảng Ngãi",
+              "Gia Lai",
+              "Đắk Lắk",
+              "Khánh Hòa",
+              "Lâm Đồng",
+              "Đồng Nai",
+              "Tây Ninh",
+              "Hồ Chí Minh",
+              "Đồng Tháp",
+              "Vĩnh Long",
+              "An Giang",
+              "Cần Thơ",
+              "Cà Mau"
+            ]
+          },
+          "orgSlug": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 40,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
           }
         },
         "required": [
@@ -429,6 +638,36 @@
           "images"
         ],
         "additionalProperties": false
+      },
+      "QuotaStatus": {
+        "type": "object",
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "pending": {
+            "type": "number"
+          },
+          "remaining": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "blocked_by_rejections",
+              "quota_full"
+            ]
+          }
+        },
+        "required": [
+          "allowed",
+          "limit",
+          "pending",
+          "remaining"
+        ]
       },
       "UpdateListing": {
         "type": "object",
@@ -532,6 +771,58 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "org_internal",
+              "public"
+            ]
+          },
+          "provinceCode": {
+            "type": "string",
+            "enum": [
+              "Hà Nội",
+              "Cao Bằng",
+              "Tuyên Quang",
+              "Lào Cai",
+              "Điện Biên",
+              "Lai Châu",
+              "Sơn La",
+              "Thái Nguyên",
+              "Lạng Sơn",
+              "Quảng Ninh",
+              "Bắc Ninh",
+              "Phú Thọ",
+              "Hải Phòng",
+              "Hưng Yên",
+              "Ninh Bình",
+              "Thanh Hóa",
+              "Nghệ An",
+              "Hà Tĩnh",
+              "Quảng Trị",
+              "Huế",
+              "Đà Nẵng",
+              "Quảng Ngãi",
+              "Gia Lai",
+              "Đắk Lắk",
+              "Khánh Hòa",
+              "Lâm Đồng",
+              "Đồng Nai",
+              "Tây Ninh",
+              "Hồ Chí Minh",
+              "Đồng Tháp",
+              "Vĩnh Long",
+              "An Giang",
+              "Cần Thơ",
+              "Cà Mau"
+            ]
+          },
+          "orgSlug": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 40,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
           }
         },
         "additionalProperties": false
@@ -545,7 +836,18 @@
           },
           "organizationId": {
             "type": "string",
+            "nullable": true,
             "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "org_internal",
+              "public"
+            ]
+          },
+          "provinceCode": {
+            "type": "string"
           },
           "title": {
             "type": "string"
@@ -653,6 +955,7 @@
             "enum": [
               "draft",
               "pending",
+              "pending_unverified",
               "active",
               "sold",
               "expired",
@@ -682,6 +985,8 @@
         "required": [
           "_id",
           "organizationId",
+          "visibility",
+          "provinceCode",
           "title",
           "slug",
           "description",
@@ -700,147 +1005,172 @@
           "updatedAt"
         ]
       },
-      "CreateChain": {
+      "CreateOrgUnit": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 150,
-            "example": "Hệ thống Trường ABC"
+            "maxLength": 100,
+            "example": "10A1"
           },
-          "slug": {
+          "moderatorId": {
             "type": "string",
-            "minLength": 3,
-            "maxLength": 40,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
-            "example": "abc-edu"
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
           },
-          "ownerId": {
+          "parentUnitId": {
             "type": "string",
-            "pattern": "^[0-9a-fA-F]{24}$",
-            "description": "User được chỉ định làm chain owner"
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
           }
         },
         "required": [
-          "name",
-          "ownerId"
+          "name"
         ],
         "additionalProperties": false
       },
-      "Chain": {
+      "UpdateOrgUnit": {
         "type": "object",
         "properties": {
-          "_id": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "10A1"
+          },
+          "moderatorId": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "parentUnitId": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrgUnit": {
+        "type": "object",
+        "properties": {
+          "id": {
             "type": "string",
             "pattern": "^[0-9a-fA-F]{24}$"
           },
           "name": {
             "type": "string"
           },
-          "slug": {
-            "type": "string"
-          },
-          "ownerId": {
+          "moderatorId": {
             "type": "string",
+            "nullable": true,
             "pattern": "^[0-9a-fA-F]{24}$"
           },
-          "status": {
-            "type": "string"
-          },
-          "createdAt": {
+          "parentUnitId": {
             "type": "string",
-            "format": "date-time"
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
           }
         },
         "required": [
-          "_id",
+          "id",
           "name",
-          "slug",
-          "ownerId",
-          "status",
-          "createdAt"
+          "moderatorId",
+          "parentUnitId"
         ]
       },
-      "ChainStats": {
+      "CreateJoinRequest": {
         "type": "object",
         "properties": {
-          "chainId": {
+          "orgSlug": {
             "type": "string",
+            "minLength": 3,
+            "maxLength": 40,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+          },
+          "claimedName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Nguyễn Văn A"
+          },
+          "claimedUnit": {
+            "type": "string",
+            "maxLength": 100,
+            "example": "10A1"
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "orgSlug",
+          "claimedName"
+        ],
+        "additionalProperties": false
+      },
+      "ApproveJoinRequest": {
+        "type": "object",
+        "properties": {
+          "unitId": {
+            "type": "string",
+            "nullable": true,
             "pattern": "^[0-9a-fA-F]{24}$"
-          },
-          "totals": {
-            "type": "object",
-            "properties": {
-              "organizations": {
-                "type": "number"
-              },
-              "listings": {
-                "type": "number"
-              },
-              "users": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "organizations",
-              "listings",
-              "users"
-            ]
-          },
-          "breakdown": {
+          }
+        },
+        "additionalProperties": false
+      },
+      "RejectJoinRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 300
+          }
+        },
+        "additionalProperties": false
+      },
+      "BulkApproveJoinRequests": {
+        "type": "object",
+        "properties": {
+          "items": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "organization": {
-                  "$ref": "#/components/schemas/Organization"
+                "id": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{24}$"
                 },
-                "listings": {
-                  "type": "number"
-                },
-                "users": {
-                  "type": "number"
+                "unitId": {
+                  "type": "string",
+                  "nullable": true,
+                  "pattern": "^[0-9a-fA-F]{24}$"
                 }
               },
               "required": [
-                "organization",
-                "listings",
-                "users"
+                "id"
               ]
-            }
+            },
+            "minItems": 1,
+            "maxItems": 200
           }
         },
         "required": [
-          "chainId",
-          "totals",
-          "breakdown"
-        ]
-      },
-      "CreateNotification": {
-        "type": "object",
-        "properties": {
-          "title": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 200
-          },
-          "body": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 2000
-          }
-        },
-        "required": [
-          "title",
-          "body"
+          "items"
         ],
         "additionalProperties": false
       },
-      "Notification": {
+      "JoinRequest": {
         "type": "object",
         "properties": {
-          "_id": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "userId": {
             "type": "string",
             "pattern": "^[0-9a-fA-F]{24}$"
           },
@@ -848,45 +1178,223 @@
             "type": "string",
             "pattern": "^[0-9a-fA-F]{24}$"
           },
-          "sourceType": {
+          "claimedName": {
+            "type": "string"
+          },
+          "claimedUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "note": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
             "type": "string",
             "enum": [
-              "organization",
-              "chain"
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "cancelled"
             ]
           },
-          "sourceChainId": {
-            "type": "string",
-            "nullable": true,
-            "pattern": "^[0-9a-fA-F]{24}$"
-          },
-          "title": {
-            "type": "string"
-          },
-          "body": {
-            "type": "string"
-          },
-          "readBy": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "pattern": "^[0-9a-fA-F]{24}$"
-            }
-          },
           "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
             "type": "string",
             "format": "date-time"
           }
         },
         "required": [
-          "_id",
+          "id",
+          "userId",
           "organizationId",
-          "sourceType",
-          "sourceChainId",
-          "title",
-          "body",
-          "readBy",
-          "createdAt"
+          "claimedName",
+          "claimedUnit",
+          "note",
+          "status",
+          "createdAt",
+          "expiresAt"
+        ]
+      },
+      "MyJoinRequest": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "organizationId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "claimedName": {
+            "type": "string"
+          },
+          "claimedUnit": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected",
+              "expired",
+              "cancelled"
+            ]
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "claimedName",
+          "claimedUnit",
+          "status",
+          "rejectReason",
+          "createdAt",
+          "expiresAt"
+        ]
+      },
+      "CreateRoleGrant": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "master",
+              "manager",
+              "staff"
+            ]
+          },
+          "scopeType": {
+            "type": "string",
+            "enum": [
+              "system",
+              "org",
+              "org_unit",
+              "category_province"
+            ]
+          },
+          "orgId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "unitId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "categoryId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "provinceCodes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60
+            },
+            "maxItems": 40
+          }
+        },
+        "required": [
+          "userId",
+          "role",
+          "scopeType"
+        ],
+        "additionalProperties": false
+      },
+      "RoleGrant": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "userId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "master",
+              "manager",
+              "staff"
+            ]
+          },
+          "scopeType": {
+            "type": "string",
+            "enum": [
+              "system",
+              "org",
+              "org_unit",
+              "category_province"
+            ]
+          },
+          "orgId": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "unitId": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "categoryId": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "provinceCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "grantedBy": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "grantedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "role",
+          "scopeType",
+          "orgId",
+          "unitId",
+          "categoryId",
+          "provinceCodes",
+          "grantedBy",
+          "grantedAt"
         ]
       },
       "CreateCategory": {
@@ -1087,6 +1595,75 @@
           "createdAt"
         ]
       },
+      "CreateNotification": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "unitId": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          }
+        },
+        "required": [
+          "title",
+          "body"
+        ],
+        "additionalProperties": false
+      },
+      "Notification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "organizationId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "unitId": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "isRead": {
+            "type": "boolean"
+          },
+          "readCount": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "unitId",
+          "title",
+          "body",
+          "isRead",
+          "readCount",
+          "createdAt"
+        ]
+      },
       "SetListingStatus": {
         "type": "object",
         "properties": {
@@ -1109,6 +1686,105 @@
         ],
         "additionalProperties": false
       },
+      "RerouteListing": {
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "provinceCode": {
+            "type": "string",
+            "enum": [
+              "Hà Nội",
+              "Cao Bằng",
+              "Tuyên Quang",
+              "Lào Cai",
+              "Điện Biên",
+              "Lai Châu",
+              "Sơn La",
+              "Thái Nguyên",
+              "Lạng Sơn",
+              "Quảng Ninh",
+              "Bắc Ninh",
+              "Phú Thọ",
+              "Hải Phòng",
+              "Hưng Yên",
+              "Ninh Bình",
+              "Thanh Hóa",
+              "Nghệ An",
+              "Hà Tĩnh",
+              "Quảng Trị",
+              "Huế",
+              "Đà Nẵng",
+              "Quảng Ngãi",
+              "Gia Lai",
+              "Đắk Lắk",
+              "Khánh Hòa",
+              "Lâm Đồng",
+              "Đồng Nai",
+              "Tây Ninh",
+              "Hồ Chí Minh",
+              "Đồng Tháp",
+              "Vĩnh Long",
+              "An Giang",
+              "Cần Thơ",
+              "Cà Mau"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "CoverageMatrix": {
+        "type": "object",
+        "properties": {
+          "totalCells": {
+            "type": "number"
+          },
+          "uncovered": {
+            "type": "number"
+          },
+          "backlog": {
+            "type": "number"
+          },
+          "cells": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "categoryId": {
+                  "type": "string"
+                },
+                "categoryName": {
+                  "type": "string"
+                },
+                "provinceCode": {
+                  "type": "string"
+                },
+                "hasModerator": {
+                  "type": "boolean"
+                },
+                "pending": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "categoryId",
+                "categoryName",
+                "provinceCode",
+                "hasModerator",
+                "pending"
+              ]
+            }
+          }
+        },
+        "required": [
+          "totalCells",
+          "uncovered",
+          "backlog",
+          "cells"
+        ]
+      },
       "AuditEvent": {
         "type": "object",
         "properties": {
@@ -1128,7 +1804,8 @@
               "listing.unhide",
               "listing.remove",
               "report.resolve",
-              "report.dismiss"
+              "report.dismiss",
+              "listing.reassign"
             ]
           },
           "summary": {
@@ -1467,89 +2144,6 @@
           "province",
           "wards"
         ]
-      },
-      "PlatformAdminLogin": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "format": "email"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "required": [
-          "email",
-          "password"
-        ],
-        "additionalProperties": false
-      },
-      "PlatformAdminAuth": {
-        "type": "object",
-        "properties": {
-          "admin": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "email": {
-                "type": "string"
-              },
-              "name": {
-                "type": "string"
-              },
-              "role": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "email",
-              "name",
-              "role"
-            ]
-          },
-          "accessToken": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "admin",
-          "accessToken"
-        ]
-      },
-      "AssignChain": {
-        "type": "object",
-        "properties": {
-          "chainId": {
-            "type": "string",
-            "nullable": true,
-            "pattern": "^[0-9a-fA-F]{24}$"
-          }
-        },
-        "required": [
-          "chainId"
-        ],
-        "additionalProperties": false
-      },
-      "SetOrganizationStatus": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "suspended"
-            ]
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "additionalProperties": false
       }
     },
     "parameters": {}
@@ -2920,32 +3514,22 @@
         }
       }
     },
-    "/chains/{chainId}/stats": {
+    "/listings/quota": {
       "get": {
-        "operationId": "chainStats",
+        "operationId": "listingQuota",
         "tags": [
-          "Chain"
+          "Listing"
         ],
-        "summary": "Thống kê tổng hợp toàn chain (read-only)",
+        "summary": "Còn bao nhiêu slot đăng tin",
+        "description": "Hiện trạng quota để client nói rõ \"bạn có N/M tin chờ duyệt\" — thiếu nó thì khi người duyệt bận cả tuần, người dùng chỉ thấy mình bị chặn mà không hiểu vì sao.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-fA-F]{24}$"
-            },
-            "required": true,
-            "name": "chainId",
-            "in": "path"
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Thống kê chain",
+            "description": "Trạng thái quota",
             "content": {
               "application/json": {
                 "schema": {
@@ -2961,7 +3545,7 @@
                       "type": "string"
                     },
                     "data": {
-                      "$ref": "#/components/schemas/ChainStats"
+                      "$ref": "#/components/schemas/QuotaStatus"
                     }
                   },
                   "required": [
@@ -2972,56 +3556,26 @@
                 }
               }
             }
-          },
-          "401": {
-            "description": "Thiếu hoặc sai access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Không phải chủ chain",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
           }
         }
       }
     },
-    "/chains/{chainId}/organizations": {
+    "/organizations/mine": {
       "get": {
-        "operationId": "chainOrganizations",
+        "operationId": "myOrganizations",
         "tags": [
-          "Chain"
+          "Organization"
         ],
-        "summary": "Danh sách organization trong chain",
+        "summary": "Các tổ chức tôi đang là thành viên",
+        "description": "Nguồn của bộ chuyển tổ chức phía client: org hoạt động do client chỉ ra bằng header `X-Org-Slug`, nên client phải biết mình được phép gửi những slug nào.",
         "security": [
           {
             "bearerAuth": []
           }
         ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-fA-F]{24}$"
-            },
-            "required": true,
-            "name": "chainId",
-            "in": "path"
-          }
-        ],
         "responses": {
           "200": {
-            "description": "Danh sách org",
+            "description": "Danh sách tổ chức",
             "content": {
               "application/json": {
                 "schema": {
@@ -3039,7 +3593,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Organization"
+                        "$ref": "#/components/schemas/MyOrganization"
                       }
                     }
                   },
@@ -3061,9 +3615,84 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/organizations": {
+      "post": {
+        "operationId": "createOrganization",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Tạo tổ chức và chỉ định người chủ (chỉ master)",
+        "description": "Tạo đồng thời ba thứ: bản ghi tổ chức, quan hệ thành viên `owner`, và quyền `manager` scope org cho người chủ. Người chủ phải có tài khoản trước.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrganization"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tạo tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Organization"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "description": "Không phải chủ chain",
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy tài khoản của người chủ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slug đã tồn tại hoặc bị cấm",
             "content": {
               "application/json": {
                 "schema": {
@@ -3075,13 +3704,13 @@
         }
       }
     },
-    "/chains/{chainId}/notifications": {
-      "post": {
-        "operationId": "chainBroadcast",
+    "/organizations/{organizationId}/status": {
+      "patch": {
+        "operationId": "setOrganizationStatus",
         "tags": [
-          "Chain"
+          "Organization"
         ],
-        "summary": "Gửi thông báo tới mọi org trong chain (fan-out mỗi org một bản ghi)",
+        "summary": "Khoá/mở tổ chức — có hiệu lực ngay, không đợi token hết hạn",
         "security": [
           {
             "bearerAuth": []
@@ -3094,7 +3723,7 @@
               "pattern": "^[0-9a-fA-F]{24}$"
             },
             "required": true,
-            "name": "chainId",
+            "name": "organizationId",
             "in": "path"
           }
         ],
@@ -3102,14 +3731,994 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CreateNotification"
+                "$ref": "#/components/schemas/SetOrganizationStatus"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã cập nhật",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Organization"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organizationId}/slug": {
+      "patch": {
+        "operationId": "changeOrganizationSlug",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Đổi slug, slug cũ tự thành alias redirect 301",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "organizationId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeOrganizationSlug"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã đổi slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Organization"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slug mới đã tồn tại hoặc bị cấm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/lookup": {
+      "get": {
+        "operationId": "organizationLookup",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Dropdown chọn tổ chức theo tên hoặc slug",
+        "description": "Trả DANH SÁCH để người dùng tự xác nhận. Client không được tự lấy phần tử đầu tiên khi có nhiều kết quả: chọn nhầm org là tin chạy vào hàng đợi của tổ chức khác.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 80
+            },
+            "required": true,
+            "name": "q",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách tổ chức khớp",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OrganizationLookup"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Tra cứu quá nhiều lần",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/slug-availability": {
+      "get": {
+        "operationId": "organizationSlugAvailability",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Kiểm tra slug còn dùng được không (kèm gợi ý hậu tố)",
+        "description": "Chỉ trả available + gợi ý. KHÔNG trả tên tổ chức đang giữ slug đó — trả tên là biến endpoint công khai này thành công cụ liệt kê khách hàng.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "required": true,
+            "name": "slug",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "required": false,
+            "name": "district",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 60
+            },
+            "required": false,
+            "name": "provinceCode",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Kết quả kiểm tra",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SlugAvailability"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Tra cứu quá nhiều lần",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/org-units": {
+      "get": {
+        "operationId": "listOrgUnits",
+        "tags": [
+          "OrgUnit"
+        ],
+        "summary": "Nhóm con của tổ chức hiện tại",
+        "description": "Tổ chức phẳng thì trả mảng rỗng — không phải lỗi, chỉ là không có tầng trung gian.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách nhóm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OrgUnit"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "createOrgUnit",
+        "tags": [
+          "OrgUnit"
+        ],
+        "summary": "Tạo nhóm con",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOrgUnit"
               }
             }
           }
         },
         "responses": {
           "201": {
-            "description": "Đã fan-out",
+            "description": "Đã tạo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/OrgUnit"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền quản lý tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Trùng tên nhóm trong tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/org-units/{id}": {
+      "patch": {
+        "operationId": "updateOrgUnit",
+        "tags": [
+          "OrgUnit"
+        ],
+        "summary": "Đổi tên nhóm hoặc gán người phụ trách",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrgUnit"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã cập nhật",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/OrgUnit"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền quản lý tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteOrgUnit",
+        "tags": [
+          "OrgUnit"
+        ],
+        "summary": "Xoá mềm một nhóm con",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã xoá",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/OrgUnit"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền quản lý tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/join-requests": {
+      "post": {
+        "operationId": "createJoinRequest",
+        "tags": [
+          "JoinRequest"
+        ],
+        "summary": "Gửi đơn xin vào một tổ chức",
+        "description": "Không cần thuộc tổ chức nào trước đó. Có trần số đơn đang chờ và cooldown sau khi bị từ chối để hàng đợi của tổ chức không bị rải đơn.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateJoinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã gửi đơn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MyJoinRequest"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tổ chức đang không nhận đơn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Đã là thành viên, đang có đơn chờ, hoặc chưa hết cooldown",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "listJoinRequests",
+        "tags": [
+          "JoinRequest"
+        ],
+        "summary": "Hàng đợi đơn của tổ chức hiện tại",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "expired",
+                "cancelled"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hàng đợi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/JoinRequest"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền duyệt trong tổ chức này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/join-requests/mine": {
+      "get": {
+        "operationId": "myJoinRequests",
+        "tags": [
+          "JoinRequest"
+        ],
+        "summary": "Đơn của tôi và trạng thái từng đơn",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách đơn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MyJoinRequest"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/join-requests/{id}": {
+      "delete": {
+        "operationId": "cancelJoinRequest",
+        "tags": [
+          "JoinRequest"
+        ],
+        "summary": "Rút đơn đang chờ",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã rút đơn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/MyJoinRequest"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không phải đơn của bạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/join-requests/{id}/approve": {
+      "patch": {
+        "operationId": "approveJoinRequest",
+        "tags": [
+          "JoinRequest"
+        ],
+        "summary": "Duyệt đơn và gán nhóm con ngay trong cùng thao tác",
+        "description": "Gán `unitId` ở đây chứ không tách thành bước riêng: cơ chế request không tự phân nhóm được, tách bước ra thì sẽ không ai làm và lớp duyệt phân tầng mất chỗ dựa.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveJoinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã duyệt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/JoinRequest"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền duyệt trong tổ chức này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Đơn đã được xử lý hoặc đã hết hiệu lực",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/join-requests/{id}/reject": {
+      "patch": {
+        "operationId": "rejectJoinRequest",
+        "tags": [
+          "JoinRequest"
+        ],
+        "summary": "Từ chối đơn",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectJoinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã từ chối",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/JoinRequest"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền duyệt trong tổ chức này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/join-requests/bulk-approve": {
+      "post": {
+        "operationId": "bulkApproveJoinRequests",
+        "tags": [
+          "JoinRequest"
+        ],
+        "summary": "Duyệt hàng loạt, mỗi đơn kèm nhóm con của nó",
+        "description": "Từng đơn hỏng không làm hỏng cả lô — response trả kết quả từng dòng để người duyệt biết đơn nào cần xem lại.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkApproveJoinRequests"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Kết quả từng đơn",
             "content": {
               "application/json": {
                 "schema": {
@@ -3127,12 +4736,38 @@
                     "data": {
                       "type": "object",
                       "properties": {
-                        "organizations": {
+                        "approved": {
                           "type": "number"
+                        },
+                        "failed": {
+                          "type": "number"
+                        },
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "ok": {
+                                "type": "boolean"
+                              },
+                              "error": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "ok"
+                            ]
+                          }
                         }
                       },
                       "required": [
-                        "organizations"
+                        "approved",
+                        "failed",
+                        "results"
                       ]
                     }
                   },
@@ -3145,8 +4780,73 @@
               }
             }
           },
-          "401": {
-            "description": "Thiếu hoặc sai access token",
+          "403": {
+            "description": "Không có quyền duyệt trong tổ chức này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/role-grants": {
+      "post": {
+        "operationId": "createRoleGrant",
+        "tags": [
+          "RoleGrant"
+        ],
+        "summary": "Cấp quyền cho một người",
+        "description": "Master cấp được `manager` (cả hai loại scope) và `staff`. Manager chỉ cấp được `staff` trong đúng scope của mình. Không ai tự cấp quyền cho chính mình.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleGrant"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã cấp quyền",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RoleGrant"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không đủ thẩm quyền để cấp quyền này",
             "content": {
               "application/json": {
                 "schema": {
@@ -3155,8 +4855,133 @@
               }
             }
           },
+          "409": {
+            "description": "Người này đã có đúng quyền đó",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/role-grants/mine": {
+      "get": {
+        "operationId": "myRoleGrants",
+        "tags": [
+          "RoleGrant"
+        ],
+        "summary": "Quyền hệ thống của chính mình",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách quyền",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/RoleGrant"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/role-grants/{id}": {
+      "delete": {
+        "operationId": "revokeRoleGrant",
+        "tags": [
+          "RoleGrant"
+        ],
+        "summary": "Thu hồi một quyền",
+        "description": "Không thu hồi được master cuối cùng: hệ thống không còn master là hệ thống không ai cấp lại được quyền cho ai.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã thu hồi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/RoleGrant"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
           "403": {
-            "description": "Không phải chủ chain",
+            "description": "Không đủ thẩm quyền",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Phải luôn còn ít nhất một master",
             "content": {
               "application/json": {
                 "schema": {
@@ -3234,6 +5059,78 @@
             }
           }
         }
+      },
+      "post": {
+        "operationId": "createCategory",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Tạo danh mục dùng chung toàn hệ thống (chỉ master)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategory"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tạo danh mục",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Category"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Slug danh mục đã tồn tại",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/categories/{id}": {
@@ -3280,6 +5177,90 @@
                     "message",
                     "data"
                   ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy danh mục",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "updateCategory",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Đổi tên/icon/thứ tự, hoặc bật-tắt một danh mục",
+        "description": "Không có endpoint xoá: gỡ danh mục khỏi lưu thông bằng `isActive: false`, vì tin đã đăng vẫn tham chiếu tới nó.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategory"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã cập nhật",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Category"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -3897,7 +5878,8 @@
         "tags": [
           "Notification"
         ],
-        "summary": "Thông báo của organization hiện tại (gồm cả bản fan-out từ chain)",
+        "summary": "Thông báo tôi nhận được",
+        "description": "Gồm thông báo gửi cho cả tổ chức và thông báo gửi cho đúng nhóm con của người gọi. Tài khoản chưa thuộc tổ chức nào nhận danh sách rỗng, không phải lỗi. `scope=managed` đổi câu hỏi thành \"tôi gửi được tới đâu\" — dùng cho bàn quản trị.",
         "security": [
           {
             "bearerAuth": []
@@ -3923,6 +5905,18 @@
             },
             "required": false,
             "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "inbox",
+                "managed"
+              ]
+            },
+            "required": false,
+            "name": "scope",
             "in": "query"
           }
         ],
@@ -4009,6 +6003,7 @@
           "Notification"
         ],
         "summary": "Gửi thông báo trong phạm vi organization",
+        "description": "Bỏ trống `unitId` = gửi cho cả tổ chức, cần quyền quản lý cấp org. Staff phụ trách một nhóm con chỉ gửi được cho đúng nhóm đó.",
         "security": [
           {
             "bearerAuth": []
@@ -4053,6 +6048,16 @@
               }
             }
           },
+          "400": {
+            "description": "Nhóm con không tồn tại trong tổ chức này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Thiếu hoặc sai access token",
             "content": {
@@ -4064,7 +6069,7 @@
             }
           },
           "403": {
-            "description": "Chỉ owner/moderator được gửi",
+            "description": "Ngoài phạm vi được cấp",
             "content": {
               "application/json": {
                 "schema": {
@@ -4359,6 +6364,7 @@
               "type": "string",
               "enum": [
                 "pending",
+                "pending_unverified",
                 "active",
                 "rejected",
                 "hidden"
@@ -4657,6 +6663,235 @@
           },
           "404": {
             "description": "Không tìm thấy tin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/moderation/public-queue": {
+      "get": {
+        "operationId": "moderationPublicQueue",
+        "tags": [
+          "Moderation"
+        ],
+        "summary": "Hàng đợi duyệt của TRỤC DANH MỤC",
+        "description": "Phạm vi (danh mục × tỉnh) lấy từ role_grants của chính người gọi và được áp ở tầng query, không phải bộ lọc trên giao diện. Master thấy toàn bộ trục này.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "pending_unverified",
+                "active",
+                "rejected",
+                "hidden"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hàng đợi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Listing"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không phụ trách danh mục nào",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/moderation/coverage": {
+      "get": {
+        "operationId": "moderationCoverage",
+        "tags": [
+          "Moderation"
+        ],
+        "summary": "Ma trận phủ sóng (danh mục × tỉnh) cho master",
+        "description": "Chỉ trả các ô đáng chú ý: chưa có người phụ trách, hoặc đang tồn đọng. Mỗi ô trống là một dòng tin chảy thẳng vào hàng đợi của master.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ma trận phủ sóng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CoverageMatrix"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/moderation/listings/{id}/route": {
+      "patch": {
+        "operationId": "moderationRerouteListing",
+        "tags": [
+          "Moderation"
+        ],
+        "summary": "Chuyển tin sang ô (danh mục × tỉnh) khác",
+        "description": "Tin quay về đầu hàng đợi mới và để lại vết kiểm toán.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerouteListing"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã chuyển ô",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Listing"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
             "content": {
               "application/json": {
                 "schema": {
@@ -5134,519 +7369,6 @@
           },
           "400": {
             "description": "Tên tỉnh không nằm trong danh sách 34 đơn vị",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/platform-admin/auth/login": {
-      "post": {
-        "operationId": "platformAdminLogin",
-        "tags": [
-          "PlatformAdmin"
-        ],
-        "summary": "Đăng nhập bên bán phần mềm (JWT type riêng, không thuộc organization nào)",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlatformAdminLogin"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Đăng nhập thành công",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/PlatformAdminAuth"
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Sai thông tin đăng nhập",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/platform-admin/chains": {
-      "post": {
-        "operationId": "platformAdminCreateChain",
-        "tags": [
-          "PlatformAdmin"
-        ],
-        "summary": "Tạo chain mới và chỉ định chain owner",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateChain"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Đã tạo chain",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Chain"
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Thiếu hoặc sai access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Cần quyền super_admin",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Chain slug đã tồn tại",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/platform-admin/organizations/{organizationId}/chain": {
-      "patch": {
-        "operationId": "platformAdminAssignChain",
-        "tags": [
-          "PlatformAdmin"
-        ],
-        "summary": "Gán org vào chain, hoặc tách ra độc lập với chainId = null",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-fA-F]{24}$"
-            },
-            "required": true,
-            "name": "organizationId",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AssignChain"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Đã cập nhật",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Organization"
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Thiếu hoặc sai access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Cần quyền super_admin",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Không tìm thấy organization hoặc chain",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/platform-admin/organizations/{organizationId}/status": {
-      "patch": {
-        "operationId": "platformAdminSetOrganizationStatus",
-        "tags": [
-          "PlatformAdmin"
-        ],
-        "summary": "Khoá/mở organization — có hiệu lực ngay, không đợi access token hết hạn",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-fA-F]{24}$"
-            },
-            "required": true,
-            "name": "organizationId",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SetOrganizationStatus"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Đã cập nhật",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Organization"
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Thiếu hoặc sai access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Cần quyền super_admin",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Không tìm thấy organization",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/platform-admin/categories": {
-      "post": {
-        "operationId": "platformAdminCreateCategory",
-        "tags": [
-          "PlatformAdmin"
-        ],
-        "summary": "Tạo danh mục dùng chung toàn hệ thống",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateCategory"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Đã tạo danh mục",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Category"
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Thiếu hoặc sai access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Cần quyền super_admin",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Slug danh mục đã tồn tại",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/platform-admin/categories/{id}": {
-      "patch": {
-        "operationId": "platformAdminUpdateCategory",
-        "tags": [
-          "PlatformAdmin"
-        ],
-        "summary": "Đổi tên/icon/thứ tự, hoặc bật-tắt một danh mục",
-        "description": "Không có endpoint xoá: gỡ danh mục khỏi lưu thông bằng `isActive: false`, vì tin đã đăng vẫn tham chiếu tới nó.",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "pattern": "^[0-9a-fA-F]{24}$"
-            },
-            "required": true,
-            "name": "id",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateCategory"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Đã cập nhật",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Category"
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Thiếu hoặc sai access token",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Cần quyền super_admin",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Không tìm thấy danh mục",
             "content": {
               "application/json": {
                 "schema": {

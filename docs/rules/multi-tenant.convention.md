@@ -1,11 +1,25 @@
 # Multi-tenant Rules
 
+> ⚠️ **v2 ĐÃ THAY ĐỔI BỐN ĐIỀU DƯỚI ĐÂY — đọc mục này trước, nó ghi đè mọi chỗ mâu thuẫn
+> trong phần còn lại của file.** Trạng thái đích: `docs/architecture/v2-org-permission.plan.md`.
+>
+> | Tài liệu này nói | v2 thực tế |
+> |---|---|
+> | `chainReadable`, đọc xuyên org trong chain | **Chain đã bị gỡ.** Thay bằng option `dualAxis` — trục org (`organizationId`) và trục danh mục (`visibility: public`) |
+> | `ORG_ROLES` (owner/moderator/member) trên `users` | **Tách đôi**: `memberships.role` = thân phận, `role_grants` = quyền hạn. `users` không còn `organizationId` lẫn `role` |
+> | Nhánh `/platform-admin/*` + JWT `type` | **Đã xoá.** `master` là một `role_grant` scope `system` trên User thường; JWT chỉ còn `sub` |
+> | Org lấy từ subdomain → `orgSlug` body → JWT | subdomain → header `X-Org-Slug` → (nếu chỉ thuộc 1 org) org đó, rồi **đối chiếu `memberships` ngay lúc đó** |
+>
+> Ba điều KHÔNG đổi và vẫn là luật: filter tenant nằm ở `tenantPlugin` chứ không ở repository ·
+> không có scope thì ném lỗi, không bao giờ query toàn DB · `runUnscoped('lý do', …)` là lối
+> thoát DUY NHẤT và phải grep ra được.
+
 Tài liệu này quy định các nguyên tắc **bắt buộc** khi viết code chạm tới dữ liệu khách
 hàng. Cách ly tenant là ranh giới bảo mật: một query quên filter không phải là bug hiệu
 năng, nó là rò rỉ dữ liệu giữa hai khách hàng khác nhau.
 
-- Thiết kế + lý do → `docs/architecture/multi-tenant.md`
-- Hiện trạng + việc còn nợ → `docs/architecture/multi-tenant.implementation.md`
+- Thiết kế + lý do (bản v1) → `docs/architecture/multi-tenant.md`
+- Trạng thái đích của v2 → `docs/architecture/v2-org-permission.plan.md`
 - Tài liệu này chỉ trả lời: **lần sau viết code thì phải làm gì.**
 
 ---
@@ -13,12 +27,13 @@ năng, nó là rò rỉ dữ liệu giữa hai khách hàng khác nhau.
 ## 0. Sáu bất biến — vi phạm là reject ngay
 
 1. **Mọi collection nghiệp vụ đều gắn `tenantPlugin`.** Không có collection nào "tạm thời
-   chưa cần tenant". Ngoại lệ duy nhất đã được duyệt: `User`, `Organization`, `Chain`,
-   `PlatformAdmin`, `Category` — xem §1.3 để biết vì sao và phải bù bằng gì.
+   chưa cần tenant". Ngoại lệ duy nhất đã được duyệt: `User`, `Membership`, `RoleGrant`,
+   `JoinRequest`, `Trust`, `Organization`, `Category` — xem §1.3 để biết vì sao và bù bằng gì.
 2. **Không tự viết filter `organizationId` trong repository/service.** Scope đến từ
    context. Tự viết nghĩa là đang có hai nguồn sự thật, và cái viết tay sẽ sai trước.
 3. **Ghi luôn rơi về `ownOrgId`.** Không route nào, không role nào, không cờ nào mở rộng
-   được phạm vi ghi. Chain là read-only.
+   được phạm vi ghi. Bản ghi của trục công khai (`organizationId: null`) là read-only với
+   mọi org khác — quyền ở đó đến từ `role_grants`, không từ tenant scope.
 4. **Không có scope thì ném lỗi, không bao giờ query không filter.** Fail-closed là mặc
    định; nếu thấy mình muốn thêm fallback "cho tiện", dừng lại.
 5. **`organizationId` do client gửi lên luôn bị bỏ qua.** Nó chỉ đến từ token đã verify
@@ -41,29 +56,41 @@ reportSchema.index({ organizationId: 1, createdAt: -1 })
 
 Đảo thứ tự thì `organizationId` chưa tồn tại lúc khai index → index sai âm thầm.
 
-### 1.2 Quyết định `chainReadable`
+### 1.2 Quyết định `dualAxis`
 
-`chainReadable` khai báo **theo schema**, không theo route. Câu hỏi cần trả lời:
+`dualAxis` khai báo **theo schema**, không theo route. Câu hỏi cần trả lời:
 
-> *User của org A có được phép nhìn thấy bản ghi này của org B khi hai org cùng chain
-> không?*
+> *Bản ghi này có sống được ngoài mọi tổ chức không?*
 
 | Trả lời | Khai báo | Hiện có |
 |---|---|---|
-| Có | `plugin(tenantPlugin, { chainReadable: true })` | `Listing` |
-| Không | `plugin(tenantPlugin)` | `Notification`, và mặc định cho mọi collection mới |
+| Có | `plugin(tenantPlugin, { dualAxis: true })` | `Listing` |
+| Không | `plugin(tenantPlugin)` | `Notification`, `OrgUnit`, và mặc định cho mọi collection mới |
 
-**Mặc định là `false`.** Bật `true` phải nêu được lý do nghiệp vụ trong PR description.
-Nếu chỉ vì "chain owner cần xem thống kê" thì **không** bật — dùng route chain riêng với
-`requireChainOwner`, nó mở scope rộng hơn mà không đổi quyền của user thường.
+**Mặc định là tắt.** Bật lên đổi hai thứ cùng lúc, nên phải nêu được lý do nghiệp vụ trong PR:
+
+- `organizationId` chuyển thành nullable (`null` = bản ghi của trục công khai, không thuộc org nào)
+- khoá định tuyến không còn là `organizationId` mà là **`visibility`** — `public` đi về người
+  phụ trách (danh mục × tỉnh), `org_internal` đi về chính tổ chức
+
+Đây là chỗ hay nhầm nhất: `organizationId` vẫn được ghi trên tin công khai của một thành viên,
+nhưng nó chỉ để **hiển thị nguồn gốc**, không quyết định ai duyệt. Xem
+`listing.routing.ts` và test `two-axis.test.ts` — cả hai tồn tại để chốt đúng điều này.
+
+Đừng bật `dualAxis` chỉ vì "cần đọc rộng hơn một chút". Đọc rộng có chủ đích thì bọc
+`runUnscoped('lý do', ...)` ở đúng chỗ đó (§1.4) — nó để lại vết grep được, còn `dualAxis`
+thì nới scope cho **mọi** truy vấn của collection.
 
 ### 1.3 Collection KHÔNG gắn plugin — và phải bù bằng gì
 
 | Collection | Vì sao không gắn | Bù bằng |
 |---|---|---|
-| `User` | Login phải tìm user TRƯỚC khi có context | `userRepository` nhận `organizationId` **bắt buộc, không optional** ở mọi method |
-| `Organization`, `Chain` | Chúng *là* / *ở trên* tenant | Chỉ truy cập qua repository của chính feature đó |
-| `PlatformAdmin` | Ngoài mô hình tenant hoàn toàn | Nhánh `/platform-admin/*`, JWT `type` riêng |
+| `User` | Tài khoản là **toàn cục** ở v2 — không thuộc org nào | Quan hệ với org nằm ở `Membership`; `User` không có cột `organizationId` lẫn `role` |
+| `Membership` | Chính nó trả lời "request đang ở org nào" → phải đọc được TRƯỚC khi scope tồn tại | Mọi method của repository nhận `organizationId` tường minh, ép bằng kiểu |
+| `RoleGrant` | Nguồn của phân quyền, cũng phải đọc trước scope | Đọc qua `roleGrantService.grantsOf(userId)`, quyết định ở `authz/policy.ts` |
+| `JoinRequest` | Người gửi theo định nghĩa **chưa** thuộc org đích | Org đích đi trong body (`orgSlug`); hàng đợi lọc bằng `organizationId` tường minh |
+| `Trust` | Uy tín thuộc trục danh mục, không thuộc tổ chức nào | — |
+| `Organization` | Chính nó *là* tenant | Chỉ truy cập qua repository của feature đó |
 | `Category` | Dùng chung toàn hệ thống (quyết định #7) | Không có dữ liệu riêng của khách hàng |
 
 Muốn thêm một collection vào danh sách này → **dừng lại và hỏi**, không tự quyết.
@@ -144,18 +171,20 @@ không một bản ghi đã xoá sẽ giữ chỗ giá trị unique vĩnh viễn
 ### 4.1 Thứ tự middleware — không đảo
 
 ```
-resolveTenant  →  authenticate  →  (requireChainOwner)  →  validate  →  controller
+resolveTenant  →  authenticate  →  (requireOrg* / require*Moderator)  →  validate  →  controller
 ```
 
 - `resolveTenant` mount ở `app.ts` cho cả `API_PREFIX`, không mount lại ở feature.
-- `authenticate` kiểm tra `payload.organizationId === scope.ownOrgId`. Thiếu bước này thì
-  user org A cầm token của mình gọi vào subdomain org B sẽ chạy với scope của B.
+- Token KHÔNG mang org nữa (payload chỉ có `sub`). Câu hỏi "người này có thuộc org đang
+  resolve không" do chính `resolveTenant` đối chiếu với `memberships` tại thời điểm đó, nên
+  không còn bước so token với scope — và cũng không còn cách nào cầm token cũ đi vào org khác.
 
 ### 4.2 Middleware riêng của feature nằm trong feature
 
-`requireChainOwner` ở `src/features/chain/chain.middleware.ts`, không ở `src/middlewares/`
-(quy tắc 6 của `folder.convention.md`). Chỉ middleware dùng chung nhiều feature mới lên
-`src/middlewares/`.
+`requireCategoryModerator` / `requireMasterPublicAxis` ở
+`src/features/moderation/moderation.middleware.ts`, không ở `src/middlewares/` (quy tắc 6 của
+`folder.convention.md`). Chỉ middleware dùng chung nhiều feature — `requireOrg`,
+`requireMembership`, `requireOrgModerator`, `requireOrgAdmin` — mới lên `src/middlewares/`.
 
 ### 4.3 `next()` phải gọi BÊN TRONG `runWithTenant`
 
@@ -172,10 +201,13 @@ next()
 
 ### 4.4 Không đẻ route "xem xuyên org"
 
-Dữ liệu `chainReadable` đã tự có mặt trong route đọc thông thường. Thêm
-`GET /chains/:id/<resource>` song song là tạo hai đường đọc cho cùng một dữ liệu, và hai
-đường đọc thì sớm muộn sẽ phân quyền lệch nhau. Route `/chains/*` chỉ dành cho **thống kê
-tổng hợp** và **thao tác cấp chain** (vd fan-out thông báo).
+Dữ liệu `dualAxis` đã tự có mặt trong route đọc thông thường. Thêm một route "xem tất cả"
+song song là tạo hai đường đọc cho cùng một dữ liệu, và hai đường đọc thì sớm muộn sẽ phân
+quyền lệch nhau.
+
+Ngoại lệ đã duyệt: một tham số **đổi câu hỏi**, không phải nới phạm vi —
+`GET /notifications?scope=managed` hỏi "tôi gửi được tới đâu" thay cho "tôi nhận được gì".
+Hai câu hỏi khác nhau, cùng đi qua một `policy.ts`, nên không đẻ ra đường phân quyền thứ hai.
 
 ---
 
@@ -228,7 +260,7 @@ const rows = await runUnscoped('audit', () => Report.find().exec())
 
 | Anti-pattern | Vì sao | Thay bằng |
 |---|---|---|
-| Thêm cờ bypass kiểu `crossTenant: true` | Có một đường thoát là có mọi đường thoát | Mở scope rộng hơn bằng middleware (`requireChainOwner`) |
+| Thêm cờ bypass kiểu `crossTenant: true` | Có một đường thoát là có mọi đường thoát | `runUnscoped('lý do', ...)` tại đúng chỗ cần — nó grep được |
 | `estimatedDocumentCount()` | Đọc metadata cả collection, không nhận filter | `countDocuments()` — plugin đã chặn cứng, đừng tìm cách lách |
 | `pre('save')` để gán `organizationId` | Mongoose chạy validation TRƯỚC pre-save của plugin | `pre('validate')` (plugin đã làm sẵn, đừng tự viết) |
 | `organizationId` mutable | Cho phép chuyển bản ghi sang org khác | `immutable: true` (plugin đã set) |
@@ -248,7 +280,7 @@ nhận "code review thấy ổn" làm bằng chứng**. Tối thiểu phải có
 - [ ] Org A không sửa/xoá được bản ghi của org B
 - [ ] Không có scope → throw, KHÔNG trả về toàn bộ document
 - [ ] `organizationId` client gửi lên bị bỏ qua (cả `create` lẫn `insertMany`)
-- [ ] Nếu bật `chainReadable`: đọc được xuyên chain, nhưng ghi thì **không**
+- [ ] Nếu bật `dualAxis`: bản ghi `organizationId: null` đọc được từ mọi org, nhưng ghi thì **không**
 
 Mẫu bám theo: `tests/unit/tenantPlugin.test.ts` (tầng plugin) và
 `tests/integration/tenant-isolation.test.ts` (tầng HTTP).
@@ -260,8 +292,8 @@ transaction không chạy trên standalone.
 
 ## 9. Checklist trước khi mở PR
 
-- [ ] Collection mới đã `plugin(tenantPlugin)`, và `chainReadable` để mặc định `false`
-      trừ khi PR nêu rõ lý do nghiệp vụ
+- [ ] Collection mới đã `plugin(tenantPlugin)`, và `dualAxis` để mặc định tắt trừ khi PR
+      nêu rõ lý do nghiệp vụ
 - [ ] Mọi index mới có `organizationId` đứng đầu (trừ TTL)
 - [ ] Unique index kèm `partialFilterExpression: { deletedAt: null }`
 - [ ] Repository không có chuỗi `organizationId` viết tay

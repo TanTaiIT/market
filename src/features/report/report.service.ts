@@ -30,12 +30,12 @@ function toDto(report: IReportDocument, count: number) {
 }
 
 /** Tên hiển thị của đối tượng bị báo cáo, snapshot ngay lúc gửi (§2.3 cấm populate). */
-async function targetTitleOf(input: CreateReportInput, actor: ReportActor): Promise<string> {
+async function targetTitleOf(input: CreateReportInput): Promise<string> {
   if (input.targetType === REPORT_TARGET.LISTING) {
     const listing = await listingService.getById(input.targetId)
     return listing.title
   }
-  const user = await userRepository.findById(input.targetId, actor.organizationId)
+  const user = await userRepository.findById(input.targetId)
   if (!user) throw new NotFoundError('Không tìm thấy người dùng này')
   return user.name
 }
@@ -45,8 +45,8 @@ export const reportService = {
     if (input.targetId === actor.id) throw new BadRequestError('Không tự báo cáo chính mình')
 
     const [targetTitle, reporter] = await Promise.all([
-      targetTitleOf(input, actor),
-      userRepository.findById(actor.id, actor.organizationId),
+      targetTitleOf(input),
+      userRepository.findById(actor.id),
     ])
     if (!reporter) throw new NotFoundError('User not found')
 
@@ -92,7 +92,7 @@ export const reportService = {
       throw new BadRequestError('Báo cáo này đã được xử lý rồi')
     }
 
-    const moderator = await userRepository.findById(actor.id, actor.organizationId)
+    const moderator = await userRepository.findById(actor.id)
     const byName = moderator?.name ?? 'Quản trị'
     const hideTarget = input.action === 'hide_target' && report.targetType === REPORT_TARGET.LISTING
 

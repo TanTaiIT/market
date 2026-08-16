@@ -1,5 +1,8 @@
 # Multi-tenant Chain / Organization / User — báo cáo triển khai
 
+> ⚠️ **ĐÃ LỖI THỜI kể từ v2** — mô tả mô hình v1 (chain, 1 user ↔ 1 org, nhánh
+> platform-admin). Đây là báo cáo của đợt triển khai v1, giữ làm lịch sử. Trạng thái đích: `v2-org-permission.plan.md`.
+
 > Bộ ba tài liệu: `multi-tenant.md` trả lời **vì sao**, file này trả lời **hiện trạng**,
 > `docs/rules/multi-tenant.convention.md` trả lời **lần sau phải làm gì**.
 

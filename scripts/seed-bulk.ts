@@ -6,10 +6,12 @@ import { env } from '../src/config/env'
 import { User } from '../src/features/user/user.model'
 import { Listing } from '../src/features/listing/listing.model'
 import { Organization } from '../src/features/organization/organization.model'
-import { Chain } from '../src/features/chain/chain.model'
 import { Notification } from '../src/features/notification/notification.model'
-import { PlatformAdmin } from '../src/features/platform-admin/platform-admin.model'
 import { Category } from '../src/features/category/category.model'
+import { Membership } from '../src/features/membership/membership.model'
+import { RoleGrant } from '../src/features/role-grant/role-grant.model'
+import { OrgUnit } from '../src/features/org-unit/org-unit.model'
+import { JoinRequest } from '../src/features/join-request/join-request.model'
 import { Conversation, Message } from '../src/features/chat/chat.model'
 import { Report } from '../src/features/report/report.model'
 import { AuditLog } from '../src/features/moderation/moderation.model'
@@ -18,8 +20,10 @@ import { assertDisposableDb } from './assertDisposableDb'
 import {
   LISTING_STATUS,
   LISTING_CONDITION,
-  ORG_ROLES,
-  PLATFORM_ADMIN_ROLES,
+  MEMBERSHIP_ROLES,
+  JOINED_VIA,
+  SCOPE_TYPES,
+  SYSTEM_ROLES,
   ListingStatus,
   ListingCondition,
   VnProvinceName,
@@ -33,8 +37,8 @@ import {
  * Khác `seed.ts`: file kia là fixture tối thiểu 15 tin để chạy thử luồng — file này để đo
  * phân trang, bộ lọc và bàn duyệt ở quy mô thật. Cả hai đều XOÁ SẠCH dữ liệu trước khi ghi.
  *
- * Topology org/chain giữ y hệt `seed.ts` (hung-vuong + cao-thang cùng chain, xyz độc lập)
- * nên mọi tài khoản đăng nhập cũ vẫn dùng được, chỉ khác là dữ liệu dày lên.
+ * Topology org giữ y hệt `seed.ts` (hung-vuong, cao-thang, xyz) nên mọi tài khoản đăng nhập
+ * cũ vẫn dùng được, chỉ khác là dữ liệu dày lên.
  *
  * Chạy: `npm run seed:bulk`
  */
@@ -292,10 +296,9 @@ type SeedOrg = {
 }
 
 const ORG_SEEDS = [
-  { name: 'Trường Hùng Vương', slug: 'hung-vuong', inChain: true, members: 10, share: 0.45 },
-  { name: 'Trường Cao Thắng', slug: 'cao-thang', inChain: true, members: 8, share: 0.3 },
-  // Org độc lập: dùng để kiểm chứng user org này KHÔNG thấy tin của chain trên.
-  { name: 'Cửa hàng XYZ', slug: 'xyz', inChain: false, members: 6, share: 0.25 },
+  { name: 'Trường Hùng Vương', slug: 'hung-vuong', members: 10, share: 0.45 },
+  { name: 'Trường Cao Thắng', slug: 'cao-thang', members: 8, share: 0.3 },
+  { name: 'Cửa hàng XYZ', slug: 'xyz', members: 6, share: 0.25 },
 ]
 
 /**
@@ -306,15 +309,21 @@ const ORG_SEEDS = [
  * Băm một lần rồi dùng chung cho ~30 user thay vì băm từng người — bcrypt 12 vòng tốn khoảng
  * một phần tư giây mỗi lần, nhân lên là chờ vô ích.
  */
-function buildOrg(
-  spec: (typeof ORG_SEEDS)[number],
-  chainId: Types.ObjectId | null,
-  passwordHash: string,
-) {
+function buildOrg(spec: (typeof ORG_SEEDS)[number], passwordHash: string) {
   const orgId = new Types.ObjectId()
   const rows: Record<string, unknown>[] = []
+  const memberships: Record<string, unknown>[] = []
+  const grants: Record<string, unknown>[] = []
 
-  const makeUser = (name: string, email: string, role: string): SeedUser => {
+  /**
+   * Tài khoản là TOÀN CỤC: bản ghi user không mang org và không mang role. Quan hệ với org đi
+   * vào `memberships`, quyền duyệt đi vào `role_grants` — đúng ba bảng mà code thật dùng.
+   */
+  const makeUser = (
+    name: string,
+    email: string,
+    duty: 'owner' | 'moderator' | 'member',
+  ): SeedUser => {
     const user: SeedUser = {
       _id: new Types.ObjectId(),
       name,
@@ -322,23 +331,35 @@ function buildOrg(
     }
     rows.push({
       _id: user._id,
-      organizationId: orgId,
       name,
       email,
       phone: user.phone,
       password: passwordHash,
-      role,
-      isEmailVerified: true,
+      emailVerifiedAt: new Date(),
     })
+    memberships.push({
+      userId: user._id,
+      organizationId: orgId,
+      role: duty === 'owner' ? MEMBERSHIP_ROLES.OWNER : MEMBERSHIP_ROLES.MEMBER,
+      joinedVia: JOINED_VIA.ROSTER,
+    })
+    if (duty !== 'member') {
+      grants.push({
+        userId: user._id,
+        role: duty === 'owner' ? SYSTEM_ROLES.MANAGER : SYSTEM_ROLES.STAFF,
+        scopeType: SCOPE_TYPES.ORG,
+        orgId,
+      })
+    }
     return user
   }
 
-  const owner = makeUser(`Chủ ${spec.name}`, `owner@${spec.slug}.local`, ORG_ROLES.OWNER)
-  const moderator = makeUser(vietnameseName(), `mod@${spec.slug}.local`, ORG_ROLES.MODERATOR)
+  const owner = makeUser(`Chủ ${spec.name}`, `owner@${spec.slug}.local`, 'owner')
+  const moderator = makeUser(vietnameseName(), `mod@${spec.slug}.local`, 'moderator')
   const members = Array.from({ length: spec.members }, (_, i) =>
-    // Email đánh số theo chỉ số chứ không theo tên: unique index là (organizationId, email),
-    // mà tên tiếng Việt sinh ngẫu nhiên hoàn toàn có thể trùng nhau trong cùng một org.
-    makeUser(vietnameseName(), `member${i + 1}@${spec.slug}.local`, ORG_ROLES.MEMBER),
+    // Email đánh số theo chỉ số chứ không theo tên: email giờ unique TOÀN CỤC, mà tên tiếng
+    // Việt sinh ngẫu nhiên hoàn toàn có thể trùng nhau.
+    makeUser(vietnameseName(), `member${i + 1}@${spec.slug}.local`, 'member'),
   )
 
   const org: SeedOrg = {
@@ -350,7 +371,7 @@ function buildOrg(
     sellers: [owner, ...members],
     share: spec.share,
   }
-  return { org, rows, chainId }
+  return { org, rows, memberships, grants }
 }
 
 // ── SEED LISTINGS ───────────────────────────────────────────────────
@@ -672,9 +693,11 @@ async function seedBulk() {
       User.deleteMany({}),
       Listing.deleteMany({}),
       Organization.deleteMany({}),
-      Chain.deleteMany({}),
       Notification.deleteMany({}),
-      PlatformAdmin.deleteMany({}),
+      Membership.deleteMany({}),
+      RoleGrant.deleteMany({}),
+      OrgUnit.deleteMany({}),
+      JoinRequest.deleteMany({}),
       Category.deleteMany({}),
       Conversation.deleteMany({}),
       Message.deleteMany({}),
@@ -688,28 +711,18 @@ async function seedBulk() {
     )
 
     const passwordHash = await hash(PASSWORD, BCRYPT_ROUNDS)
-    const chainId = new Types.ObjectId()
 
-    const built = ORG_SEEDS.map((spec) =>
-      buildOrg(spec, spec.inChain ? chainId : null, passwordHash),
-    )
+    const built = ORG_SEEDS.map((spec) => buildOrg(spec, passwordHash))
 
     await User.insertMany(built.flatMap((b) => b.rows))
     await Organization.insertMany(
       built.map((b) => ({
         _id: b.org.id,
-        chainId: b.chainId,
         name: b.org.name,
         slug: b.org.slug,
         ownerId: b.org.owner._id,
       })),
     )
-    await Chain.create({
-      _id: chainId,
-      name: 'Hệ thống Trường ABC',
-      slug: 'abc-edu',
-      ownerId: built[0].org.owner._id,
-    })
 
     const orgs = built.map((b) => b.org)
     const statuses = weightedPool(STATUS_MIX, TOTAL_LISTINGS)
@@ -744,11 +757,20 @@ async function seedBulk() {
       console.log(`  inserted ${Math.min(i + BATCH, docs.length)}/${docs.length}`)
     }
 
-    await PlatformAdmin.create({
-      email: 'admin@platform.local',
-      name: 'Platform Super Admin',
+    await Membership.insertMany(built.flatMap((b) => b.memberships))
+    await RoleGrant.insertMany(built.flatMap((b) => b.grants))
+
+    // Master là User + grant scope system, không còn collection riêng.
+    const master = await User.create({
+      email: 'master@platform.local',
+      name: 'Platform Master',
       password: 'platform123',
-      role: PLATFORM_ADMIN_ROLES.SUPER_ADMIN,
+      emailVerifiedAt: new Date(),
+    })
+    await RoleGrant.create({
+      userId: master._id,
+      role: SYSTEM_ROLES.MASTER,
+      scopeType: SCOPE_TYPES.SYSTEM,
     })
 
     report(docs, orgs)

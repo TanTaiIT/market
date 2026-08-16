@@ -44,11 +44,11 @@ export const chatService = {
       throw new NotFoundError('Listing not found')
     }
 
-    // Listing bật `chainReadable` nên tin trả về có thể thuộc trường khác trong cùng hệ thống.
-    // Chat thì chưa mở xuyên trường, và người bán bên đó cũng không nằm trong org của mình để
-    // đọc tên — chặn ở đây với thông điệp đúng nguyên nhân.
-    if (listing.organizationId.toString() !== actor.organizationId) {
-      throw new ForbiddenError('Chưa nhắn tin được với người bán ở trường khác')
+    // Chat chưa mở xuyên org, và cũng chưa mở cho trục danh mục (tin `organizationId: null`):
+    // hội thoại nằm trong một org nên phải có org để đặt nó vào. Người mua liên hệ tin công
+    // khai thì dùng `posterContact` — mở chat ở đó là việc của vòng sau.
+    if (!listing.organizationId || listing.organizationId.toString() !== actor.organizationId) {
+      throw new ForbiddenError('Chưa nhắn tin được với người bán ngoài tổ chức của bạn')
     }
     if (listing.seller.toString() === actor.id) {
       throw new BadRequestError('Đây là tin của bạn')
@@ -59,8 +59,8 @@ export const chatService = {
     if (existing) return toConversationDto(existing, actor.id)
 
     const [buyer, seller] = await Promise.all([
-      userRepository.findById(actor.id, actor.organizationId),
-      userRepository.findById(listing.seller.toString(), actor.organizationId),
+      userRepository.findById(actor.id),
+      userRepository.findById(listing.seller.toString()),
     ])
     if (!buyer) throw new NotFoundError('User not found')
     if (!seller) throw new NotFoundError('Người bán không còn tài khoản trong trường này')

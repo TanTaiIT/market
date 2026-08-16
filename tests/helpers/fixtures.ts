@@ -1,0 +1,156 @@
+import request from 'supertest'
+import mongoose from 'mongoose'
+import { MongoMemoryReplSet } from 'mongodb-memory-server'
+import type { Application } from 'express'
+
+/**
+ * Fixture dùng chung cho test integration của v2.
+ *
+ * Dựng dữ liệu bằng đúng đường mà hệ thống thật đi: đăng ký tài khoản qua API, master tạo org
+ * qua API, thành viên vào org qua membership. Chỉ hai chỗ ghi thẳng vào model — grant `master`
+ * đầu tiên (không có API bootstrap, giống seed) và việc thêm thành viên hàng loạt (đường mời
+ * chưa làm) — và cả hai đều là mô phỏng đúng cách vận hành thật.
+ */
+
+export const PASSWORD = 'password123'
+
+export interface TestUser {
+  token: string
+  id: string
+  email: string
+}
+
+export async function startTestDb(): Promise<MongoMemoryReplSet> {
+  // Transaction không còn cần cho đăng ký, nhưng replica set giữ nguyên để test sát production.
+  const mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } })
+  const uri = mongod.getUri()
+  process.env.MONGO_URI = uri
+  process.env.JWT_SECRET = 'test_secret'
+  process.env.JWT_REFRESH_SECRET = 'test_refresh_secret'
+  delete process.env.APP_BASE_DOMAIN
+
+  await mongoose.connect(uri)
+  return mongod
+}
+
+export async function createTestApp(): Promise<Application> {
+  const { createApp } = await import('../../src/app')
+  return createApp()
+}
+
+export async function registerUser(app: Application, email: string, name = 'Người dùng') {
+  const res = await request(app)
+    .post('/api/v1/auth/register')
+    .send({ name, email, password: PASSWORD })
+    .expect(201)
+
+  return {
+    token: res.body.data.tokens.accessToken as string,
+    id: res.body.data.user.id as string,
+    email,
+  }
+}
+
+/** Master đầu tiên phải dựng thẳng vào DB — đúng như thực tế, nó do script bootstrap tạo. */
+export async function makeMaster(app: Application, email = 'master@platform.local') {
+  const user = await registerUser(app, email, 'Master')
+  const { RoleGrant } = await import('../../src/features/role-grant/role-grant.model')
+  const { SYSTEM_ROLES, SCOPE_TYPES } = await import('../../src/common/constants')
+
+  await RoleGrant.create({
+    userId: user.id,
+    role: SYSTEM_ROLES.MASTER,
+    scopeType: SCOPE_TYPES.SYSTEM,
+  })
+  return user
+}
+
+export async function createOrg(
+  app: Application,
+  masterToken: string,
+  input: {
+    name: string
+    slug: string
+    ownerEmail: string
+    orgType?: string
+    provinceCode?: string
+  },
+) {
+  const res = await request(app)
+    .post('/api/v1/organizations')
+    .set('Authorization', `Bearer ${masterToken}`)
+    .send(input)
+    .expect(201)
+  return res.body.data as { id: string; slug: string; name: string }
+}
+
+/** Thêm thành viên thẳng vào DB: đường mời/roster là việc của vòng sau (§7.4). */
+export async function addMember(
+  userId: string,
+  organizationId: string,
+  opts: { unitId?: string | null; role?: string } = {},
+) {
+  const { Membership } = await import('../../src/features/membership/membership.model')
+  const { MEMBERSHIP_ROLES, JOINED_VIA } = await import('../../src/common/constants')
+
+  return Membership.create({
+    userId,
+    organizationId,
+    role: opts.role ?? MEMBERSHIP_ROLES.MEMBER,
+    unitId: opts.unitId ?? null,
+    joinedVia: JOINED_VIA.ROSTER,
+  })
+}
+
+export async function grantRole(input: {
+  userId: string
+  role: string
+  scopeType: string
+  orgId?: string
+  unitId?: string
+  categoryId?: string
+  provinceCodes?: string[]
+}) {
+  const { RoleGrant } = await import('../../src/features/role-grant/role-grant.model')
+  return RoleGrant.create(input)
+}
+
+/**
+ * Nâng bậc uy tín để test KHÔNG về nghiệp vụ quota không bị quota chặn ngang. Bậc 1 = 5 tin
+ * chờ duyệt, vẫn dưới ngưỡng tự đăng nên tin mới vẫn ở 'pending' như test mong đợi.
+ */
+export async function setTrustLevel(userId: string, organizationId: string, level: number) {
+  const { Membership } = await import('../../src/features/membership/membership.model')
+  await Membership.updateOne({ userId, organizationId }, { trustLevel: level }).exec()
+}
+
+/** Header chuẩn của một request có org: token + org hoạt động. */
+export function orgAuth(token: string, orgSlug: string) {
+  return { Authorization: `Bearer ${token}`, 'X-Org-Slug': orgSlug }
+}
+
+export async function createCategory(name = 'Đồ dùng', slug = 'do-dung') {
+  const { Category } = await import('../../src/features/category/category.model')
+  const category = await Category.create({ name, slug })
+  return category._id.toString()
+}
+
+/** Tin mới vào PENDING và bàn duyệt là một feature khác — bật ACTIVE thẳng ở tầng model. */
+export async function publishListing(listingId: string) {
+  const { Listing } = await import('../../src/features/listing/listing.model')
+  const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
+  await runUnscoped('test fixture', () =>
+    Listing.updateOne({ _id: listingId }, { status: 'active' }).exec(),
+  )
+}
+
+export function listingPayload(title: string, categoryId: string) {
+  return {
+    title,
+    description: 'Mô tả đủ dài cho validation',
+    price: 1000000,
+    categoryId,
+    images: ['https://example.com/a.jpg'],
+    location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
+  }
+}

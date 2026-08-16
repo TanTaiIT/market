@@ -1,5 +1,10 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
-import { AUDIT_ACTION, AuditAction } from '../../common/constants'
+import {
+  AUDIT_ACTION,
+  AuditAction,
+  MODERATION_QUEUE,
+  ModerationQueue,
+} from '../../common/constants'
 import { tenantPlugin } from '../../common/tenant/tenantPlugin'
 
 /**
@@ -18,6 +23,14 @@ export interface IAuditLog {
   targetType?: string
   targetId?: Types.ObjectId
   summary: string
+  /**
+   * Ba field dưới đây là phần `moderation_events` của thiết kế v2: một thao tác duyệt phải trả
+   * lời được "tin đi từ trạng thái nào sang trạng thái nào, ở hàng đợi nào". Thiếu `queue` thì
+   * không truy được vì sao một tin của org lại do manager danh mục xử lý.
+   */
+  fromStatus?: string
+  toStatus?: string
+  queue?: ModerationQueue
   meta?: Record<string, unknown>
   createdAt: Date
   updatedAt: Date
@@ -35,12 +48,15 @@ const auditLogSchema = new Schema<IAuditLogDocument>(
     targetType: { type: String, trim: true, maxlength: 20 },
     targetId: { type: Schema.Types.ObjectId },
     summary: { type: String, required: true, trim: true, maxlength: 300 },
+    fromStatus: { type: String, trim: true, maxlength: 30 },
+    toStatus: { type: String, trim: true, maxlength: 30 },
+    queue: { type: String, enum: Object.values(MODERATION_QUEUE) },
     meta: { type: Schema.Types.Mixed },
   },
   { timestamps: true },
 )
 
-// chainReadable: false — vết kiểm toán không rời khỏi trường sở tại, kể cả với chain owner.
+// Vết kiểm toán không rời khỏi org sở tại.
 auditLogSchema.plugin(tenantPlugin)
 
 auditLogSchema.index({ organizationId: 1, createdAt: -1 })

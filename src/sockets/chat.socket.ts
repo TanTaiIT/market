@@ -4,7 +4,8 @@ import { runWithTenant } from '../common/tenant/tenantContext'
 import { organizationRepository } from '../features/organization/organization.repository'
 import { logger } from '../config/logger'
 import { adminRoom, conversationRoom } from './emit'
-import { ORG_ROLES } from '../common/constants'
+import { canModerateAnyInOrg } from '../common/authz/policy'
+import { roleGrantService } from '../features/role-grant/role-grant.service'
 
 /**
  * Socket chỉ **giao hàng**, không ghi. Client gửi tin nhắn bằng `POST /chats/:id/messages`;
@@ -27,8 +28,9 @@ export function registerChatHandlers(socket: Socket): void {
       const org = await organizationRepository.findActiveById(organizationId)
       if (!org) return socket.emit('chat:error', { conversationId, reason: 'org-inactive' })
 
-      await runWithTenant({ ownOrgId: org._id, chainOrgIds: [org._id] }, () =>
-        chatService.getById(conversationId, { id: userId, organizationId }),
+      await runWithTenant(
+        { ownOrgId: org._id, readableOrgIds: [org._id], publicAxis: { mode: 'approved' } },
+        () => chatService.getById(conversationId, { id: userId, organizationId }),
       )
 
       socket.join(conversationRoom(organizationId, conversationId))
@@ -40,11 +42,12 @@ export function registerChatHandlers(socket: Socket): void {
     }
   })
 
-  // Dòng "Vừa diễn ra" của bàn quản trị. Role đọc từ JWT chứ không từ giá trị client gửi lên,
-  // nên thành viên thường có emit thẳng cũng không vào được phòng.
-  socket.on('admin:join', () => {
-    const role = socket.data.role as string
-    if (role !== ORG_ROLES.OWNER && role !== ORG_ROLES.MODERATOR) {
+  // Dòng "Vừa diễn ra" của bàn quản trị. Quyền đọc từ `role_grants` ngay lúc join chứ không
+  // từ token: token không còn mang role, và đọc lúc join nghĩa là thu hồi quyền có hiệu lực
+  // ở lần join kế tiếp thay vì phải chờ token hết hạn.
+  socket.on('admin:join', async () => {
+    const grants = await roleGrantService.grantsOf(userId)
+    if (!canModerateAnyInOrg(grants, organizationId)) {
       return socket.emit('chat:error', { reason: 'forbidden' })
     }
     socket.join(adminRoom(organizationId))

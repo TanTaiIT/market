@@ -1,8 +1,10 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
+import { organizationSlugSchema } from '../organization/organization.schema'
 import {
   LISTING_STATUS,
   LISTING_CONDITION,
+  POST_VISIBILITY,
   VN_PROVINCE_NAMES,
   isWardOfProvince,
 } from '../../common/constants'
@@ -56,9 +58,35 @@ export const createListingSchema = z
     // và không xuất hiện ở `/listings/nearby` của ai cả.
     location: locationInputSchema.optional(),
     attributes: z.record(z.string()).optional(),
+
+    /**
+     * Đăng vào đâu. Mặc định `org_internal` — mặc định an toàn: tin ở lại trong tổ chức cho
+     * tới khi người đăng chủ động chọn ra trang công khai, và lúc đó nó đi qua manager danh mục.
+     */
+    visibility: z.nativeEnum(POST_VISIBILITY).optional(),
+    /**
+     * Tỉnh quyết định AI DUYỆT ở trục công khai, nên nó tách khỏi `location` (vốn tuỳ chọn và
+     * chỉ để hiển thị/lọc). Bỏ trống thì lấy `location.province`, rồi tới tỉnh của tổ chức.
+     */
+    provinceCode: z.enum(VN_PROVINCE_NAMES).optional(),
+    /**
+     * Chỉ dùng khi người đăng KHÔNG thuộc tổ chức đích (đường lùi "người ngoài đề xuất").
+     * Thành viên không cần gửi: org của họ đến từ scope, và scope thì đã đối chiếu membership.
+     */
+    orgSlug: organizationSlugSchema.optional(),
   })
   .strict()
   .openapi('CreateListing')
+
+export const quotaStatusSchema = z
+  .object({
+    allowed: z.boolean(),
+    limit: z.number(),
+    pending: z.number(),
+    remaining: z.number(),
+    reason: z.enum(['blocked_by_rejections', 'quota_full']).optional(),
+  })
+  .openapi('QuotaStatus')
 
 export const updateListingSchema = createListingSchema.partial().strict().openapi('UpdateListing')
 
@@ -95,7 +123,10 @@ export const listingParamsSchema = z.object({ id: objectId })
 export const listingResponseSchema = z
   .object({
     _id: objectId,
-    organizationId: objectId,
+    /** `null` = tin của trục danh mục, không thuộc tổ chức nào. */
+    organizationId: objectId.nullable(),
+    visibility: z.nativeEnum(POST_VISIBILITY),
+    provinceCode: z.string(),
     title: z.string(),
     slug: z.string(),
     description: z.string(),
@@ -124,5 +155,6 @@ export type ListingQuery = z.infer<typeof listingQuerySchema>
 export type NearbyQuery = z.infer<typeof nearbyQuerySchema>
 
 registry.register('CreateListing', createListingSchema)
+registry.register('QuotaStatus', quotaStatusSchema)
 registry.register('UpdateListing', updateListingSchema)
 registry.register('Listing', listingResponseSchema)

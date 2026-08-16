@@ -53,8 +53,12 @@ tests/             → NGANG HÀNG src/, không nằm trong src/
 
 ## Danh sách feature hiện có (không tự ý đổi tên/gộp)
 
-`auth`, `category`, `chain`, `chat`, `listing`, `notification`, `organization`,
-`platform-admin`, `review`, `search`, `upload`, `user`
+`auth`, `category`, `chat`, `join-request`, `listing`, `location`, `membership`,
+`moderation`, `notification`, `org-unit`, `organization`, `report`, `review`,
+`role-grant`, `search`, `trust`, `upload`, `user`
+
+> `chain` và `platform-admin` đã bị gỡ ở v2 — quyền hệ thống giờ nằm ở `role-grant`
+> (xem `docs/architecture/v2-org-permission.plan.md` §0).
 
 ## Quy tắc bắt buộc
 

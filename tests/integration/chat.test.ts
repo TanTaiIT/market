@@ -10,52 +10,36 @@ let mongod: MongoMemoryReplSet
 let categoryId = ''
 
 /** Org A: người bán + người mua. Org B: người ngoài, dùng để kiểm chứng cách ly tenant. */
-const seller = { token: '', id: '' }
-const buyer = { token: '', id: '' }
-const outsiderSameOrg = { token: '', id: '' }
-const otherOrg = { token: '', id: '' }
+const seller = { token: '', id: '', slug: '' }
+const buyer = { token: '', id: '', slug: '' }
+const outsiderSameOrg = { token: '', id: '', slug: '' }
+const otherOrg = { token: '', id: '', slug: '' }
 
 let listingId = ''
 let conversationId = ''
 
-const PASSWORD = 'password123'
+let masterToken = ''
+const orgIds: Record<string, string> = {}
 
-async function registerOwner(slug: string) {
-  const res = await request(app)
-    .post('/api/v1/auth/register')
-    .send({
-      organizationName: `Org ${slug}`,
-      organizationSlug: slug,
-      name: `Owner ${slug}`,
-      email: `owner@${slug}.local`,
-      password: PASSWORD,
-    })
-    .expect(201)
-  return { token: res.body.data.tokens.accessToken as string, id: res.body.data.user.id as string }
+/** Chủ org: master tạo org và chỉ định người chủ — không còn luồng tự đăng ký kèm org. */
+async function createOwner(slug: string) {
+  const { registerUser, createOrg } = await import('../helpers/fixtures')
+  const user = await registerUser(app, `owner@${slug}.local`, `Owner ${slug}`)
+  const org = await createOrg(app, masterToken, {
+    name: `Org ${slug}`,
+    slug,
+    ownerEmail: user.email,
+  })
+  orgIds[slug] = org.id
+  return { token: user.token, id: user.id, slug }
 }
 
-/** Thành viên thứ hai của một org — đăng ký chỉ tạo owner, nên phải tạo thẳng ở tầng model. */
-async function addMember(orgSlug: string, name: string, email: string) {
-  const { Organization } = await import('../../src/features/organization/organization.model')
-  const { User } = await import('../../src/features/user/user.model')
-  const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
-
-  const org = await Organization.findOne({ slug: orgSlug }).exec()
-  await runUnscoped('test fixture: thêm thành viên', () =>
-    User.create({
-      organizationId: org!._id,
-      name,
-      email,
-      password: PASSWORD,
-      isEmailVerified: true,
-    }),
-  )
-
-  const res = await request(app)
-    .post('/api/v1/auth/login')
-    .send({ orgSlug, email, password: PASSWORD })
-    .expect(200)
-  return { token: res.body.data.tokens.accessToken as string, id: res.body.data.user.id as string }
+/** Thành viên thứ hai — đường mời chưa làm, nên tạo membership thẳng ở tầng model. */
+async function joinOrg(slug: string, name: string, email: string) {
+  const { registerUser, addMember } = await import('../helpers/fixtures')
+  const user = await registerUser(app, email, name)
+  await addMember(user.id, orgIds[slug])
+  return { token: user.token, id: user.id, slug }
 }
 
 beforeAll(async () => {
@@ -73,14 +57,17 @@ beforeAll(async () => {
   const { Category } = await import('../../src/features/category/category.model')
   categoryId = (await Category.create({ name: 'Đồ dùng', slug: 'do-dung' }))._id.toString()
 
-  Object.assign(seller, await registerOwner('chat-a'))
-  Object.assign(otherOrg, await registerOwner('chat-b'))
-  Object.assign(buyer, await addMember('chat-a', 'Người mua', 'buyer@chat-a.local'))
-  Object.assign(outsiderSameOrg, await addMember('chat-a', 'Người ngoài', 'outsider@chat-a.local'))
+  const { makeMaster } = await import('../helpers/fixtures')
+  masterToken = (await makeMaster(app)).token
+
+  Object.assign(seller, await createOwner('chat-a'))
+  Object.assign(otherOrg, await createOwner('chat-b'))
+  Object.assign(buyer, await joinOrg('chat-a', 'Người mua', 'buyer@chat-a.local'))
+  Object.assign(outsiderSameOrg, await joinOrg('chat-a', 'Người ngoài', 'outsider@chat-a.local'))
 
   const created = await request(app)
     .post('/api/v1/listings')
-    .set('Authorization', `Bearer ${seller.token}`)
+    .set(as(seller))
     .send({
       title: 'Đèn học chống cận có kẹp bàn',
       description: 'Đèn LED ba mức sáng, dùng nửa năm, còn nguyên hộp',
@@ -105,7 +92,9 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-const as = (who: { token: string }) => ({ Authorization: `Bearer ${who.token}` })
+function as(who: { token: string; slug: string }) {
+  return { Authorization: `Bearer ${who.token}`, 'X-Org-Slug': who.slug }
+}
 
 describe('Chat — mở hội thoại', () => {
   it('người mua mở được hội thoại với tin của người khác', async () => {

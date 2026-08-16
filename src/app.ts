@@ -8,7 +8,6 @@ import { env } from './config/env'
 import { logger } from './config/logger'
 import { generateOpenApiDocument } from './config/openapi'
 import featureRoutes from './features' // side-effect: đăng ký schema vào OpenAPI registry
-import platformAdminRoutes from './features/platform-admin/platform-admin.routes'
 import { notFound } from './middlewares/notFound.middleware'
 import { resolveTenant } from './middlewares/tenant.middleware'
 import { errorConverter, errorHandler } from './middlewares/error.middleware'
@@ -44,10 +43,9 @@ export function createApp(): Application {
     res.json({ success: true, status: 'ok', uptime: process.uptime() })
   })
 
-  // Bên bán phần mềm: nhánh riêng, KHÔNG đi qua resolveTenant vì không thuộc org nào.
-  app.use('/platform-admin', platformAdminRoutes)
-
   // API routes. resolveTenant phải đứng trước mọi route nghiệp vụ để scope sống suốt request.
+  // Không còn nhánh `/platform-admin` riêng: `master` giờ là một quyền trong `role_grants` của
+  // một User bình thường, nên nó đi chung một đường auth với mọi người.
   app.use(env.API_PREFIX, resolveTenant, featureRoutes)
 
   // OpenAPI (code-first từ Zod) + Scalar API Reference

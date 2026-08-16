@@ -3,93 +3,67 @@ import request from 'supertest'
 import mongoose from 'mongoose'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import type { Application } from 'express'
+import {
+  PASSWORD,
+  TestUser,
+  addMember,
+  createCategory,
+  createOrg,
+  createTestApp,
+  listingPayload,
+  makeMaster,
+  orgAuth,
+  publishListing,
+  registerUser,
+  startTestDb,
+} from '../helpers/fixtures'
 
 let app: Application
 let mongod: MongoMemoryReplSet
 
-// Danh mục có thật, tạo trong beforeAll: `listingService.create` từ chối categoryId không
-// trỏ tới danh mục nào. Category là từ điển dùng chung nên nó nằm ngoài mọi tenant.
 let CATEGORY_ID = ''
-// Cùng một email ở hai org phải tạo được hai tài khoản riêng (quyết định #2).
-const SHARED_EMAIL = 'owner@example.com'
-const PASSWORD = 'password123'
+let master: TestUser
+const orgA = { id: '', slug: 'org-a', owner: {} as TestUser, listingId: '' }
+const orgB = { id: '', slug: 'org-b', owner: {} as TestUser, listingId: '' }
 
-const orgA = { token: '', ownerId: '', orgId: '', listingId: '' }
-const orgB = { token: '', ownerId: '', orgId: '', listingId: '' }
-
-function listingPayload(title: string) {
-  return {
-    title,
-    description: 'Mô tả đủ dài cho validation',
-    price: 1000000,
-    categoryId: CATEGORY_ID,
-    images: ['https://example.com/a.jpg'],
-    location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
-  }
-}
-
-async function registerOrg(slug: string) {
-  const res = await request(app)
-    .post('/api/v1/auth/register')
-    .send({
-      organizationName: `Org ${slug}`,
-      organizationSlug: slug,
-      name: `Owner ${slug}`,
-      email: SHARED_EMAIL,
-      password: PASSWORD,
-    })
-  expect(res.status).toBe(201)
-  return {
-    token: res.body.data.tokens.accessToken as string,
-    ownerId: res.body.data.user.id as string,
-    orgId: res.body.data.user.organizationId as string,
-    listingId: '',
-  }
-}
-
-async function createListing(token: string, title: string) {
+async function createListing(user: TestUser, orgSlug: string, title: string) {
   const res = await request(app)
     .post('/api/v1/listings')
-    .set('Authorization', `Bearer ${token}`)
-    .send(listingPayload(title))
-  expect(res.status).toBe(201)
+    .set(orgAuth(user.token, orgSlug))
+    .send(listingPayload(title, CATEGORY_ID))
+    .expect(201)
   return res.body.data._id as string
 }
 
-/** Tin mới vào PENDING và chưa có route duyệt tin — bật ACTIVE thẳng ở tầng model. */
-async function publish(listingId: string) {
-  const { Listing } = await import('../../src/features/listing/listing.model')
-  const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
-  await runUnscoped('test fixture', () =>
-    Listing.updateOne({ _id: listingId }, { status: 'active' }).exec(),
-  )
-}
-
 beforeAll(async () => {
-  // Transaction (đăng ký Organization) đòi replica set — standalone sẽ lỗi ngay.
-  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } })
-  // Giữ URI ở biến cục bộ: đọc lại qua process.env cho ra `string | undefined`.
-  const uri = mongod.getUri()
-  process.env.MONGO_URI = uri
-  process.env.JWT_SECRET = 'test_secret'
-  process.env.JWT_REFRESH_SECRET = 'test_refresh_secret'
-  delete process.env.APP_BASE_DOMAIN
+  mongod = await startTestDb()
+  app = await createTestApp()
 
-  await mongoose.connect(uri)
+  CATEGORY_ID = await createCategory()
+  master = await makeMaster(app)
 
-  const { createApp } = await import('../../src/app')
-  app = createApp()
+  orgA.owner = await registerUser(app, 'owner@org-a.local', 'Owner A')
+  orgB.owner = await registerUser(app, 'owner@org-b.local', 'Owner B')
 
-  const { Category } = await import('../../src/features/category/category.model')
-  const category = await Category.create({ name: 'Đồ dùng', slug: 'do-dung' })
-  CATEGORY_ID = category._id.toString()
+  orgA.id = (
+    await createOrg(app, master.token, {
+      name: 'Org A',
+      slug: orgA.slug,
+      ownerEmail: orgA.owner.email,
+    })
+  ).id
+  orgB.id = (
+    await createOrg(app, master.token, {
+      name: 'Org B',
+      slug: orgB.slug,
+      ownerEmail: orgB.owner.email,
+    })
+  ).id
 
-  Object.assign(orgA, await registerOrg('org-a'))
-  Object.assign(orgB, await registerOrg('org-b'))
-  orgA.listingId = await createListing(orgA.token, 'Tin đăng của org A')
-  orgB.listingId = await createListing(orgB.token, 'Tin đăng của org B')
-  await publish(orgA.listingId)
-  await publish(orgB.listingId)
+  orgA.listingId = await createListing(orgA.owner, orgA.slug, 'Tin đăng của org A')
+  orgB.listingId = await createListing(orgB.owner, orgB.slug, 'Tin đăng của org B')
+  await publishListing(orgA.listingId)
+  await publishListing(orgB.listingId)
 }, 120_000)
 
 afterAll(async () => {
@@ -97,16 +71,10 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-describe('Cách ly giữa hai org độc lập', () => {
-  it('trùng email ở 2 org tạo được 2 tài khoản riêng', () => {
-    expect(orgA.ownerId).not.toBe(orgB.ownerId)
-    expect(orgA.orgId).not.toBe(orgB.orgId)
-  })
+describe('Cách ly giữa hai org', () => {
+  it('GET /listings chỉ trả tin của org đang hoạt động', async () => {
+    const res = await request(app).get('/api/v1/listings').set(orgAuth(orgA.owner.token, orgA.slug))
 
-  it('GET /listings chỉ trả tin của org mình', async () => {
-    const res = await request(app)
-      .get('/api/v1/listings')
-      .set('Authorization', `Bearer ${orgA.token}`)
     expect(res.status).toBe(200)
     expect(res.body.data).toHaveLength(1)
     expect(res.body.data[0]._id).toBe(orgA.listingId)
@@ -115,155 +83,131 @@ describe('Cách ly giữa hai org độc lập', () => {
   it('đọc tin org khác trả 404 chứ không phải 403 — không lộ sự tồn tại', async () => {
     const res = await request(app)
       .get(`/api/v1/listings/${orgB.listingId}`)
-      .set('Authorization', `Bearer ${orgA.token}`)
+      .set(orgAuth(orgA.owner.token, orgA.slug))
     expect(res.status).toBe(404)
   })
 
   it('sửa và xoá tin org khác cũng trả 404', async () => {
     const patched = await request(app)
       .patch(`/api/v1/listings/${orgB.listingId}`)
-      .set('Authorization', `Bearer ${orgA.token}`)
+      .set(orgAuth(orgA.owner.token, orgA.slug))
       .send({ price: 1 })
     expect(patched.status).toBe(404)
 
     const deleted = await request(app)
       .delete(`/api/v1/listings/${orgB.listingId}`)
-      .set('Authorization', `Bearer ${orgA.token}`)
+      .set(orgAuth(orgA.owner.token, orgA.slug))
     expect(deleted.status).toBe(404)
   })
 
-  it('login phải chỉ ra org, và trả đúng tài khoản của org đó', async () => {
-    const withoutOrg = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ email: SHARED_EMAIL, password: PASSWORD })
-    expect(withoutOrg.status).toBe(401)
+  it('ghi tin mới luôn rơi vào org đang hoạt động', async () => {
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(orgAuth(orgA.owner.token, orgA.slug))
+      .send(listingPayload('Tin mới của org A', CATEGORY_ID))
 
-    const scoped = await request(app)
-      .post('/api/v1/auth/login')
-      .send({ orgSlug: 'org-b', email: SHARED_EMAIL, password: PASSWORD })
-    expect(scoped.status).toBe(200)
-    expect(scoped.body.data.user.id).toBe(orgB.ownerId)
+    expect(res.status).toBe(201)
+    expect(res.body.data.organizationId).toBe(orgA.id)
   })
 })
 
-describe('Chain: đọc xuyên org, ghi thì không', () => {
-  let adminToken = ''
-  let chainId = ''
+describe('Org hoạt động đến từ request, không từ token', () => {
+  it('một tài khoản thuộc HAI org, chỉ ra org nào thì thấy dữ liệu org đó', async () => {
+    const nomad = await registerUser(app, 'nomad@example.com', 'Người hai nơi')
+    await addMember(nomad.id, orgA.id)
+    await addMember(nomad.id, orgB.id)
 
-  beforeAll(async () => {
-    const { PlatformAdmin } = await import('../../src/features/platform-admin/platform-admin.model')
-    await PlatformAdmin.create({
-      email: 'admin@platform.local',
-      name: 'Super',
-      password: 'platform123',
-      role: 'super_admin',
-    })
+    const inA = await request(app).get('/api/v1/listings').set(orgAuth(nomad.token, orgA.slug))
+    const inB = await request(app).get('/api/v1/listings').set(orgAuth(nomad.token, orgB.slug))
 
-    const login = await request(app)
-      .post('/platform-admin/auth/login')
-      .send({ email: 'admin@platform.local', password: 'platform123' })
-    expect(login.status).toBe(200)
-    adminToken = login.body.data.accessToken
-
-    const chain = await request(app)
-      .post('/platform-admin/chains')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ name: 'Hệ thống ABC', slug: 'abc-edu', ownerId: orgA.ownerId })
-    expect(chain.status).toBe(201)
-    chainId = chain.body.data._id
-
-    for (const orgId of [orgA.orgId, orgB.orgId]) {
-      const assigned = await request(app)
-        .patch(`/platform-admin/organizations/${orgId}/chain`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send({ chainId })
-      expect(assigned.status).toBe(200)
-    }
-  }, 60_000)
-
-  it('token user KHÔNG dùng được cho route platform-admin', async () => {
-    const res = await request(app)
-      .post('/platform-admin/chains')
-      .set('Authorization', `Bearer ${orgA.token}`)
-      .send({ name: 'x', ownerId: orgA.ownerId })
-    expect(res.status).toBe(401)
+    expect(inA.body.data[0]._id).toBe(orgA.listingId)
+    expect(inB.body.data[0]._id).toBe(orgB.listingId)
   })
 
-  it('user trong chain thấy tin của mọi org cùng chain trên chính GET /listings', async () => {
-    const res = await request(app)
-      .get('/api/v1/listings')
-      .set('Authorization', `Bearer ${orgA.token}`)
-    expect(res.status).toBe(200)
-    expect(res.body.data).toHaveLength(2)
-  })
+  it('không thuộc org thì KHÔNG ghi được vào org đó', async () => {
+    const outsider = await registerUser(app, 'outsider@example.com', 'Người ngoài')
 
-  it('nhìn thấy không đồng nghĩa với sửa được: tin org khác vẫn 403', async () => {
-    const res = await request(app)
-      .patch(`/api/v1/listings/${orgB.listingId}`)
-      .set('Authorization', `Bearer ${orgA.token}`)
-      .send({ price: 1 })
-    expect(res.status).toBe(403)
-
-    const untouched = await request(app)
-      .get(`/api/v1/listings/${orgB.listingId}`)
-      .set('Authorization', `Bearer ${orgB.token}`)
-    expect(untouched.body.data.price).toBe(1000000)
-  })
-
-  it('chain owner ghi tin mới thì tin rơi vào org của chính họ, không phải org khác', async () => {
     const res = await request(app)
       .post('/api/v1/listings')
-      .set('Authorization', `Bearer ${orgA.token}`)
-      .send(listingPayload('Tin do chain owner tạo'))
+      .set(orgAuth(outsider.token, orgA.slug))
+      .send(listingPayload('Tin của người ngoài', CATEGORY_ID))
 
-    expect(res.status).toBe(201)
-    // Scope đọc là cả chain, nhưng ghi vẫn rơi đúng org của người ghi.
-    expect(res.body.data.organizationId).toBe(orgA.orgId)
+    // Không mở scope -> tenantPlugin fail-closed chặn ở tầng thấp nhất.
+    expect(res.status).toBe(400)
   })
 
-  it('thống kê chain gộp đủ hai org', async () => {
-    const res = await request(app)
-      .get(`/api/v1/chains/${chainId}/stats`)
-      .set('Authorization', `Bearer ${orgA.token}`)
-    expect(res.status).toBe(200)
-    expect(res.body.data.totals.organizations).toBe(2)
-    expect(res.body.data.totals.listings).toBe(3)
-  })
+  it('rời org là mất quyền NGAY, không đợi token hết hạn', async () => {
+    const leaver = await registerUser(app, 'leaver@example.com', 'Người rời đi')
+    await addMember(leaver.id, orgA.id)
 
-  it('không phải chủ chain thì 403', async () => {
+    const before = await request(app).get('/api/v1/listings').set(orgAuth(leaver.token, orgA.slug))
+    expect(before.status).toBe(200)
+
+    const { Membership } = await import('../../src/features/membership/membership.model')
+    await Membership.updateOne(
+      { userId: leaver.id, organizationId: orgA.id },
+      { status: 'archived' },
+    ).exec()
+
+    // Cùng token đó, ghi không còn đi được nữa.
+    const after = await request(app)
+      .post('/api/v1/listings')
+      .set(orgAuth(leaver.token, orgA.slug))
+      .send(listingPayload('Tin sau khi rời org', CATEGORY_ID))
+    expect(after.status).toBe(400)
+  })
+})
+
+describe('Nhánh master', () => {
+  it('user thường KHÔNG tạo được org', async () => {
     const res = await request(app)
-      .get(`/api/v1/chains/${chainId}/stats`)
-      .set('Authorization', `Bearer ${orgB.token}`)
+      .post('/api/v1/organizations')
+      .set('Authorization', `Bearer ${orgA.owner.token}`)
+      .send({ name: 'Org tự tạo', slug: 'org-tu-tao', ownerEmail: orgA.owner.email })
     expect(res.status).toBe(403)
   })
 
-  it('thông báo cấp chain fan-out mỗi org một bản ghi riêng', async () => {
-    const sent = await request(app)
-      .post(`/api/v1/chains/${chainId}/notifications`)
-      .set('Authorization', `Bearer ${orgA.token}`)
-      .send({ title: 'Thông báo chain', body: 'Nội dung' })
-    expect(sent.status).toBe(201)
-    expect(sent.body.data.organizations).toBe(2)
+  it('chủ org nhận được quyền manager scope org của mình', async () => {
+    const res = await request(app)
+      .get('/api/v1/role-grants/mine')
+      .set('Authorization', `Bearer ${orgA.owner.token}`)
+      .expect(200)
 
-    for (const org of [orgA, orgB]) {
-      const inbox = await request(app)
-        .get('/api/v1/notifications')
-        .set('Authorization', `Bearer ${org.token}`)
-      expect(inbox.body.data).toHaveLength(1)
-      expect(inbox.body.data[0].sourceType).toBe('chain')
-    }
+    expect(res.body.data).toHaveLength(1)
+    expect(res.body.data[0]).toMatchObject({ role: 'manager', scopeType: 'org', orgId: orgA.id })
   })
 
-  it('suspend organization có hiệu lực ngay, không đợi access token hết hạn', async () => {
+  it('suspend organization có hiệu lực ngay', async () => {
     const suspended = await request(app)
-      .patch(`/platform-admin/organizations/${orgB.orgId}/status`)
-      .set('Authorization', `Bearer ${adminToken}`)
+      .patch(`/api/v1/organizations/${orgB.id}/status`)
+      .set('Authorization', `Bearer ${master.token}`)
       .send({ status: 'suspended' })
     expect(suspended.status).toBe(200)
 
-    const res = await request(app)
-      .get('/api/v1/listings')
-      .set('Authorization', `Bearer ${orgB.token}`)
+    const res = await request(app).get('/api/v1/listings').set(orgAuth(orgB.owner.token, orgB.slug))
     expect(res.status).toBe(403)
+  })
+
+  it('không thu hồi được master cuối cùng', async () => {
+    const grants = await request(app)
+      .get('/api/v1/role-grants/mine')
+      .set('Authorization', `Bearer ${master.token}`)
+      .expect(200)
+
+    const masterGrantId = grants.body.data[0].id
+    // Tự thu hồi quyền của chính mình đã bị chặn từ tầng policy.
+    const res = await request(app)
+      .delete(`/api/v1/role-grants/${masterGrantId}`)
+      .set('Authorization', `Bearer ${master.token}`)
+    expect(res.status).toBe(403)
+  })
+})
+
+describe('Đăng nhập không còn phụ thuộc org', () => {
+  it('cùng email không thể tồn tại ở hai org nữa — tài khoản là toàn cục', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/register')
+      .send({ name: 'Trùng', email: orgA.owner.email, password: PASSWORD })
+    expect(res.status).toBe(409)
   })
 })

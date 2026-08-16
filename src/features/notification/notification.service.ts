@@ -1,45 +1,97 @@
 import { Types } from 'mongoose'
 import { notificationRepository } from './notification.repository'
+import type { NotificationAudience } from './notification.repository'
 import { CreateNotificationInput, NotificationQuery } from './notification.schema'
-import { NOTIFICATION_SOURCE } from '../../common/constants'
-import { NotFoundError } from '../../common/errors'
+import { toNotificationDto } from './notification.types'
+import { canModerateOrg } from '../../common/authz/policy'
+import { SCOPE_TYPES } from '../../common/constants'
+import type { Grant } from '../../common/authz/policy'
+import type { OrgActor } from '../../common/utils/actor'
+import { membershipRepository } from '../membership/membership.repository'
+import { orgUnitRepository } from '../org-unit/org-unit.repository'
+import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 
+type Viewer = OrgActor & { grants: Grant[] }
+
+/** Nhóm mà người này ĐỨNG TRONG — quyết định họ nhận được thông báo nào. */
+async function inboxAudience(viewer: Viewer): Promise<NotificationAudience> {
+  const membership = await membershipRepository.findActive(viewer.id, viewer.organizationId)
+  return { units: membership?.unitId ? [membership.unitId] : [] }
+}
+
+/**
+ * Nhóm mà người này GỬI TỚI ĐƯỢC.
+ *
+ * Ai gửi được cho cả tổ chức thì cũng đọc được mọi thông báo của tổ chức — `all: true` bỏ hẳn
+ * điều kiện nhóm. Còn staff nhóm con chỉ thấy phần trong tầm với của họ, đúng bằng thứ họ gửi
+ * được, nên bàn quản trị không thành đường vòng đọc thông báo của nhóm khác.
+ */
+async function managedAudience(viewer: Viewer): Promise<NotificationAudience> {
+  const { organizationId } = viewer
+  if (canModerateOrg(viewer.grants, { orgId: organizationId, unitId: null })) return { all: true }
+
+  const units = viewer.grants
+    .filter(
+      (g) =>
+        g.scopeType === SCOPE_TYPES.ORG_UNIT && g.orgId?.toString() === organizationId && g.unitId,
+    )
+    .map((g) => new Types.ObjectId(g.unitId!.toString()))
+
+  return { units }
+}
+
 export const notificationService = {
-  /** Thông báo cấp org: đúng một bản ghi, organizationId do tenantPlugin gán. */
-  createForOrganization(input: CreateNotificationInput) {
+  /**
+   * Gửi thông báo. `unitId` rỗng = cả tổ chức.
+   *
+   * `requireOrgModerator` ở tầng route chỉ trả lời "có duyệt được thứ gì đó trong org này
+   * không" — cố tình rộng, để staff của một nhóm mở được màn hình của họ. Phạm vi thật phải
+   * chốt ở đây bằng `canModerateOrg`, nếu không staff nhóm con gửi được cho toàn tổ chức,
+   * rộng hơn hẳn thứ họ được cấp.
+   */
+  async createForOrganization(
+    input: CreateNotificationInput,
+    actor: OrgActor & { grants: Grant[] },
+  ) {
+    const unitId = input.unitId ?? null
+
+    if (!canModerateOrg(actor.grants, { orgId: actor.organizationId, unitId })) {
+      throw new ForbiddenError(
+        unitId
+          ? 'Bạn không phụ trách nhóm này'
+          : 'Chỉ người quản lý cấp tổ chức mới gửi được cho cả tổ chức',
+      )
+    }
+
+    if (unitId) {
+      const unit = await orgUnitRepository.findById(unitId)
+      if (!unit) throw new BadRequestError('Nhóm con không tồn tại trong tổ chức này')
+    }
+
     return notificationRepository.create({
-      ...input,
-      sourceType: NOTIFICATION_SOURCE.ORGANIZATION,
-      sourceChainId: null,
+      title: input.title,
+      body: input.body,
+      unitId: unitId ? new Types.ObjectId(unitId) : null,
     })
   },
 
   /**
-   * Thông báo cấp chain: nhân bản mỗi org một bản ghi thay vì mở quyền đọc xuyên org.
-   * Đổi lại N bản ghi cho N org — chấp nhận được vì Notification nhỏ hơn Listing nhiều,
-   * và trạng thái đã đọc tách sạch theo org.
+   * `scope: 'inbox'` (mặc định) — thứ người gọi NHẬN được: gửi cho cả org, cộng nhóm của họ.
+   * `scope: 'managed'` — thứ người gọi có quyền GỬI tới, dùng cho bàn quản trị.
+   *
+   * Lọc ở tầng query chứ không tải hết rồi cắt — cắt sau phân trang sẽ cho ra những trang
+   * lưng chừng, có trang đầy có trang gần rỗng, mà tổng số thì luôn sai.
    */
-  createForChain(
-    chainId: Types.ObjectId,
-    orgIds: Types.ObjectId[],
-    input: CreateNotificationInput,
-  ) {
-    return notificationRepository.fanOut(
-      orgIds.map((organizationId) => ({
-        organizationId,
-        sourceType: NOTIFICATION_SOURCE.CHAIN,
-        sourceChainId: chainId,
-        ...input,
-      })),
-    )
-  },
+  async list(query: NotificationQuery, viewer: Viewer) {
+    const audience =
+      query.scope === 'managed' ? await managedAudience(viewer) : await inboxAudience(viewer)
 
-  async list(query: NotificationQuery) {
     const pagination = parsePagination(query)
-    const { items, total } = await notificationRepository.paginate(pagination)
+    const { items, total } = await notificationRepository.paginate(audience, pagination)
+
     return {
-      items,
+      items: items.map((doc) => toNotificationDto(doc, viewer.id)),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },
@@ -47,6 +99,6 @@ export const notificationService = {
   async markRead(id: string, userId: string) {
     const notification = await notificationRepository.markRead(id, new Types.ObjectId(userId))
     if (!notification) throw new NotFoundError('Notification not found')
-    return notification
+    return toNotificationDto(notification, userId)
   },
 }

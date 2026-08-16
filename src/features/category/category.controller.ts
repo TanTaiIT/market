@@ -18,19 +18,19 @@ export const categoryController = {
   /*
    * Hai handler dưới đây mount ở nhánh `/platform-admin`, không phải `/categories`: danh mục
    * là từ điển dùng chung toàn hệ thống (convention §1.3) nên quản trị một trường không được
-   * sửa nó. Route nằm bên `platform-admin.routes.ts` cùng chỗ với chain/organization — hai
+   * sửa nó. Route nằm bên `platform-admin.routes.ts` cùng chỗ với organization — hai
    * thực thể trên-tenant còn lại — còn nghiệp vụ thì ở lại trong feature này.
    */
 
   // POST /platform-admin/categories
   create: catchAsync(async (req, res) => {
-    const category = await categoryService.create(req.body, req.platformAdmin!.id)
+    const category = await categoryService.create(req.body, req.user!.id)
     created(res, { message: 'Category created', data: category })
   }),
 
   // PATCH /platform-admin/categories/:id
   update: catchAsync(async (req, res) => {
-    const category = await categoryService.update(req.params.id, req.body, req.platformAdmin!.id)
+    const category = await categoryService.update(req.params.id, req.body, req.user!.id)
     success(res, { message: 'Category updated', data: category })
   }),
 }

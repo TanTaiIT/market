@@ -5,49 +5,125 @@ import { env } from '../src/config/env'
 import { User } from '../src/features/user/user.model'
 import { Listing } from '../src/features/listing/listing.model'
 import { Organization } from '../src/features/organization/organization.model'
-import { Chain } from '../src/features/chain/chain.model'
+import { OrgUnit } from '../src/features/org-unit/org-unit.model'
+import { Membership } from '../src/features/membership/membership.model'
+import { RoleGrant } from '../src/features/role-grant/role-grant.model'
+import { JoinRequest } from '../src/features/join-request/join-request.model'
+import { PublicTrust } from '../src/features/trust/trust.model'
 import { Notification } from '../src/features/notification/notification.model'
-import { PlatformAdmin } from '../src/features/platform-admin/platform-admin.model'
 import { Category } from '../src/features/category/category.model'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
 import { assertDisposableDb } from './assertDisposableDb'
 import {
+  JOINED_VIA,
   LISTING_STATUS,
   LISTING_CONDITION,
-  ORG_ROLES,
-  PLATFORM_ADMIN_ROLES,
+  POST_VISIBILITY,
+  MEMBERSHIP_ROLES,
+  ORG_CAPABILITY_PRESETS,
+  ORG_TYPES,
+  SCOPE_TYPES,
+  SYSTEM_ROLES,
   wardsOf,
 } from '../src/common/constants'
 
 const PASSWORD = 'password123'
 
-async function createOrgWithOwner(args: {
+/**
+ * Dựng org theo đúng đường mà `organizationService.createByMaster` đi: org + membership `owner`
+ * + grant `manager` scope org. Thiếu grant thì chủ org không duyệt được gì trong org của mình,
+ * và fixture sẽ mô tả sai cách hệ thống thật hoạt động.
+ */
+async function createOrg(args: {
   name: string
   slug: string
-  chainId: Types.ObjectId | null
+  orgType: (typeof ORG_TYPES)[keyof typeof ORG_TYPES]
+  provinceCode: string
+  masterId: Types.ObjectId
+  units?: string[]
 }) {
-  const orgId = new Types.ObjectId()
   const owner = await User.create({
-    organizationId: orgId,
     name: `Chủ ${args.name}`,
     email: `owner@${args.slug}.local`,
     phone: faker.string.numeric({ length: 10 }),
     password: PASSWORD,
-    role: ORG_ROLES.OWNER,
-    isEmailVerified: true,
+    emailVerifiedAt: new Date(),
   })
+
   const org = await Organization.create({
-    _id: orgId,
-    chainId: args.chainId,
     name: args.name,
     slug: args.slug,
+    orgType: args.orgType,
+    capabilities: ORG_CAPABILITY_PRESETS[args.orgType],
+    provinceCode: args.provinceCode,
     ownerId: owner._id,
+    createdBy: args.masterId,
   })
-  return { org, owner }
+
+  await Membership.create({
+    userId: owner._id,
+    organizationId: org._id,
+    role: MEMBERSHIP_ROLES.OWNER,
+    joinedVia: JOINED_VIA.ROSTER,
+  })
+
+  await RoleGrant.create({
+    userId: owner._id,
+    role: SYSTEM_ROLES.MANAGER,
+    scopeType: SCOPE_TYPES.ORG,
+    orgId: org._id,
+    grantedBy: args.masterId,
+  })
+
+  const units = await OrgUnit.insertMany(
+    (args.units ?? []).map((name) => ({ organizationId: org._id, name })),
+  )
+
+  // Một thành viên thường + staff của nhóm đầu tiên, để thử được lớp duyệt phân tầng.
+  const member = await User.create({
+    name: faker.person.fullName(),
+    email: `member@${args.slug}.local`,
+    phone: faker.string.numeric({ length: 10 }),
+    password: PASSWORD,
+    emailVerifiedAt: new Date(),
+  })
+  await Membership.create({
+    userId: member._id,
+    organizationId: org._id,
+    role: MEMBERSHIP_ROLES.MEMBER,
+    unitId: units[0]?._id ?? null,
+    joinedVia: JOINED_VIA.REQUEST,
+  })
+
+  if (units[0]) {
+    const staff = await User.create({
+      name: faker.person.fullName(),
+      email: `staff@${args.slug}.local`,
+      password: PASSWORD,
+      emailVerifiedAt: new Date(),
+    })
+    await Membership.create({
+      userId: staff._id,
+      organizationId: org._id,
+      role: MEMBERSHIP_ROLES.MEMBER,
+      unitId: units[0]._id,
+      joinedVia: JOINED_VIA.ROSTER,
+    })
+    await RoleGrant.create({
+      userId: staff._id,
+      role: SYSTEM_ROLES.STAFF,
+      scopeType: SCOPE_TYPES.ORG_UNIT,
+      orgId: org._id,
+      unitId: units[0]._id,
+      grantedBy: args.masterId,
+    })
+  }
+
+  return { org, owner, member }
 }
 
 function buildListings(
-  owner: { _id: Types.ObjectId; name: string; phone?: string },
+  seller: { _id: Types.ObjectId; name: string; phone?: string },
   orgId: Types.ObjectId,
   categoryId: Types.ObjectId,
 ) {
@@ -64,9 +140,11 @@ function buildListings(
       condition: LISTING_CONDITION.USED,
       images: [faker.image.url()],
       category: categoryId,
-      seller: owner._id,
-      posterName: owner.name,
-      posterContact: owner.phone ?? '',
+      seller: seller._id,
+      posterName: seller.name,
+      posterContact: seller.phone ?? '',
+      visibility: POST_VISIBILITY.ORG_INTERNAL,
+      provinceCode: 'Hồ Chí Minh',
       status: LISTING_STATUS.ACTIVE,
       location: {
         province: 'Hồ Chí Minh' as const,
@@ -90,13 +168,14 @@ async function seed() {
       User.deleteMany({}),
       Listing.deleteMany({}),
       Organization.deleteMany({}),
-      Chain.deleteMany({}),
+      OrgUnit.deleteMany({}),
+      Membership.deleteMany({}),
+      RoleGrant.deleteMany({}),
+      JoinRequest.deleteMany({}),
+      PublicTrust.deleteMany({}),
       Notification.deleteMany({}),
-      PlatformAdmin.deleteMany({}),
       Category.deleteMany({}),
     ])
-
-    const chainId = new Types.ObjectId()
 
     // Danh mục là từ điển dùng chung, không thuộc org nào — khớp bốn chip lọc bên app mobile.
     const categories = await Category.insertMany([
@@ -107,24 +186,42 @@ async function seed() {
     ])
     const categoryId = categories[0]._id
 
-    const hungVuong = await createOrgWithOwner({
+    // Master là một User bình thường + một grant scope `system`. Không còn collection riêng.
+    const master = await User.create({
+      name: 'Platform Master',
+      email: 'master@platform.local',
+      password: 'platform123',
+      emailVerifiedAt: new Date(),
+    })
+    await RoleGrant.create({
+      userId: master._id,
+      role: SYSTEM_ROLES.MASTER,
+      scopeType: SCOPE_TYPES.SYSTEM,
+    })
+
+    const hungVuong = await createOrg({
       name: 'Trường Hùng Vương',
       slug: 'hung-vuong',
-      chainId,
+      orgType: ORG_TYPES.SCHOOL,
+      provinceCode: 'Hồ Chí Minh',
+      masterId: master._id,
+      units: ['10A1', '10A2'],
     })
-    const caoThang = await createOrgWithOwner({
+    const caoThang = await createOrg({
       name: 'Trường Cao Thắng',
       slug: 'cao-thang',
-      chainId,
+      orgType: ORG_TYPES.SCHOOL,
+      provinceCode: 'Hồ Chí Minh',
+      masterId: master._id,
+      units: ['11B1'],
     })
-    // Org độc lập: dùng để kiểm chứng user org này KHÔNG thấy tin của chain trên.
-    const xyz = await createOrgWithOwner({ name: 'Cửa hàng XYZ', slug: 'xyz', chainId: null })
-
-    await Chain.create({
-      _id: chainId,
-      name: 'Hệ thống Trường ABC',
-      slug: 'abc-edu',
-      ownerId: hungVuong.owner._id,
+    // Org phẳng: không có nhóm con, để kiểm chứng lớp duyệt phân tầng tự suy biến đúng.
+    const xyz = await createOrg({
+      name: 'Cửa hàng XYZ',
+      slug: 'xyz',
+      orgType: ORG_TYPES.GENERIC,
+      provinceCode: 'Hà Nội',
+      masterId: master._id,
     })
 
     await Listing.insertMany([
@@ -133,20 +230,29 @@ async function seed() {
       ...buildListings(xyz.owner, xyz.org._id, categoryId),
     ])
 
-    await PlatformAdmin.create({
-      email: 'admin@platform.local',
-      name: 'Platform Super Admin',
-      password: 'platform123',
-      role: PLATFORM_ADMIN_ROLES.SUPER_ADMIN,
+    // Một manager danh mục cho trục công khai (Phase 4 dùng tới) — TP.HCM, danh mục "Sách vở".
+    const catManager = await User.create({
+      name: 'Quản lý danh mục Sách vở',
+      email: 'catmanager@platform.local',
+      password: PASSWORD,
+      emailVerifiedAt: new Date(),
+    })
+    await RoleGrant.create({
+      userId: catManager._id,
+      role: SYSTEM_ROLES.MANAGER,
+      scopeType: SCOPE_TYPES.CATEGORY_PROVINCE,
+      categoryId,
+      provinceCodes: ['Hồ Chí Minh'],
+      grantedBy: master._id,
     })
   })
 
-  console.log(
-    'Seeded: 4 danh mục, 1 chain (hung-vuong + cao-thang), 1 org độc lập (xyz), 15 listings.',
-  )
-  console.log(
-    `Login: POST /auth/login { orgSlug: "hung-vuong", email: "owner@hung-vuong.local", password: "${PASSWORD}" }`,
-  )
+  console.log('Seeded: 4 danh mục, 3 org (2 trường có nhóm con + 1 org phẳng), 15 listings.')
+  console.log(`Master:      master@platform.local / platform123`)
+  console.log(`Chủ org:     owner@hung-vuong.local / ${PASSWORD}`)
+  console.log(`Thành viên:  member@hung-vuong.local / ${PASSWORD}`)
+  console.log('Đăng nhập: POST /api/v1/auth/login { email, password } — không cần orgSlug nữa.')
+  console.log('Gọi API của org: thêm header `X-Org-Slug: hung-vuong`.')
 
   await mongoose.disconnect()
   process.exit(0)

@@ -1,9 +1,12 @@
 import { z } from 'zod'
 import { Router } from 'express'
 import { moderationController } from './moderation.controller'
+import { requireCategoryModerator, requireMasterPublicAxis } from './moderation.middleware'
 import {
   modListingQuerySchema,
   modParamsSchema,
+  rerouteListingSchema,
+  coverageSchema,
   activityQuerySchema,
   setListingStatusSchema,
   auditEventSchema,
@@ -11,8 +14,7 @@ import {
 } from './moderation.schema'
 import { listingResponseSchema } from '../listing/listing.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate, authorize } from '../../middlewares/auth.middleware'
-import { ORG_ROLES } from '../../common/constants'
+import { authenticate, requireOrg, requireOrgModerator } from '../../middlewares/auth.middleware'
 import {
   registry,
   bearerAuth,
@@ -29,7 +31,26 @@ const router = Router()
  * org đang resolve, `authorize` chặn thành viên thường. Đây cũng là chỗ duy nhất trả về tin ở
  * trạng thái không public — quy tắc 7 của AGENT chỉ áp cho endpoint công khai.
  */
-router.use(authenticate, authorize(ORG_ROLES.OWNER, ORG_ROLES.MODERATOR))
+// Trục DANH MỤC: phạm vi đến từ `role_grants` scope category_province, không từ org đang
+// resolve — nên nhánh này phải khai TRƯỚC `router.use` của trục org bên dưới.
+router.get(
+  '/public-queue',
+  authenticate,
+  requireCategoryModerator,
+  validate({ query: modListingQuerySchema }),
+  moderationController.publicQueue,
+)
+router.get('/coverage', authenticate, requireMasterPublicAxis, moderationController.coverage)
+router.patch(
+  '/listings/:id/route',
+  authenticate,
+  requireMasterPublicAxis,
+  validate({ params: modParamsSchema, body: rerouteListingSchema }),
+  moderationController.reroute,
+)
+
+// Trục ORG: từ đây trở xuống là bàn quản trị của một tổ chức.
+router.use(authenticate, requireOrg, requireOrgModerator)
 
 router.get('/overview', moderationController.overview)
 router.get('/activity', validate({ query: activityQuerySchema }), moderationController.activity)
@@ -132,6 +153,57 @@ registry.registerPath({
     401: unauthorized,
     403: notModerator,
     404: errorResponse('Không tìm thấy tin'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/moderation/public-queue',
+  operationId: 'moderationPublicQueue',
+  tags: ['Moderation'],
+  summary: 'Hàng đợi duyệt của TRỤC DANH MỤC',
+  description:
+    'Phạm vi (danh mục × tỉnh) lấy từ role_grants của chính người gọi và được áp ở tầng ' +
+    'query, không phải bộ lọc trên giao diện. Master thấy toàn bộ trục này.',
+  ...protectedRoute,
+  request: { query: modListingQuerySchema },
+  responses: {
+    200: jsonResponse('Hàng đợi', envelope(z.array(listingResponseSchema))),
+    403: errorResponse('Không phụ trách danh mục nào'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/moderation/coverage',
+  operationId: 'moderationCoverage',
+  tags: ['Moderation'],
+  summary: 'Ma trận phủ sóng (danh mục × tỉnh) cho master',
+  description:
+    'Chỉ trả các ô đáng chú ý: chưa có người phụ trách, hoặc đang tồn đọng. Mỗi ô trống là ' +
+    'một dòng tin chảy thẳng vào hàng đợi của master.',
+  ...protectedRoute,
+  responses: {
+    200: jsonResponse('Ma trận phủ sóng', envelope(coverageSchema)),
+    403: errorResponse('Cần quyền master'),
+  },
+})
+
+registry.registerPath({
+  method: 'patch',
+  path: '/moderation/listings/{id}/route',
+  operationId: 'moderationRerouteListing',
+  tags: ['Moderation'],
+  summary: 'Chuyển tin sang ô (danh mục × tỉnh) khác',
+  description: 'Tin quay về đầu hàng đợi mới và để lại vết kiểm toán.',
+  ...protectedRoute,
+  request: {
+    params: modParamsSchema,
+    body: { content: { 'application/json': { schema: rerouteListingSchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã chuyển ô', envelope(listingResponseSchema)),
+    403: errorResponse('Cần quyền master'),
   },
 })
 

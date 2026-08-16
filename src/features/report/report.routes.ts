@@ -9,9 +9,8 @@ import {
   reportResponseSchema,
 } from './report.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate, authorize } from '../../middlewares/auth.middleware'
+import { authenticate, requireOrg, requireOrgModerator } from '../../middlewares/auth.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
-import { ORG_ROLES } from '../../common/constants'
 import {
   registry,
   bearerAuth,
@@ -34,14 +33,16 @@ router.post(
 router.get(
   '/',
   authenticate,
-  authorize(ORG_ROLES.OWNER, ORG_ROLES.MODERATOR),
+  requireOrg,
+  requireOrgModerator,
   validate({ query: reportQuerySchema }),
   reportController.list,
 )
 router.patch(
   '/:id',
   authenticate,
-  authorize(ORG_ROLES.OWNER, ORG_ROLES.MODERATOR),
+  requireOrg,
+  requireOrgModerator,
   validate({ params: reportParamsSchema, body: resolveReportSchema }),
   reportController.resolve,
 )

@@ -3,25 +3,16 @@ import request from 'supertest'
 import mongoose from 'mongoose'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import type { Application } from 'express'
+import { PASSWORD, startTestDb, createTestApp } from '../helpers/fixtures'
 
 let app: Application
 let mongod: MongoMemoryReplSet
 
+const EMAIL = 'nguyenvana@example.com'
+
 beforeAll(async () => {
-  // Đăng ký tạo Organization + owner trong một transaction -> bắt buộc replica set.
-  mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } })
-  // Giữ URI ở biến cục bộ: đọc lại qua process.env cho ra `string | undefined`.
-  const uri = mongod.getUri()
-  process.env.MONGO_URI = uri
-  process.env.JWT_SECRET = 'test_secret'
-  process.env.JWT_REFRESH_SECRET = 'test_refresh_secret'
-  delete process.env.APP_BASE_DOMAIN
-
-  await mongoose.connect(uri)
-
-  // import sau khi set env để env.ts validate đúng
-  const { createApp } = await import('../../src/app')
-  app = createApp()
+  mongod = await startTestDb()
+  app = await createTestApp()
 }, 120_000)
 
 afterAll(async () => {
@@ -29,54 +20,99 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-describe('Auth flow', () => {
-  const credentials = { email: 'test@example.com', password: 'password123' }
-  const organization = { organizationName: 'Tester Org', organizationSlug: 'tester-org' }
-
-  it('registers a new organization with its first owner', async () => {
+describe('Auth v2 — tài khoản toàn cục', () => {
+  it('đăng ký chỉ tạo tài khoản, KHÔNG tạo tổ chức', async () => {
     const res = await request(app)
       .post('/api/v1/auth/register')
-      .send({ ...organization, name: 'Tester', ...credentials })
+      .send({ name: 'Nguyễn Văn A', email: EMAIL, password: PASSWORD })
 
     expect(res.status).toBe(201)
-    expect(res.body.success).toBe(true)
-    expect(res.body.data.tokens.accessToken).toBeDefined()
-    expect(res.body.data.user.email).toBe(credentials.email)
-    expect(res.body.data.user.organizationId).toBeDefined()
-    expect(res.body.data.user.role).toBe('owner')
+    expect(res.body.data.user.id).toBeTruthy()
+    // Không còn `organizationId` trong response: org là quan hệ, không phải thuộc tính của user.
+    expect(res.body.data.user.organizationId).toBeUndefined()
   })
 
-  it('rejects duplicate organization slug', async () => {
+  it('từ chối gửi kèm organizationName — luồng tạo org đã chuyển sang master', async () => {
+    const res = await request(app).post('/api/v1/auth/register').send({
+      name: 'B',
+      email: 'b@example.com',
+      password: PASSWORD,
+      organizationName: 'Tự tạo org',
+    })
+    expect(res.status).toBe(400)
+  })
+
+  it('email trùng bị chặn ở phạm vi TOÀN CỤC', async () => {
     const res = await request(app)
       .post('/api/v1/auth/register')
-      .send({
-        ...organization,
-        name: 'Tester2',
-        email: 'other@example.com',
-        password: 'password123',
-      })
+      .send({ name: 'Trùng', email: EMAIL, password: PASSWORD })
     expect(res.status).toBe(409)
   })
 
-  it('logs in with valid credentials scoped to the organization', async () => {
+  it('đăng nhập chỉ cần email + password, không cần orgSlug', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
-      .send({ orgSlug: organization.organizationSlug, ...credentials })
+      .send({ email: EMAIL, password: PASSWORD })
+
     expect(res.status).toBe(200)
-    expect(res.body.data.tokens.accessToken).toBeDefined()
+    expect(res.body.data.tokens.accessToken).toBeTruthy()
   })
 
-  it('rejects login without an organization', async () => {
-    const res = await request(app).post('/api/v1/auth/login').send(credentials)
+  it('sai mật khẩu vẫn 401', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: EMAIL, password: 'sai-mat-khau' })
     expect(res.status).toBe(401)
   })
 
-  it('rejects wrong password', async () => {
-    const res = await request(app).post('/api/v1/auth/login').send({
-      orgSlug: organization.organizationSlug,
-      email: credentials.email,
-      password: 'wrongpass',
-    })
-    expect(res.status).toBe(401)
+  it('refresh trả token mới cho đúng tài khoản', async () => {
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: EMAIL, password: PASSWORD })
+      .expect(200)
+
+    const res = await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: login.body.data.tokens.refreshToken })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.user.email).toBe(EMAIL)
+  })
+})
+
+/**
+ * Kiểm tra HÌNH DẠNG response, không phải nghiệp vụ.
+ *
+ * `/users/me` từng trả nguyên document trong khi schema OpenAPI vẫn khai `role: string` —
+ * model đã bỏ cột đó từ lâu. SDK sinh ra `role: string`, app gọi `.trim()` và nổ ở runtime.
+ * Không test nào bắt được vì chưa test nào nhìn vào chính cái response ấy.
+ */
+describe('GET /users/me — response khớp với schema đã công bố', () => {
+  it('đúng bộ field whitelist, không rò cột nào của model', async () => {
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: EMAIL, password: PASSWORD })
+      .expect(200)
+
+    const res = await request(app)
+      .get('/api/v1/users/me')
+      .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`)
+      .expect(200)
+
+    expect(Object.keys(res.body.data).sort()).toEqual([
+      'avatar',
+      'createdAt',
+      'email',
+      'id',
+      'isActive',
+      'isEmailVerified',
+      'name',
+      'ratingAvg',
+      'ratingCount',
+    ])
+    // `role` là quan hệ (membership / role_grant), không phải thuộc tính của tài khoản.
+    expect(res.body.data.role).toBeUndefined()
+    expect(res.body.data.password).toBeUndefined()
+    expect(res.body.data.isEmailVerified).toBe(false)
   })
 })

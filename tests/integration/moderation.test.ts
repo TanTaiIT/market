@@ -8,53 +8,39 @@ let app: Application
 let mongod: MongoMemoryReplSet
 
 let categoryId = ''
-const owner = { token: '', id: '' }
-const member = { token: '', id: '' }
-const otherOrg = { token: '', id: '' }
+const owner = { token: '', id: '', slug: '' }
+const member = { token: '', id: '', slug: '' }
+const otherOrg = { token: '', id: '', slug: '' }
 let listingId = ''
 
-const PASSWORD = 'password123'
+let masterToken = ''
+const orgIds: Record<string, string> = {}
 
-async function registerOwner(slug: string) {
-  const res = await request(app)
-    .post('/api/v1/auth/register')
-    .send({
-      organizationName: `Org ${slug}`,
-      organizationSlug: slug,
-      name: `Owner ${slug}`,
-      email: `owner@${slug}.local`,
-      password: PASSWORD,
-    })
-    .expect(201)
-  return { token: res.body.data.tokens.accessToken as string, id: res.body.data.user.id as string }
+/** Chủ org nhận grant `manager` scope org ngay khi master tạo org — đó là quyền vào bàn duyệt. */
+async function createOwner(slug: string) {
+  const { registerUser, createOrg } = await import('../helpers/fixtures')
+  const user = await registerUser(app, `owner@${slug}.local`, `Owner ${slug}`)
+  const org = await createOrg(app, masterToken, {
+    name: `Org ${slug}`,
+    slug,
+    ownerEmail: user.email,
+  })
+  orgIds[slug] = org.id
+  return { token: user.token, id: user.id, slug }
 }
 
-async function addMember(orgSlug: string, name: string, email: string) {
-  const { Organization } = await import('../../src/features/organization/organization.model')
-  const { User } = await import('../../src/features/user/user.model')
-  const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
-
-  const org = await Organization.findOne({ slug: orgSlug }).exec()
-  await runUnscoped('test fixture: thêm thành viên', () =>
-    User.create({
-      organizationId: org!._id,
-      name,
-      email,
-      password: PASSWORD,
-      isEmailVerified: true,
-    }),
-  )
-  const res = await request(app)
-    .post('/api/v1/auth/login')
-    .send({ orgSlug, email, password: PASSWORD })
-    .expect(200)
-  return { token: res.body.data.tokens.accessToken as string, id: res.body.data.user.id as string }
+/** Thành viên thường: có membership nhưng KHÔNG có grant nào — không vào được bàn duyệt. */
+async function joinOrg(slug: string, name: string, email: string) {
+  const { registerUser, addMember } = await import('../helpers/fixtures')
+  const user = await registerUser(app, email, name)
+  await addMember(user.id, orgIds[slug])
+  return { token: user.token, id: user.id, slug }
 }
 
-async function createListing(token: string, title: string) {
+async function createListing(who: { token: string; slug: string }, title: string) {
   const res = await request(app)
     .post('/api/v1/listings')
-    .set('Authorization', `Bearer ${token}`)
+    .set(as(who))
     .send({
       title,
       description: 'Mô tả đủ dài cho zod schema đi qua',
@@ -82,11 +68,14 @@ beforeAll(async () => {
   const { Category } = await import('../../src/features/category/category.model')
   categoryId = (await Category.create({ name: 'Đồ dùng', slug: 'do-dung' }))._id.toString()
 
-  Object.assign(owner, await registerOwner('mod-a'))
-  Object.assign(otherOrg, await registerOwner('mod-b'))
-  Object.assign(member, await addMember('mod-a', 'Thành viên', 'member@mod-a.local'))
+  const { makeMaster } = await import('../helpers/fixtures')
+  masterToken = (await makeMaster(app)).token
 
-  listingId = await createListing(owner.token, 'Đèn học chống cận có kẹp bàn')
+  Object.assign(owner, await createOwner('mod-a'))
+  Object.assign(otherOrg, await createOwner('mod-b'))
+  Object.assign(member, await joinOrg('mod-a', 'Thành viên', 'member@mod-a.local'))
+
+  listingId = await createListing(owner, 'Đèn học chống cận có kẹp bàn')
 }, 120_000)
 
 afterAll(async () => {
@@ -94,7 +83,9 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-const as = (who: { token: string }) => ({ Authorization: `Bearer ${who.token}` })
+function as(who: { token: string; slug: string }) {
+  return { Authorization: `Bearer ${who.token}`, 'X-Org-Slug': who.slug }
+}
 
 describe('Moderation — phân quyền', () => {
   it('thành viên thường không vào được bàn quản trị', async () => {
@@ -159,7 +150,7 @@ describe('Moderation — duyệt tin', () => {
   })
 
   it('từ chối kèm lý do thì lý do được lưu lại trên tin', async () => {
-    const second = await createListing(owner.token, 'Bán tài khoản game giá rẻ')
+    const second = await createListing(owner, 'Bán tài khoản game giá rẻ')
     await request(app)
       .patch(`/api/v1/moderation/listings/${second}`)
       .set(as(owner))

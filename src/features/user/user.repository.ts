@@ -1,14 +1,10 @@
 import { ClientSession, Types } from 'mongoose'
 import { User, IUserDocument, IUser } from './user.model'
 
-type OrgId = string | Types.ObjectId
-
 /**
- * Tách toàn bộ truy vấn DB khỏi service để dễ test/thay tầng lưu trữ.
- *
- * `organizationId` là tham số BẮT BUỘC ở mọi method chứ không optional: User không đi
- * qua tenantPlugin (login phải tìm user trước khi có context), nên đây là chỗ duy nhất
- * giữ ranh giới tenant — optional hoá nó là mở đường cho một query quên filter.
+ * Tài khoản là toàn cục nên repository này KHÔNG còn nhận `organizationId`. Ranh giới tenant
+ * chuyển sang `memberships` — đó là nơi trả lời "người này có thuộc org đó không", và
+ * `tenantPlugin` vẫn gác mọi collection nghiệp vụ như cũ.
  */
 export const userRepository = {
   async create(
@@ -19,47 +15,34 @@ export const userRepository = {
     return user
   },
 
-  findById(id: string, organizationId: OrgId, opts: { withPassword?: boolean } = {}) {
-    const query = User.findOne({ _id: id, organizationId })
+  findById(id: string | Types.ObjectId, opts: { withPassword?: boolean } = {}) {
+    const query = User.findOne({ _id: id })
     if (opts.withPassword) query.select('+password')
     return query
   },
 
-  findByEmail(email: string, organizationId: OrgId, opts: { withPassword?: boolean } = {}) {
-    const query = User.findOne({ email: email.toLowerCase(), organizationId })
+  findByEmail(email: string, opts: { withPassword?: boolean } = {}) {
+    const query = User.findOne({ email: email.toLowerCase() })
     if (opts.withPassword) query.select('+password')
     return query
   },
 
-  existsByEmail(email: string, organizationId: OrgId) {
-    return User.exists({ email: email.toLowerCase(), organizationId, deletedAt: null })
+  existsByEmail(email: string) {
+    return User.exists({ email: email.toLowerCase(), deletedAt: null })
   },
 
-  /** Thẻ "Người dùng" ở bàn quản trị — đếm sống thay vì giữ counter dễ lệch. */
-  countActive(organizationId: OrgId) {
-    return User.countDocuments({ organizationId, isActive: true })
-  },
-
-  updateById(id: string, organizationId: OrgId, update: Partial<IUser>) {
-    return User.findOneAndUpdate({ _id: id, organizationId }, update, {
+  updateById(id: string | Types.ObjectId, update: Partial<IUser>) {
+    return User.findOneAndUpdate({ _id: id }, update, {
       new: true,
       runValidators: true,
-    })
+    }).exec()
   },
 
-  softDelete(id: string, organizationId: OrgId): Promise<IUserDocument | null> {
+  softDelete(id: string | Types.ObjectId): Promise<IUserDocument | null> {
     return User.findOneAndUpdate(
-      { _id: id, organizationId },
+      { _id: id },
       { deletedAt: new Date(), isActive: false },
       { new: true },
     ).exec()
-  },
-
-  /** Dùng cho thống kê chain — org nào cũng nằm trong scope đọc đã được middleware xác thực. */
-  countByOrganizations(orgIds: Types.ObjectId[]) {
-    return User.aggregate<{ _id: Types.ObjectId; count: number }>([
-      { $match: { organizationId: { $in: orgIds }, deletedAt: null } },
-      { $group: { _id: '$organizationId', count: { $sum: 1 } } },
-    ])
   },
 }

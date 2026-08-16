@@ -1,11 +1,12 @@
 import { reportService } from './report.service'
 import { catchAsync } from '../../common/utils/catchAsync'
+import { orgActor } from '../../common/utils/actor'
 import { success, created } from '../../common/utils/apiResponse'
 
 export const reportController = {
   // POST /reports
   create: catchAsync(async (req, res) => {
-    const report = await reportService.create(req.body, req.user!)
+    const report = await reportService.create(req.body, orgActor(req, 'report.create'))
     created(res, { message: 'Report submitted', data: report })
   }),
 
@@ -17,7 +18,11 @@ export const reportController = {
 
   // PATCH /reports/:id
   resolve: catchAsync(async (req, res) => {
-    const report = await reportService.resolve(req.params.id, req.body, req.user!)
+    const report = await reportService.resolve(
+      req.params.id,
+      req.body,
+      orgActor(req, 'report.resolve'),
+    )
     success(res, { message: 'Report resolved', data: report })
   }),
 }

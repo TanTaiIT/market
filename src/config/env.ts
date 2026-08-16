@@ -42,7 +42,8 @@ const envSchema = z.object({
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
 
   // Domain gốc để tách subdomain -> Organization.slug (vd 'app.com' => hungvuong.app.com).
-  // Bỏ trống ở dev/test: khi đó org lấy từ `orgSlug` trong body login hoặc từ JWT.
+  // Bỏ trống ở dev/test: khi đó org hoạt động đến từ header `X-Org-Slug`, hoặc suy ra khi
+  // người dùng chỉ thuộc đúng một org.
   APP_BASE_DOMAIN: z.string().optional(),
 
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),

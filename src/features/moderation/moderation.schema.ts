@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { AUDIT_ACTION, LISTING_STATUS, MODERATABLE_STATUSES } from '../../common/constants'
+import {
+  AUDIT_ACTION,
+  LISTING_STATUS,
+  MODERATABLE_STATUSES,
+  VN_PROVINCE_NAMES,
+} from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
@@ -9,6 +14,35 @@ export const modListingQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
 })
+
+export const rerouteListingSchema = z
+  .object({
+    categoryId: z
+      .string()
+      .regex(/^[0-9a-fA-F]{24}$/)
+      .optional(),
+    provinceCode: z.enum(VN_PROVINCE_NAMES).optional(),
+  })
+  .strict()
+  .refine((v) => v.categoryId || v.provinceCode, 'Cần ít nhất một trong categoryId/provinceCode')
+  .openapi('RerouteListing')
+
+export const coverageSchema = z
+  .object({
+    totalCells: z.number(),
+    uncovered: z.number(),
+    backlog: z.number(),
+    cells: z.array(
+      z.object({
+        categoryId: z.string(),
+        categoryName: z.string(),
+        provinceCode: z.string(),
+        hasModerator: z.boolean(),
+        pending: z.number(),
+      }),
+    ),
+  })
+  .openapi('CoverageMatrix')
 
 export const modParamsSchema = z.object({ id: objectId })
 
@@ -59,5 +93,7 @@ export type ActivityQuery = z.infer<typeof activityQuerySchema>
 export type SetListingStatusInput = z.infer<typeof setListingStatusSchema>
 
 registry.register('SetListingStatus', setListingStatusSchema)
+registry.register('RerouteListing', rerouteListingSchema)
+registry.register('CoverageMatrix', coverageSchema)
 registry.register('AuditEvent', auditEventSchema)
 registry.register('ModerationOverview', overviewResponseSchema)

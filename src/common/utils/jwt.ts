@@ -1,31 +1,21 @@
 import jwt, { SignOptions } from 'jsonwebtoken'
 import { env } from '../../config/env'
-import { OrgRole, PlatformAdminRole } from '../constants'
-
-export const TOKEN_TYPE = {
-  USER: 'user',
-  PLATFORM_ADMIN: 'platform_admin',
-} as const
-export type TokenType = (typeof TOKEN_TYPE)[keyof typeof TOKEN_TYPE]
-
-export interface UserJwtPayload {
-  type: typeof TOKEN_TYPE.USER
-  sub: string
-  organizationId: string
-  role: OrgRole
-}
-
-export interface PlatformAdminJwtPayload {
-  type: typeof TOKEN_TYPE.PLATFORM_ADMIN
-  sub: string
-  role: PlatformAdminRole
-}
 
 /**
- * `type` là ranh giới cứng giữa hai hệ thống auth: token platform-admin không bao giờ
- * được đi qua `authenticate` của user và ngược lại, dù cùng ký bằng một secret.
+ * Payload chỉ còn `sub`.
+ *
+ * Bỏ `organizationId`: tài khoản là toàn cục, và org hoạt động do TỪNG REQUEST chỉ ra
+ * (subdomain / header `X-Org-Slug`), rồi được đối chiếu với `memberships` ở thời điểm đó.
+ * Nhét org vào token nghĩa là quyền truy cập org đóng băng theo hạn token — rời org xong vẫn
+ * vào được cho tới khi token hết hạn.
+ *
+ * Bỏ `role`: quyền hạn nằm ở `role_grants` và được nạp mỗi request, cùng lý do.
+ *
+ * Bỏ `type`: nhánh platform-admin đã gộp vào user, không còn hai loại token để phân biệt.
  */
-export type JwtPayload = UserJwtPayload | PlatformAdminJwtPayload
+export interface JwtPayload {
+  sub: string
+}
 
 export function signAccessToken(payload: JwtPayload): string {
   return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN } as SignOptions)

@@ -1,5 +1,5 @@
 import { userService } from './user.service'
-import { toPublicProfileDto } from './user.types'
+import { toMeProfileDto, toPublicProfileDto } from './user.types'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success } from '../../common/utils/apiResponse'
 
@@ -7,13 +7,13 @@ export const userController = {
   // GET /users/me
   getMe: catchAsync(async (req, res) => {
     const user = await userService.getById(req.user!.id)
-    success(res, { message: 'Current user', data: user })
+    success(res, { message: 'Current user', data: toMeProfileDto(user) })
   }),
 
   // PATCH /users/me
   updateMe: catchAsync(async (req, res) => {
     const user = await userService.updateProfile(req.user!.id, req.body)
-    success(res, { message: 'Profile updated', data: user })
+    success(res, { message: 'Profile updated', data: toMeProfileDto(user) })
   }),
 
   // DELETE /users/me

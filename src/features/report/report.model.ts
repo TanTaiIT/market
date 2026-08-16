@@ -68,7 +68,7 @@ const reportSchema = new Schema<IReportDocument>(
   { timestamps: true },
 )
 
-// chainReadable: false — báo cáo là hồ sơ nội bộ của trường sở tại.
+// Báo cáo là hồ sơ nội bộ của org sở tại.
 reportSchema.plugin(tenantPlugin)
 
 reportSchema.index({ organizationId: 1, status: 1, createdAt: -1 })

@@ -4,11 +4,10 @@ import { tenantPlugin } from '../../common/tenant/tenantPlugin'
 /**
  * Hội thoại 1-1 giữa người mua và người bán, gắn vào đúng một tin đăng.
  *
- * `chainReadable` để mặc định **false**: học sinh trường A thấy được tin của trường B (Listing
- * bật chainReadable) nhưng chưa nhắn được cho người bán bên đó. Mở ra là việc của công tắc
- * `Chain.features.crossOrgChat` — xem `docs/architecture/admin-console.md` QĐ-2 — chứ không
- * phải bật cờ ở đây, vì lúc đó ghi cũng phải đổi theo và convention §1.2 nói chainReadable
- * chỉ nới chiều đọc.
+ * Hội thoại nằm gọn trong một org: cả hai phía đều phải là thành viên cùng org.
+ * Nhắn tin xuyên org (khi tin đăng đến từ trục danh mục công khai) vẫn CHƯA mở — xem mục
+ * "Còn nợ" trong `v2-org-permission.plan.md`. Mở nó không phải là nới scope đọc ở đây, vì
+ * chiều ghi cũng phải đổi theo.
  */
 
 export interface IParticipant {

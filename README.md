@@ -49,6 +49,49 @@ docker-compose up --build
 | `npm run openapi:export` | Xuất spec tĩnh ra `openapi.json` cho client codegen |
 | `npm run seed` | Seed dữ liệu mẫu — **xoá sạch collection trước khi ghi** |
 | `npm run seed:bulk` | Seed khối lượng lớn — **xoá sạch collection trước khi ghi** |
+| `npm run migrate:v2` | Đưa dữ liệu v1 sang mô hình v2 (memberships, role_grants, gỡ chain) — idempotent |
+
+## Hai trục kiểm duyệt (v2)
+
+Mỗi tin thuộc ĐÚNG MỘT hàng đợi, và khoá định tuyến là `visibility` — không phải `organizationId`:
+
+| `organizationId` | `visibility` | Hàng đợi | Ai duyệt |
+|---|---|---|---|
+| có | `org_internal` | org | staff nhóm con → manager org |
+| có | `public` | danh mục | manager (danh mục × tỉnh) |
+| `null` | `public` | danh mục | manager (danh mục × tỉnh) |
+| `null` | `org_internal` | — | vô nghĩa, chặn ở validation |
+
+Tin công khai từ một tổ chức vẫn phải qua manager danh mục: `organizationId` chỉ còn là
+attribution (badge "đăng bởi trường X"). Ô (danh mục × tỉnh) chưa có ai phụ trách thì tin rơi về
+hàng đợi của master — `GET /moderation/coverage` là chỗ nhìn thấy các ô đó trước khi master
+chết chìm.
+
+Quota là backpressure theo bucket: `(user, org)` cho tin nội bộ, `(user, org)` hạn mức cứng 2
+cho người ngoài, `(user, danh mục)` cho trục công khai. Bị từ chối 3 lần trong 7 ngày —
+**đếm xuyên trục** — thì khoá quyền đăng; đó là thứ bịt lỗ hổng "duyệt xong lại có slot, đăng
+tiếp vô hạn".
+
+## Mô hình quyền (v2)
+
+Tài khoản là **toàn cục**: `users` không có `organizationId`, `email` unique toàn hệ thống.
+Hai bảng tách bạch:
+
+- `memberships` — **thân phận**: người này thuộc org nào, nhóm con nào (`owner | member | alumni`).
+- `role_grants` — **quyền hạn**: `master | manager | staff` × scope `system | org | org_unit | category_province`.
+
+Một giáo viên là thành viên của trường (thân phận) và **có thể có hoặc không** quyền duyệt tin.
+Gộp hai thứ vào một cột thì không biểu diễn nổi trường hợp đó.
+
+Org hoạt động của mỗi request đến từ **subdomain** hoặc header **`X-Org-Slug`** (nếu chỉ thuộc
+đúng một org thì suy ra được), rồi đối chiếu với `memberships` ngay lúc đó — không nằm trong
+token. Rời org là mất quyền ngay, không chờ token hết hạn.
+
+```http
+POST /api/v1/auth/login          { "email": "...", "password": "..." }
+GET  /api/v1/listings            Authorization: Bearer <token>
+                                 X-Org-Slug: hung-vuong
+```
 
 ### Chốt an toàn của seed
 
@@ -127,9 +170,11 @@ tests/
 | user | ✅ Core | `GET/PATCH/DELETE /users/me`, `GET /users/:id` |
 | listing | ✅ Core | `GET /listings`, `GET /listings/nearby`, `GET/POST/PATCH/DELETE /listings/:id` |
 | notification | ✅ Core | `GET/POST /notifications`, `PATCH /notifications/:id/read` |
-| chain | ✅ Core | `GET /chains/:chainId/{stats,organizations}`, `POST /chains/:chainId/notifications` |
-| platform-admin | ✅ Core | `POST /platform-admin/{auth/login,chains}`, `PATCH /platform-admin/organizations/:id/{chain,status}` |
-| organization | ✅ Core (không có route riêng) | Ghi qua `POST /auth/register`, đọc qua chain & platform-admin |
+| organization | ✅ Core | `GET /organizations/{lookup,slug-availability}` (public) · `POST /organizations`, `PATCH /organizations/:id/{status,slug}` (master) |
+| membership | ✅ Core (không có route riêng) | Quan hệ user ↔ org; sinh ra qua duyệt đơn tham gia |
+| join-request | ✅ Core | `POST /join-requests`, `GET /join-requests{,/mine}`, `PATCH /join-requests/:id/{approve,reject}`, `POST /join-requests/bulk-approve` |
+| role-grant | ✅ Core | `POST /role-grants`, `GET /role-grants/mine`, `DELETE /role-grants/:id` |
+| org-unit | ✅ Core | `GET/POST /org-units`, `PATCH/DELETE /org-units/:id` |
 | category | 🚧 Skeleton (501) | `/categories` |
 | chat | 🚧 Skeleton (501) | `/chats` (realtime đã chạy qua socket) |
 | upload | 🚧 Skeleton (501) | `/uploads` |

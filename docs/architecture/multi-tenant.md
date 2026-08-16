@@ -1,5 +1,8 @@
 # Kiến trúc Multi-tenant: Chain / Organization / User
 
+> ⚠️ **ĐÃ LỖI THỜI kể từ v2** — mô tả mô hình v1 (chain, 1 user ↔ 1 org, nhánh
+> platform-admin). Giữ lại vì phần *vì sao* của cơ chế cách ly (AsyncLocalStorage + plugin fail-closed) vẫn đúng nguyên. Trạng thái đích: `v2-org-permission.plan.md`.
+
 > Trạng thái: **ĐÃ IMPLEMENT**. Code là SoT — tài liệu này giữ lại phần *vì sao*.
 > Hiện trạng + việc còn nợ → `multi-tenant.implementation.md`.
 > Quy tắc bắt buộc khi viết code mới → `../rules/multi-tenant.convention.md`.

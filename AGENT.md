@@ -44,11 +44,19 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
    string/Error thường. Handler dùng chung: `src/middlewares/error.middleware.ts`.
 4. Response thành công luôn đi qua `success()`/`created()` trong
    `src/common/utils/apiResponse.ts` → `{ success, message, data, meta? }`.
-5. Route cần đăng nhập → `authenticate`; cần phân quyền → `authorize(ORG_ROLES.OWNER | ...)`.
+5. Route cần đăng nhập → `authenticate`. Phân quyền dùng middleware theo **phạm vi**, không
+   theo vai trò trong org: `requireOrg` (phải có org đang hoạt động) · `requireMembership` ·
+   `requireOrgModerator` (duyệt được thứ gì đó trong org) · `requireOrgAdmin` (đổi cấu trúc
+   org) · `requireCategoryModerator` / `requireMasterPublicAxis` (trục danh mục).
    Route public tuỳ chọn đăng nhập → `optionalAuth`.
+   Middleware ở tầng route cố tình **rộng**, để người có phạm vi hẹp vẫn mở được màn hình của
+   họ. Phạm vi thật chốt ở service bằng `src/common/authz/policy.ts` (hàm thuần) — xem
+   `notification.service.createForOrganization` cho ca staff nhóm con.
 6. Không hardcode chuỗi trạng thái (`"active"`, `"pending"`...) — dùng const trong
-   `src/common/constants/index.ts` (`LISTING_STATUS`, `LISTING_CONDITION`, `ORG_ROLES`,
-   `TENANT_STATUS`, `PLATFORM_ADMIN_ROLES`, `NOTIFICATION_SOURCE`).
+   `src/common/constants/index.ts` (`LISTING_STATUS`, `LISTING_CONDITION`, `POST_VISIBILITY`,
+   `MEMBERSHIP_ROLES`, `SYSTEM_ROLES`, `SCOPE_TYPES`, `JOIN_REQUEST_STATUS`, `TENANT_STATUS`).
+   `MEMBERSHIP_ROLES` = **thân phận** trong org · `SYSTEM_ROLES` = **quyền hạn**, phân biệt
+   phạm vi bằng `SCOPE_TYPES`. Gộp hai thứ vào một cột là lỗi thiết kế v1 đã bỏ.
 7. **Endpoint public không bao giờ được trả tin ngoài `PUBLIC_LISTING_STATUSES`.**
    Filter mặc định nằm ở `buildFilter()` — đừng bỏ nó khi thêm query mới.
 8. Query MongoDB chỉ đọc → cân nhắc `.lean()`. Field dùng để filter/sort phải có index.
@@ -60,9 +68,11 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
 11. Không commit file `.env` hoặc secret. `.env.example` chỉ chứa placeholder.
 12. **Multi-tenant — SoT: `docs/rules/multi-tenant.convention.md`, đọc TRƯỚC khi chạm dữ
     liệu khách hàng.** Bốn điều không được quên dù không mở tài liệu:
-    (a) collection nghiệp vụ mới → `schema.plugin(tenantPlugin)`, `chainReadable` mặc định
-    `false`; (b) KHÔNG tự viết filter `organizationId` trong repository/service — scope
-    đến từ context; (c) ghi luôn rơi về org của request, chain là read-only;
+    (a) collection nghiệp vụ mới → `schema.plugin(tenantPlugin)`. Bản ghi **chỉ** thuộc một
+    org → để mặc định. Bản ghi sống được ở cả hai trục (org và công khai) → `{ dualAxis: true }`,
+    lúc đó `organizationId` cho phép `null` và `visibility` mới là khoá định tuyến;
+    (b) KHÔNG tự viết filter `organizationId` trong repository/service — scope đến từ context;
+    (c) ghi luôn rơi về org của request; đọc trục công khai là read-only đối với org khác;
     (d) chạm dữ liệu ngoài request (seed/job/migration) → bọc `runUnscoped('lý do', ...)`,
     đó là danh sách grep được của mọi lối đi xuyên tenant.
 13. Mọi index trên collection có tenant phải lấy `organizationId` làm khoá đầu tiên.

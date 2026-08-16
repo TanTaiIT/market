@@ -5,10 +5,15 @@ import { PaginationParams } from '../../common/utils/pagination'
 import {
   LISTING_STATUS,
   MODERATABLE_STATUSES,
+  POST_VISIBILITY,
   PUBLIC_LISTING_STATUSES,
   ListingStatus,
 } from '../../common/constants'
+
 import { runUnscoped } from '../../common/tenant/tenantContext'
+
+/** Hai trạng thái đều là 'đang chiếm một slot của hàng đợi duyệt'. */
+const PENDING_STATUSES = [LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIFIED]
 
 /** `status` không nằm trong query schema công khai — chỉ caller nội bộ mới được ép. */
 export type ListingFilterParams = Partial<ListingQuery> & { status?: ListingStatus }
@@ -50,6 +55,37 @@ export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDo
 export const listingRepository = {
   create(data: Partial<IListing>) {
     return Listing.create(data)
+  },
+
+  /** Bucket quota trục org: tin CHỜ DUYỆT của một người trong một org. */
+  countPendingInOrg(sellerId: Types.ObjectId, organizationId: Types.ObjectId) {
+    return Listing.countDocuments({
+      seller: sellerId,
+      organizationId,
+      status: { $in: PENDING_STATUSES },
+    }).exec()
+  },
+
+  /** Bucket quota trục danh mục — tách hẳn khỏi bucket org (§8.2). */
+  countPendingInCategory(sellerId: Types.ObjectId, categoryId: Types.ObjectId) {
+    return Listing.countDocuments({
+      seller: sellerId,
+      category: categoryId,
+      visibility: POST_VISIBILITY.PUBLIC,
+      status: { $in: PENDING_STATUSES },
+    }).exec()
+  },
+
+  /**
+   * Tin bị từ chối gần đây, ĐẾM XUYÊN TRỤC. Cố tình không lọc org/visibility: bị từ chối ở
+   * đâu cũng là tín hiệu về người đăng, và đếm theo từng trục là để hở đúng đường vòng.
+   */
+  countRecentRejections(sellerId: Types.ObjectId, since: Date) {
+    return Listing.countDocuments({
+      seller: sellerId,
+      status: LISTING_STATUS.REJECTED,
+      'moderation.at': { $gte: since },
+    }).exec()
   },
 
   // Không populate gì cả. `seller`: User nằm ngoài tenantPlugin nên populate xuyên org lách
@@ -120,9 +156,9 @@ export const listingRepository = {
   /**
    * Chỉ trả tin ở trạng thái public — chặn xem tin chưa duyệt qua đường /:id.
    *
-   * Đọc và ghi tách làm hai bước vì chúng chạy trên hai scope khác nhau: đọc được phép
-   * xuyên org trong chain, còn mọi thao tác ghi bị ép về org của chính mình. Bộ đếm view
-   * của tin org khác chỉ tăng được sau khi lượt đọc đó đã được scope cho phép.
+   * Đọc và ghi tách làm hai bước: bộ đếm view phải tăng được cả khi lượt đọc đến từ một
+   * scope rộng hơn scope ghi (tin trục công khai). Chạy unscoped nhưng chỉ sau khi
+   * lượt đọc đã được scope cho phép.
    */
   async incrementView(id: string) {
     const listing = await Listing.findOne({
@@ -143,17 +179,37 @@ export const listingRepository = {
   },
 
   /**
-   * Danh sách cho bàn duyệt. KHÔNG đi qua `buildFilter`: hàm đó mặc định `status: ACTIVE` để
-   * bảo vệ endpoint public, nên bỏ trống status ở đây sẽ ra "chỉ tin đang hiển thị" thay vì
-   * "mọi trạng thái" — đúng ngược với thứ tab "Tất cả" của bàn duyệt cần.
-   */
-  /**
    * Tin của chính người đăng, MỌI trạng thái. Cố tình không đi qua `buildFilter`: hàm đó mặc
    * định `status: ACTIVE`, mà tin vừa đăng luôn là `pending` — chủ tin không thấy tin mình vừa
    * ghim thì nhìn hệt như đăng hụt.
    */
   async paginateMine(sellerId: string, { skip, limit }: PaginationParams) {
     const filter: FilterQuery<IListingDocument> = { seller: sellerId }
+
+    // Scope theo NGƯỜI ĐĂNG, không theo trục: `sellerId` lấy từ token nên nó đã hẹp hơn mọi
+    // scope tenant. Để plugin áp trục vào đây thì tin công khai đang chờ duyệt của một người
+    // không thuộc org nào sẽ biến mất khỏi màn "tin của tôi" — đúng cái "đăng hụt" mà chính
+    // hàm này sinh ra để tránh.
+    return runUnscoped('own listings, scoped by seller', async () => {
+      const [items, total] = await Promise.all([
+        Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+        Listing.countDocuments(filter).exec(),
+      ])
+      return { items, total }
+    })
+  },
+
+  /**
+   * Hàng đợi trục công khai. Phạm vi (danh mục × tỉnh) KHÔNG nằm ở đây — nó do scope quyết
+   * định và `tenantPlugin` áp; repository chỉ chọn trạng thái.
+   */
+  async paginateForPublicModeration(
+    status: ListingStatus | undefined,
+    { skip, limit }: PaginationParams,
+  ) {
+    const filter: FilterQuery<IListingDocument> = {
+      status: status ?? { $in: [...MODERATABLE_STATUSES] },
+    }
     const [items, total] = await Promise.all([
       Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
       Listing.countDocuments(filter),
@@ -161,6 +217,22 @@ export const listingRepository = {
     return { items, total }
   },
 
+  /** Tồn đọng theo từng ô (danh mục × tỉnh) — đầu vào của dashboard phủ sóng. */
+  pendingByCategoryProvince() {
+    return Listing.aggregate<{
+      _id: { category: Types.ObjectId; province: string }
+      count: number
+    }>([
+      { $match: { status: { $in: PENDING_STATUSES }, visibility: POST_VISIBILITY.PUBLIC } },
+      { $group: { _id: { category: '$category', province: '$provinceCode' }, count: { $sum: 1 } } },
+    ])
+  },
+
+  /**
+   * Danh sách cho bàn duyệt của org. KHÔNG đi qua `buildFilter`: hàm đó mặc định
+   * `status: ACTIVE` để bảo vệ endpoint public, nên bỏ trống status ở đây sẽ ra "chỉ tin đang
+   * hiển thị" thay vì "mọi trạng thái" — đúng ngược với thứ tab "Tất cả" của bàn duyệt cần.
+   */
   async paginateForModeration(
     status: ListingStatus | undefined,
     { skip, limit }: PaginationParams,
@@ -209,13 +281,5 @@ export const listingRepository = {
     ])
 
     return { byStatus, byCategory, byDay }
-  },
-
-  /** Breakdown theo org cho thống kê chain — scope đọc đã do middleware chain quyết định. */
-  countByOrganizations() {
-    return Listing.aggregate<{ _id: Types.ObjectId; count: number }>([
-      { $match: { deletedAt: null } },
-      { $group: { _id: '$organizationId', count: { $sum: 1 } } },
-    ])
   },
 }

@@ -4,6 +4,8 @@ import {
   LISTING_CONDITION,
   ListingStatus,
   ListingCondition,
+  POST_VISIBILITY,
+  PostVisibility,
   VN_PROVINCE_NAMES,
   VnProvinceName,
 } from '../../common/constants'
@@ -23,7 +25,17 @@ export interface IListingLocation {
 }
 
 export interface IListing {
-  organizationId: Types.ObjectId
+  /** `null` = tin của TRỤC DANH MỤC, không thuộc tổ chức nào. */
+  organizationId: Types.ObjectId | null
+  /** Khoá định tuyến hàng đợi duyệt (quyết định Q3), không phải `organizationId`. */
+  visibility: PostVisibility
+  /**
+   * Snapshot CỨNG lúc tạo tin. Không tính động từ org hay user: org đổi địa chỉ hoặc người
+   * đăng chuyển tổ chức sẽ làm tin cũ nhảy hàng đợi.
+   */
+  provinceCode: string | null
+  /** Nhóm con của người đăng lúc đăng — staff nhóm con duyệt theo field này. */
+  unitId: Types.ObjectId | null
   title: string
   slug?: string
   description: string
@@ -90,10 +102,29 @@ const listingSchema = new Schema<IListingDocument>(
       default: [],
     },
 
+    visibility: {
+      type: String,
+      enum: Object.values(POST_VISIBILITY),
+      default: POST_VISIBILITY.ORG_INTERNAL,
+      required: true,
+    },
+    // Chỉ bắt buộc với tin công khai: ở trục danh mục, tỉnh là thứ quyết định AI DUYỆT. Tin
+    // nội bộ do org duyệt nên không cần — ép nó ở đây là phá lời hứa "khu vực là tuỳ chọn".
+    provinceCode: {
+      type: String,
+      default: null,
+      trim: true,
+      enum: [...VN_PROVINCE_NAMES, null],
+      required(this: { visibility?: string }) {
+        return this.visibility === POST_VISIBILITY.PUBLIC
+      },
+    },
+    unitId: { type: Schema.Types.ObjectId, ref: 'OrgUnit', default: null },
+
     category: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
     seller: { type: Schema.Types.ObjectId, ref: 'User', required: true },
 
-    // Snapshot người đăng thay vì populate `seller`: user trong chain xem được tin của org
+    // Snapshot người đăng thay vì populate `seller`: người xem có thể thấy tin của org
     // khác, mà populate cross-org sẽ lôi cả email/role/phone của user org đó ra — rò rỉ
     // vượt xa nhu cầu "hiện tên + số liên hệ".
     // ponytail: snapshot một lần lúc tạo tin, không đồng bộ lại khi user đổi liên hệ;
@@ -149,20 +180,25 @@ const listingSchema = new Schema<IListingDocument>(
 )
 
 // Phải đứng TRƯỚC phần index: plugin mới là chỗ thêm field organizationId vào schema.
-// chainReadable: chỉ Listing được đọc xuyên org trong cùng chain (quyết định #15).
-listingSchema.plugin(tenantPlugin, { chainReadable: true })
+listingSchema.plugin(tenantPlugin, { dualAxis: true })
 
 // --- Indexes ---
-// Mọi query đều bắt đầu bằng organizationId nên nó phải là khoá đầu tiên; index không có
-// prefix này sẽ khiến org lớn nhất làm chậm mọi org còn lại.
+// HAI họ index vì có hai trục truy vấn, và query của trục này không dùng được index của trục
+// kia: trục org luôn bắt đầu bằng `organizationId`, trục danh mục luôn bắt đầu bằng
+// `visibility` (org của nó là null nên prefix organizationId vô dụng).
 listingSchema.index({ organizationId: 1, status: 1, createdAt: -1 })
 listingSchema.index({ organizationId: 1, category: 1, status: 1, createdAt: -1 })
 listingSchema.index({ organizationId: 1, seller: 1, status: 1, createdAt: -1 })
-listingSchema.index({ organizationId: 1, 'location.province': 1, status: 1, createdAt: -1 })
-// `/listings/nearby` xếp tin cùng xã lên trước, nên `location.ward` là field lọc thật sự và
-// phải có index riêng — không dựa vào index province ở trên được.
 listingSchema.index({ organizationId: 1, 'location.ward': 1, status: 1, createdAt: -1 })
 listingSchema.index({ organizationId: 1, price: 1, status: 1 })
+// Hàng đợi duyệt của staff nhóm con.
+listingSchema.index({ organizationId: 1, unitId: 1, status: 1, createdAt: -1 })
+
+// Trục danh mục: bảng tin công khai (visibility + status) và hàng đợi của manager danh mục
+// (visibility + category + tỉnh).
+listingSchema.index({ visibility: 1, status: 1, createdAt: -1 })
+listingSchema.index({ visibility: 1, category: 1, provinceCode: 1, status: 1, createdAt: -1 })
+listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, createdAt: -1 })
 
 // Slug chỉ unique TRONG org, và tin đã xoá không giữ chỗ slug vĩnh viễn.
 listingSchema.index(
@@ -174,9 +210,9 @@ listingSchema.index(
 // không nằm trên đường query nên không ảnh hưởng hiệu năng tenant.
 listingSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
-// KHÔNG có text index: scope đọc mặc định là `$in [...chainOrgIds]`, mà text index có
-// prefix bắt buộc equality trên prefix -> vỡ ngay ở route tìm kiếm chính. Xem
-// listing.repository.buildFilter để biết cách `?q=` đang chạy tạm và đường nâng cấp.
+// KHÔNG có text index: scope đọc là `$in [...readableOrgIds]`, mà text index bắt buộc
+// equality trên prefix -> vỡ ngay ở route tìm kiếm chính. Xem listing.repository.buildFilter
+// để biết cách `?q=` đang chạy tạm và đường nâng cấp.
 
 function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
   if (!this.getOptions().withDeleted) {

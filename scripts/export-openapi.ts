@@ -5,7 +5,6 @@ import { resolve } from 'node:path'
 // Import side-effect: mỗi feature route gọi registry.registerPath lúc được load.
 // Thiếu dòng này thì spec xuất ra rỗng.
 import '../src/features'
-import '../src/features/platform-admin/platform-admin.routes'
 import { generateOpenApiDocument } from '../src/config/openapi'
 
 const OUTPUT = resolve(process.cwd(), 'openapi.json')

@@ -11,8 +11,7 @@ let mongod: MongoMemoryReplSet
 let superToken: string
 /** Token của support — dùng để chứng minh vai này KHÔNG ghi được. */
 let supportToken: string
-/** Token của một user thường trong org, để thử tạo tin. */
-let userToken: string
+let orgHeaders: Record<string, string>
 
 const SUPER = { email: 'super@platform.local', password: 'platform123' }
 const SUPPORT = { email: 'support@platform.local', password: 'platform123' }
@@ -30,30 +29,26 @@ beforeAll(async () => {
   const { createApp } = await import('../../src/app')
   app = createApp()
 
-  const { PlatformAdmin } = await import('../../src/features/platform-admin/platform-admin.model')
-  const { PLATFORM_ADMIN_ROLES } = await import('../../src/common/constants')
-  await PlatformAdmin.create([
-    { ...SUPER, name: 'Super', role: PLATFORM_ADMIN_ROLES.SUPER_ADMIN },
-    { ...SUPPORT, name: 'Support', role: PLATFORM_ADMIN_ROLES.SUPPORT },
-  ])
+  const { makeMaster, registerUser, createOrg, orgAuth, setTrustLevel } =
+    await import('../helpers/fixtures')
 
-  const login = (body: typeof SUPER) =>
-    request(app).post('/platform-admin/auth/login').send(body).expect(200)
+  const master = await makeMaster(app, SUPER.email)
+  superToken = master.token
 
-  superToken = (await login(SUPER)).body.data.accessToken
-  supportToken = (await login(SUPPORT)).body.data.accessToken
+  // "support" của v1 giờ chỉ là một tài khoản KHÔNG có grant master — chính là bằng chứng
+  // rằng quyền ghi danh mục đến từ `role_grants`, không từ việc đăng nhập ở nhánh nào.
+  supportToken = (await registerUser(app, SUPPORT.email, 'Support')).token
 
-  const registered = await request(app)
-    .post('/api/v1/auth/register')
-    .send({
-      organizationName: 'Cat Org',
-      organizationSlug: 'cat-org',
-      name: 'Cat Owner',
-      email: 'owner@cat-org.local',
-      password: 'password123',
-    })
-    .expect(201)
-  userToken = registered.body.data.tokens.accessToken
+  const owner = await registerUser(app, 'owner@cat-org.local', 'Cat Owner')
+  const org = await createOrg(app, superToken, {
+    name: 'Cat Org',
+    slug: 'cat-org',
+    ownerEmail: owner.email,
+  })
+  orgHeaders = orgAuth(owner.token, org.slug)
+  // File test này đăng nhiều tin liên tiếp để thử ràng buộc danh mục; quota mặc định (3 tin
+  // chờ) sẽ chặn ngang giữa chừng và che mất thứ đang thực sự được kiểm.
+  await setTrustLevel(owner.id, org.id, 1)
 }, 120_000)
 
 afterAll(async () => {
@@ -69,7 +64,7 @@ describe('Category — đọc công khai', () => {
 
   it('super_admin tạo được danh mục, slug tự sinh từ tên', async () => {
     const res = await request(app)
-      .post('/platform-admin/categories')
+      .post('/api/v1/categories')
       .set(asSuper())
       .send({ name: 'Sách vở', icon: '📚', order: 1 })
 
@@ -81,7 +76,7 @@ describe('Category — đọc công khai', () => {
 
   it('chặn slug trùng bằng 409, không để rơi xuống lỗi duplicate key của Mongo', async () => {
     const res = await request(app)
-      .post('/platform-admin/categories')
+      .post('/api/v1/categories')
       .set(asSuper())
       .send({ name: 'Sách  vở' }) // slugify ra cùng 'sach-vo'
     expect(res.status).toBe(409)
@@ -89,35 +84,35 @@ describe('Category — đọc công khai', () => {
 
   it('support KHÔNG ghi được danh mục', async () => {
     const res = await request(app)
-      .post('/platform-admin/categories')
+      .post('/api/v1/categories')
       .set({ Authorization: `Bearer ${supportToken}` })
       .send({ name: 'Đồ dùng' })
     expect(res.status).toBe(403)
   })
 
-  it('không có token platform-admin thì không ghi được', async () => {
-    const res = await request(app).post('/platform-admin/categories').send({ name: 'Xe đạp' })
+  it('không có token master thì không ghi được', async () => {
+    const res = await request(app).post('/api/v1/categories').send({ name: 'Xe đạp' })
     expect(res.status).toBe(401)
   })
 
-  it('token user thường KHÔNG dùng được cho nhánh platform-admin', async () => {
+  it('token user thường KHÔNG ghi được danh mục — thiếu grant master', async () => {
     const res = await request(app)
-      .post('/platform-admin/categories')
-      .set({ Authorization: `Bearer ${userToken}` })
+      .post('/api/v1/categories')
+      .set(orgHeaders)
       .send({ name: 'Xe đạp' })
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(403)
   })
 
   it('GET /categories mặc định chỉ trả danh mục đang bật', async () => {
     const created = await request(app)
-      .post('/platform-admin/categories')
+      .post('/api/v1/categories')
       .set(asSuper())
       .send({ name: 'Đã ngừng', order: 9 })
       .expect(201)
     inactiveId = created.body.data.id
 
     await request(app)
-      .patch(`/platform-admin/categories/${inactiveId}`)
+      .patch(`/api/v1/categories/${inactiveId}`)
       .set(asSuper())
       .send({ isActive: false })
       .expect(200)
@@ -165,7 +160,7 @@ describe('Listing — ràng buộc categoryId', () => {
   it('từ chối categoryId đúng 24 hex nhưng không trỏ tới danh mục nào', async () => {
     const res = await request(app)
       .post('/api/v1/listings')
-      .set({ Authorization: `Bearer ${userToken}` })
+      .set(orgHeaders)
       .send(listingBody(new Types.ObjectId().toString()))
 
     expect(res.status).toBe(400)
@@ -176,7 +171,7 @@ describe('Listing — ràng buộc categoryId', () => {
     const categories = await request(app).get('/api/v1/categories').expect(200)
     const res = await request(app)
       .post('/api/v1/listings')
-      .set({ Authorization: `Bearer ${userToken}` })
+      .set(orgHeaders)
       .send(listingBody(categories.body.data[0].id))
 
     expect(res.status).toBe(201)
@@ -189,7 +184,7 @@ describe('Listing — ràng buộc categoryId', () => {
 
     const res = await request(app)
       .post('/api/v1/listings')
-      .set({ Authorization: `Bearer ${userToken}` })
+      .set(orgHeaders)
       .send(listingBody(off.id))
 
     expect(res.status).toBe(400)
@@ -206,10 +201,7 @@ describe('Listing — khu vực là tuỳ chọn, và không còn toạ độ', 
     const body: Record<string, unknown> = listingBody(await activeCategoryId())
     delete body.location
 
-    const res = await request(app)
-      .post('/api/v1/listings')
-      .set({ Authorization: `Bearer ${userToken}` })
-      .send(body)
+    const res = await request(app).post('/api/v1/listings').set(orgHeaders).send(body)
 
     expect(res.status).toBe(201)
     // Phải VẮNG hẳn chứ không phải subdoc rỗng: tin không khai khu vực và tin khai rỗng phải
@@ -220,7 +212,7 @@ describe('Listing — khu vực là tuỳ chọn, và không còn toạ độ', 
   it('lưu đúng tỉnh + xã đã gửi', async () => {
     const res = await request(app)
       .post('/api/v1/listings')
-      .set({ Authorization: `Bearer ${userToken}` })
+      .set(orgHeaders)
       .send(listingBody(await activeCategoryId()))
 
     expect(res.status).toBe(201)
@@ -233,7 +225,7 @@ describe('Listing — khu vực là tuỳ chọn, và không còn toạ độ', 
   it('từ chối `coordinates` — geo đã bỏ hẳn, client bản cũ phải nhận 400 thay vì bị cắt im lặng', async () => {
     const res = await request(app)
       .post('/api/v1/listings')
-      .set({ Authorization: `Bearer ${userToken}` })
+      .set(orgHeaders)
       .send({
         ...listingBody(await activeCategoryId()),
         location: { province: 'Hồ Chí Minh', coordinates: [106.7, 10.77] },
@@ -245,7 +237,7 @@ describe('Listing — khu vực là tuỳ chọn, và không còn toạ độ', 
   it('từ chối tỉnh ngoài danh sách 34 đơn vị', async () => {
     const res = await request(app)
       .post('/api/v1/listings')
-      .set({ Authorization: `Bearer ${userToken}` })
+      .set(orgHeaders)
       .send({
         ...listingBody(await activeCategoryId()),
         location: { province: 'Bình Dương' },
@@ -260,24 +252,18 @@ describe('GET /listings/mine — chủ tin thấy tin đang chờ duyệt', () =
     const categories = await request(app).get('/api/v1/categories').expect(200)
     const created = await request(app)
       .post('/api/v1/listings')
-      .set({ Authorization: `Bearer ${userToken}` })
+      .set(orgHeaders)
       .send(listingBody(categories.body.data[0].id))
       .expect(201)
 
     const id = created.body.data._id
     expect(created.body.data.status).toBe('pending')
 
-    const mine = await request(app)
-      .get('/api/v1/listings/mine')
-      .set({ Authorization: `Bearer ${userToken}` })
-      .expect(200)
+    const mine = await request(app).get('/api/v1/listings/mine').set(orgHeaders).expect(200)
     expect(mine.body.data.map((l: { _id: string }) => l._id)).toContain(id)
 
     // Cùng lúc đó danh sách công khai vẫn phải giấu nó — /mine không được nới lỏng chỗ này.
-    const publicList = await request(app)
-      .get('/api/v1/listings')
-      .set({ Authorization: `Bearer ${userToken}` })
-      .expect(200)
+    const publicList = await request(app).get('/api/v1/listings').set(orgHeaders).expect(200)
     expect(publicList.body.data.map((l: { _id: string }) => l._id)).not.toContain(id)
   })
 
@@ -286,9 +272,7 @@ describe('GET /listings/mine — chủ tin thấy tin đang chờ duyệt', () =
   })
 
   it('không bị nuốt thành /listings/:id — route phải khai trước', async () => {
-    const res = await request(app)
-      .get('/api/v1/listings/mine')
-      .set({ Authorization: `Bearer ${userToken}` })
+    const res = await request(app).get('/api/v1/listings/mine').set(orgHeaders)
     // Rơi vào `/:id` thì validate ObjectId sẽ ném 400 vì "mine" không phải 24 hex.
     expect(res.status).not.toBe(400)
   })

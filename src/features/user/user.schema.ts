@@ -25,17 +25,22 @@ export const publicProfileSchema = z
   })
   .openapi('PublicProfile')
 
-// /users/me trả nguyên document (đã bỏ password qua toJSON) — passthrough vì model
-// còn field khác và ta không muốn doc phải sửa theo mỗi lần model đổi.
+/**
+ * Trước đây schema này `passthrough` và controller trả nguyên document. Hệ quả: khi model bỏ
+ * cột `role`, schema vẫn khai `role: z.string()`, SDK sinh ra `role: string`, và app gọi
+ * `profile.role.trim()` trên `undefined`. Không có gì bắt được vì chẳng ai đối chiếu hai bên.
+ *
+ * Nên giờ nó là whitelist đi qua `toMeProfileDto` — đúng cách `publicProfileSchema` đã làm.
+ * Vai trò KHÔNG nằm ở đây: nó là quan hệ (`memberships.role`, `role_grants.role`), đọc qua
+ * `/organizations/mine` và `/role-grants/mine`.
+ */
 export const meProfileSchema = publicProfileSchema
   .extend({
     email: z.string().email(),
     phone: z.string().optional(),
-    role: z.string(),
     isEmailVerified: z.boolean(),
     isActive: z.boolean(),
   })
-  .passthrough()
   .openapi('MeProfile')
 
 export const userParamsSchema = z.object({ id: objectId })

@@ -2,7 +2,8 @@ import { Server as HttpServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import { createAdapter } from '@socket.io/redis-adapter'
 import type { Redis } from 'ioredis'
-import { TOKEN_TYPE, verifyAccessToken } from '../common/utils/jwt'
+import { verifyAccessToken } from '../common/utils/jwt'
+import { membershipRepository } from '../features/membership/membership.repository'
 import { duplicateRedis, getRedis } from '../config/redis'
 import { env } from '../config/env'
 import { logger } from '../config/logger'
@@ -33,22 +34,33 @@ export function initSockets(httpServer: HttpServer): SocketServer {
   }
 
   // Auth handshake bằng JWT (token gửi qua auth payload của socket.io)
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     const token = socket.handshake.auth?.token as string | undefined
     if (!token) return next(new Error('Missing token'))
-    try {
-      const payload = verifyAccessToken(token)
-      // Cùng một secret ký cả token user lẫn platform-admin, nên `type` là thứ duy nhất chặn
-      // token bên bán phần mềm mở socket của người dùng cuối — giống hệt `authenticate`.
-      if (payload.type !== TOKEN_TYPE.USER) return next(new Error('Invalid token'))
 
-      socket.data.userId = payload.sub
-      socket.data.organizationId = payload.organizationId
-      socket.data.role = payload.role
-      next()
+    let userId: string
+    try {
+      userId = verifyAccessToken(token).sub
     } catch {
-      next(new Error('Invalid token'))
+      return next(new Error('Invalid token'))
     }
+
+    // Token không còn mang org, mà socket sống lâu và cần đúng một org để join room. Client
+    // gửi kèm `orgSlug`… nhưng ở đây chỉ chấp nhận khi người đó THỰC SỰ là thành viên: đọc
+    // membership lúc bắt tay, không tin dữ liệu client gửi lên.
+    const memberships = await membershipRepository.listActiveByUser(userId)
+    const requested = socket.handshake.auth?.organizationId as string | undefined
+    const membership = requested
+      ? memberships.find((m) => m.organizationId.toString() === requested)
+      : memberships.length === 1
+        ? memberships[0]
+        : undefined
+
+    if (!membership) return next(new Error('Missing or invalid organization'))
+
+    socket.data.userId = userId
+    socket.data.organizationId = membership.organizationId.toString()
+    next()
   })
 
   io.on('connection', (socket) => {

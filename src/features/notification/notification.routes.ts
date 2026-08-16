@@ -8,8 +8,7 @@ import {
   notificationResponseSchema,
 } from './notification.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate, authorize } from '../../middlewares/auth.middleware'
-import { ORG_ROLES } from '../../common/constants'
+import { authenticate, requireOrg, requireOrgModerator } from '../../middlewares/auth.middleware'
 import {
   registry,
   bearerAuth,
@@ -30,7 +29,8 @@ router.get(
 router.post(
   '/',
   authenticate,
-  authorize(ORG_ROLES.OWNER, ORG_ROLES.MODERATOR),
+  requireOrg,
+  requireOrgModerator,
   validate({ body: createNotificationSchema }),
   notificationController.create,
 )
@@ -49,7 +49,11 @@ registry.registerPath({
   path: '/notifications',
   operationId: 'notificationList',
   tags: ['Notification'],
-  summary: 'Thông báo của organization hiện tại (gồm cả bản fan-out từ chain)',
+  summary: 'Thông báo tôi nhận được',
+  description:
+    'Gồm thông báo gửi cho cả tổ chức và thông báo gửi cho đúng nhóm con của người gọi. ' +
+    'Tài khoản chưa thuộc tổ chức nào nhận danh sách rỗng, không phải lỗi. ' +
+    '`scope=managed` đổi câu hỏi thành "tôi gửi được tới đâu" — dùng cho bàn quản trị.',
   ...protectedRoute,
   request: { query: notificationQuerySchema },
   responses: {
@@ -67,12 +71,16 @@ registry.registerPath({
   operationId: 'notificationCreate',
   tags: ['Notification'],
   summary: 'Gửi thông báo trong phạm vi organization',
+  description:
+    'Bỏ trống `unitId` = gửi cho cả tổ chức, cần quyền quản lý cấp org. Staff phụ trách một ' +
+    'nhóm con chỉ gửi được cho đúng nhóm đó.',
   ...protectedRoute,
   request: { body: { content: { 'application/json': { schema: createNotificationSchema } } } },
   responses: {
     201: jsonResponse('Đã gửi', envelope(notificationResponseSchema)),
     401: errorResponse('Thiếu hoặc sai access token'),
-    403: errorResponse('Chỉ owner/moderator được gửi'),
+    400: errorResponse('Nhóm con không tồn tại trong tổ chức này'),
+    403: errorResponse('Ngoài phạm vi được cấp'),
   },
 })
 

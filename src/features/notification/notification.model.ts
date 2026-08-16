@@ -1,12 +1,16 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
-import { NOTIFICATION_SOURCE, NotificationSource } from '../../common/constants'
 import { tenantPlugin } from '../../common/tenant/tenantPlugin'
 
 export interface INotification {
   organizationId: Types.ObjectId
-  /** Nguồn phát sinh — chỉ để hiển thị/audit, KHÔNG dùng để mở rộng quyền đọc. */
-  sourceType: NotificationSource
-  sourceChainId: Types.ObjectId | null
+  /**
+   * Nhóm con nhận thông báo. `null` = cả tổ chức.
+   *
+   * Có mặt vì quyền duyệt trong org vốn đã phân tầng (§7.2a): `staff` scope `org_unit` chỉ với
+   * tới nhóm của mình. Thiếu cột này thì họ vẫn `POST /notifications` được và chạm tới toàn bộ
+   * tổ chức — rộng hơn hẳn phạm vi được cấp.
+   */
+  unitId: Types.ObjectId | null
   title: string
   body: string
   readBy: Types.ObjectId[]
@@ -20,12 +24,7 @@ export interface INotificationDocument extends INotification, Document {
 
 const notificationSchema = new Schema<INotificationDocument>(
   {
-    sourceType: {
-      type: String,
-      enum: Object.values(NOTIFICATION_SOURCE),
-      default: NOTIFICATION_SOURCE.ORGANIZATION,
-    },
-    sourceChainId: { type: Schema.Types.ObjectId, ref: 'Chain', default: null },
+    unitId: { type: Schema.Types.ObjectId, ref: 'OrgUnit', default: null },
     title: { type: String, required: true, trim: true, maxlength: 200 },
     body: { type: String, required: true, maxlength: 2000 },
     // ponytail: mảng trong document — đủ cho vài nghìn user/org; tách bảng
@@ -35,12 +34,13 @@ const notificationSchema = new Schema<INotificationDocument>(
   { timestamps: true },
 )
 
-// chainReadable: false — thông báo cấp chain KHÔNG mở rộng quyền đọc mà được nhân bản sẵn
-// mỗi org một bản (notification.service.createForChain). Nhờ vậy tenantPlugin không cần
-// ngoại lệ nào ngoài Listing, và trạng thái đã đọc tự tách theo từng org.
 notificationSchema.plugin(tenantPlugin)
 
-notificationSchema.index({ organizationId: 1, createdAt: -1 })
+// `createdAt` đứng TRƯỚC `unitId` dù `unitId` mới là thứ được lọc: đường đọc phổ biến nhất
+// (`scope=managed` của quản lý cấp org) chỉ ràng `organizationId` rồi sort `createdAt`. Xếp
+// `unitId` chen vào giữa thì index không phục vụ được sort đó nữa và Mongo phải sort trong
+// bộ nhớ. Ở thứ tự này cả hai đường đọc đều dùng chung một index.
+notificationSchema.index({ organizationId: 1, createdAt: -1, unitId: 1 })
 
 export const Notification: Model<INotificationDocument> = mongoose.model<INotificationDocument>(
   'Notification',
