@@ -183,13 +183,98 @@
             "maxLength": 100
           },
           "phone": {
-            "type": "string",
-            "minLength": 8,
-            "maxLength": 15
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 8,
+                "maxLength": 15
+              },
+              {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              }
+            ]
           },
           "avatar": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uri"
+              },
+              {
+                "type": "string",
+                "enum": [
+                  ""
+                ]
+              }
+            ]
+          },
+          "gender": {
             "type": "string",
-            "format": "uri"
+            "enum": [
+              "male",
+              "female",
+              "other",
+              "undisclosed"
+            ]
+          },
+          "location": {
+            "type": "object",
+            "properties": {
+              "province": {
+                "type": "string",
+                "enum": [
+                  "Hà Nội",
+                  "Cao Bằng",
+                  "Tuyên Quang",
+                  "Lào Cai",
+                  "Điện Biên",
+                  "Lai Châu",
+                  "Sơn La",
+                  "Thái Nguyên",
+                  "Lạng Sơn",
+                  "Quảng Ninh",
+                  "Bắc Ninh",
+                  "Phú Thọ",
+                  "Hải Phòng",
+                  "Hưng Yên",
+                  "Ninh Bình",
+                  "Thanh Hóa",
+                  "Nghệ An",
+                  "Hà Tĩnh",
+                  "Quảng Trị",
+                  "Huế",
+                  "Đà Nẵng",
+                  "Quảng Ngãi",
+                  "Gia Lai",
+                  "Đắk Lắk",
+                  "Khánh Hòa",
+                  "Lâm Đồng",
+                  "Đồng Nai",
+                  "Tây Ninh",
+                  "Hồ Chí Minh",
+                  "Đồng Tháp",
+                  "Vĩnh Long",
+                  "An Giang",
+                  "Cần Thơ",
+                  "Cà Mau"
+                ]
+              },
+              "ward": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "address": {
+                "type": "string",
+                "maxLength": 255
+              }
+            },
+            "additionalProperties": false
+          },
+          "showPhone": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -207,6 +292,15 @@
           "avatar": {
             "type": "string"
           },
+          "gender": {
+            "type": "string",
+            "enum": [
+              "male",
+              "female",
+              "other",
+              "undisclosed"
+            ]
+          },
           "ratingAvg": {
             "type": "number"
           },
@@ -222,6 +316,7 @@
           "id",
           "name",
           "avatar",
+          "gender",
           "ratingAvg",
           "ratingCount",
           "createdAt"
@@ -242,6 +337,62 @@
               "phone": {
                 "type": "string"
               },
+              "location": {
+                "type": "object",
+                "properties": {
+                  "province": {
+                    "type": "string",
+                    "enum": [
+                      "Hà Nội",
+                      "Cao Bằng",
+                      "Tuyên Quang",
+                      "Lào Cai",
+                      "Điện Biên",
+                      "Lai Châu",
+                      "Sơn La",
+                      "Thái Nguyên",
+                      "Lạng Sơn",
+                      "Quảng Ninh",
+                      "Bắc Ninh",
+                      "Phú Thọ",
+                      "Hải Phòng",
+                      "Hưng Yên",
+                      "Ninh Bình",
+                      "Thanh Hóa",
+                      "Nghệ An",
+                      "Hà Tĩnh",
+                      "Quảng Trị",
+                      "Huế",
+                      "Đà Nẵng",
+                      "Quảng Ngãi",
+                      "Gia Lai",
+                      "Đắk Lắk",
+                      "Khánh Hòa",
+                      "Lâm Đồng",
+                      "Đồng Nai",
+                      "Tây Ninh",
+                      "Hồ Chí Minh",
+                      "Đồng Tháp",
+                      "Vĩnh Long",
+                      "An Giang",
+                      "Cần Thơ",
+                      "Cà Mau"
+                    ]
+                  },
+                  "ward": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "address": {
+                    "type": "string",
+                    "maxLength": 255
+                  }
+                },
+                "additionalProperties": false
+              },
+              "showPhone": {
+                "type": "boolean"
+              },
               "isEmailVerified": {
                 "type": "boolean"
               },
@@ -251,6 +402,7 @@
             },
             "required": [
               "email",
+              "showPhone",
               "isEmailVerified",
               "isActive"
             ]
@@ -895,6 +1047,10 @@
             "type": "string",
             "description": "Snapshot liên hệ công khai lúc tạo tin"
           },
+          "posterAvatar": {
+            "type": "string",
+            "description": "Snapshot ảnh đại diện lúc tạo tin"
+          },
           "location": {
             "type": "object",
             "properties": {
@@ -998,6 +1154,7 @@
           "seller",
           "posterName",
           "posterContact",
+          "posterAvatar",
           "status",
           "viewCount",
           "favoriteCount",
@@ -1534,6 +1691,9 @@
           "partnerName": {
             "type": "string"
           },
+          "partnerAvatar": {
+            "type": "string"
+          },
           "lastMessage": {
             "type": "string"
           },
@@ -1552,6 +1712,7 @@
           "listingTitle",
           "partnerId",
           "partnerName",
+          "partnerAvatar",
           "lastMessage",
           "lastMessageAt",
           "unread"

@@ -33,6 +33,8 @@ export const conversationResponseSchema = z
     /** Người còn lại — client không phải tự suy từ mảng participants. */
     partnerId: objectId,
     partnerName: z.string(),
+    /** Snapshot lúc mở hội thoại. `''` = chưa đặt ảnh — client rơi về chữ viết tắt. */
+    partnerAvatar: z.string(),
     lastMessage: z.string(),
     lastMessageAt: z.string().datetime(),
     unread: z.boolean().openapi({

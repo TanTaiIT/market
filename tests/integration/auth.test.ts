@@ -99,16 +99,20 @@ describe('GET /users/me — response khớp với schema đã công bố', () =>
       .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`)
       .expect(200)
 
+    // `location` không có mặt vì tài khoản mới chưa điền — đúng: field vắng mặt mang nghĩa
+    // "chưa có", khác hẳn một subdoc rỗng.
     expect(Object.keys(res.body.data).sort()).toEqual([
       'avatar',
       'createdAt',
       'email',
+      'gender',
       'id',
       'isActive',
       'isEmailVerified',
       'name',
       'ratingAvg',
       'ratingCount',
+      'showPhone',
     ])
     // `role` là quan hệ (membership / role_grant), không phải thuộc tính của tài khoản.
     expect(res.body.data.role).toBeUndefined()

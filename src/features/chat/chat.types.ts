@@ -23,6 +23,7 @@ export function toConversationDto(
     listingTitle: conversation.listingTitle,
     partnerId: partner?.user.toString() ?? '',
     partnerName: partner?.name ?? '',
+    partnerAvatar: partner?.avatar ?? '',
     lastMessage: conversation.lastMessage,
     lastMessageAt: conversation.lastMessageAt.toISOString(),
     // Tin cuối do chính mình gửi thì không bao giờ là "chưa đọc".

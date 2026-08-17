@@ -14,6 +14,8 @@ export interface IParticipant {
   user: Types.ObjectId
   /** Snapshot tên lúc mở hội thoại — §2.3 cấm populate sang User. */
   name: string
+  /** Snapshot ảnh đại diện, cùng lý do. `''` = chưa đặt ảnh, client rơi về chữ viết tắt. */
+  avatar: string
   /** `null` = chưa đọc lần nào. So với `lastMessageAt` để ra huy hiệu chưa đọc. */
   lastReadAt: Date | null
 }
@@ -42,6 +44,7 @@ const participantSchema = new Schema<IParticipant>(
   {
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     name: { type: String, required: true, trim: true, maxlength: 100 },
+    avatar: { type: String, default: '', trim: true },
     lastReadAt: { type: Date, default: null },
   },
   { _id: false },

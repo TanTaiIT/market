@@ -138,6 +138,7 @@ export const listingResponseSchema = z
     seller: objectId,
     posterName: z.string().openapi({ description: 'Snapshot tên người đăng lúc tạo tin' }),
     posterContact: z.string().openapi({ description: 'Snapshot liên hệ công khai lúc tạo tin' }),
+    posterAvatar: z.string().openapi({ description: 'Snapshot ảnh đại diện lúc tạo tin' }),
     location: locationSchema.optional(),
     status: z.nativeEnum(LISTING_STATUS),
     viewCount: z.number(),

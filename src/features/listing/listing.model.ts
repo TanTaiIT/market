@@ -47,6 +47,8 @@ export interface IListing {
   seller: Types.ObjectId
   posterName: string
   posterContact: string
+  /** Snapshot ảnh đại diện lúc tạo tin — cùng lý do snapshot `posterName`: §2.3 cấm populate sang User. */
+  posterAvatar: string
   /** Vắng khi người đăng không chọn khu vực — tin đó không lên bộ lọc tỉnh lẫn `/listings/nearby`. */
   location?: IListingLocation
   status: ListingStatus
@@ -131,6 +133,7 @@ const listingSchema = new Schema<IListingDocument>(
     // thêm job resync nếu số cũ trên tin cũ thành vấn đề thật.
     posterName: { type: String, required: true, trim: true, maxlength: 100 },
     posterContact: { type: String, default: '', trim: true, maxlength: 50 },
+    posterAvatar: { type: String, default: '', trim: true },
 
     location: { type: locationSchema, required: false },
 

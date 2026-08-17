@@ -71,8 +71,8 @@ export const chatService = {
       buyerId,
       sellerId: seller._id,
       participants: [
-        { user: buyer._id, name: buyer.name, lastReadAt: new Date() },
-        { user: seller._id, name: seller.name, lastReadAt: null },
+        { user: buyer._id, name: buyer.name, avatar: buyer.avatar, lastReadAt: new Date() },
+        { user: seller._id, name: seller.name, avatar: seller.avatar, lastReadAt: null },
       ],
       lastMessage: '',
       lastMessageAt: new Date(),

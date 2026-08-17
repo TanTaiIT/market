@@ -142,6 +142,18 @@ export const POST_VISIBILITY = {
 } as const
 export type PostVisibility = (typeof POST_VISIBILITY)[keyof typeof POST_VISIBILITY]
 
+/**
+ * Giới tính trên hồ sơ. `UNDISCLOSED` là MẶC ĐỊNH và là một lựa chọn thật, không phải "chưa
+ * điền": người dùng có quyền không nêu, và cột này không được phép ép ai phải chọn.
+ */
+export const GENDER = {
+  MALE: 'male',
+  FEMALE: 'female',
+  OTHER: 'other',
+  UNDISCLOSED: 'undisclosed',
+} as const
+export type Gender = (typeof GENDER)[keyof typeof GENDER]
+
 // Vòng đời tin đăng - tính trước để không phải migrate về sau
 export const LISTING_STATUS = {
   DRAFT: 'draft',
