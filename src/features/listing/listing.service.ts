@@ -53,7 +53,7 @@ export interface ListingAuthor {
 function toListingDoc(
   input: CreateListingInput,
   author: ListingAuthor,
-  poster: { name: string; contact: string },
+  poster: { name: string; contact: string; avatar: string },
   routed: RoutingResult,
   provinceCode: string | null,
   validated: ValidatedForCategory,
@@ -71,6 +71,7 @@ function toListingDoc(
     seller: new Types.ObjectId(author.id),
     posterName: poster.name,
     posterContact: poster.contact,
+    posterAvatar: poster.avatar,
     // Bỏ HẲN key khi người đăng không chọn khu vực, thay vì ghi một subdoc rỗng — tin không
     // có `location` và tin có `location: {}` phải là cùng một thứ khi lọc.
     ...(input.location && { location: input.location }),
@@ -238,7 +239,14 @@ export const listingService = {
     const doc = toListingDoc(
       input,
       author,
-      { name: seller.name, contact: seller.phone ?? '' },
+      // `showPhone` mặc định false, nên tin mới KHÔNG mang số điện thoại trừ khi người bán chủ
+      // động bật. Đọc ở đây chứ không lúc trả tin: `posterContact` là snapshot, và đọc xuyên
+      // sang `User` lúc render tin sẽ là đúng thứ mà multi-tenant.convention §2.3 cấm.
+      {
+        name: seller.name,
+        contact: seller.showPhone ? (seller.phone ?? '') : '',
+        avatar: seller.avatar,
+      },
       routed,
       provinceCode,
       validated,

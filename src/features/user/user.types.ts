@@ -14,6 +14,7 @@ export function toPublicProfileDto(user: IUserDocument): PublicProfileDto {
     id: user._id.toString(),
     name: user.name,
     avatar: user.avatar,
+    gender: user.gender,
     ratingAvg: user.ratingAvg,
     ratingCount: user.ratingCount,
     createdAt: user.createdAt.toISOString(),
@@ -32,6 +33,8 @@ export function toMeProfileDto(user: IUserDocument): MeProfileDto {
     ...toPublicProfileDto(user),
     email: user.email,
     phone: user.phone,
+    location: user.location,
+    showPhone: user.showPhone,
     isEmailVerified: Boolean(user.emailVerifiedAt),
     isActive: user.isActive,
   }

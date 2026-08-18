@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
 import { hash, verify } from '@node-rs/bcrypt'
+import { GENDER, Gender, VN_PROVINCE_NAMES } from '../../common/constants'
+import type { VnProvinceName } from '../../common/constants/vnProvince'
 
 /**
  * Tài khoản là TOÀN CỤC: không có `organizationId`.
@@ -16,6 +18,23 @@ export interface IUser {
   phone?: string
   password: string
   avatar: string
+  gender: Gender
+  /**
+   * Khu vực của chính người dùng — **RIÊNG TƯ**, không ra `PublicProfile`.
+   *
+   * Công dụng duy nhất: điền sẵn khu vực khi đăng tin. Nó KHÔNG phải nguồn của
+   * `Listing.location` — mỗi tin vẫn tự mang khu vực riêng, vì người ta bán món đồ ở chỗ khác
+   * nơi mình ở là chuyện thường.
+   */
+  location?: { province?: VnProvinceName; ward?: string; address?: string }
+  /**
+   * Có cho hiện số điện thoại trên tin đăng không. Mặc định **false**.
+   *
+   * Được đọc lúc TẠO TIN để quyết định `Listing.posterContact` — xem `listing.service.ts`.
+   * Snapshot nên đổi công tắc không hồi tố tin đã đăng; đó là đánh đổi có chủ ý để không phải
+   * populate `seller` khi trả tin (multi-tenant.convention §2.3).
+   */
+  showPhone: boolean
   /** `null` = chưa xác minh. Một cột thay vì cột boolean + cột thời điểm dễ lệch nhau. */
   emailVerifiedAt: Date | null
   isActive: boolean
@@ -39,6 +58,24 @@ const userSchema = new Schema<IUserDocument>(
     phone: { type: String, trim: true },
     password: { type: String, required: true, select: false, minlength: 6 },
     avatar: { type: String, default: '' },
+    gender: { type: String, enum: Object.values(GENDER), default: GENDER.UNDISCLOSED },
+    // `_id: false`: subdoc thuần dữ liệu, không cần khoá riêng để tham chiếu tới.
+    location: {
+      type: new Schema(
+        {
+          // enum lặp lại tầng zod là cố ý, cùng lý do như `Listing.location`: seed/migration
+          // ghi thẳng qua Mongoose, không đi qua zod.
+          province: { type: String, trim: true, enum: VN_PROVINCE_NAMES },
+          ward: { type: String, trim: true, maxlength: 100 },
+          address: { type: String, trim: true, maxlength: 255 },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
+    // Mặc định `false` — im lặng công khai số điện thoại của người dùng là thứ không bao giờ
+    // được để làm mặc định.
+    showPhone: { type: Boolean, default: false },
 
     emailVerifiedAt: { type: Date, default: null },
     isActive: { type: Boolean, default: true },
