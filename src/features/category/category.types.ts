@@ -16,5 +16,6 @@ export function toCategoryDto(category: ICategoryDocument): CategoryDto {
     icon: category.icon,
     order: category.order,
     isActive: category.isActive,
+    requireManualReview: category.requireManualReview,
   }
 }

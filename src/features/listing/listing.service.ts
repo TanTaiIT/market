@@ -6,6 +6,7 @@ import { RoutingResult, routeListing } from './listing.routing'
 import { QUOTA, QuotaVerdict, checkQuota, isAutoApprove } from './listing.quota'
 import { userRepository } from '../user/user.repository'
 import { categoryService } from '../category/category.service'
+import { categoryTemplateService } from '../category-template/category-template.service'
 import { organizationRepository } from '../organization/organization.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from '../../common/errors'
@@ -24,6 +25,16 @@ import {
 } from '../../common/utils/pagination'
 
 const LISTING_TTL_DAYS = 30
+
+/** Kết quả `validateForCategory` — alias để `toListingDoc` không phải khai lại hình của nó. */
+type ValidatedForCategory = Awaited<ReturnType<typeof categoryTemplateService.validateForCategory>>
+
+/** Chỉ gọi khi `templateId` khác null — caller đã kiểm, đây là chỗ dựng hình cho gọn. */
+const toTemplateRef = (v: ValidatedForCategory): IListing['templateRef'] => ({
+  id: new Types.ObjectId(v.templateId!),
+  version: v.version,
+  isFallback: v.isFallback,
+})
 
 /**
  * Bối cảnh của người đăng tại thời điểm đăng. Controller dựng từ scope + membership + grants,
@@ -45,6 +56,7 @@ function toListingDoc(
   poster: { name: string; contact: string },
   routed: RoutingResult,
   provinceCode: string | null,
+  validated: ValidatedForCategory,
 ): Partial<IListing> {
   const expiresAt = new Date(Date.now() + LISTING_TTL_DAYS * 24 * 60 * 60 * 1000)
   return {
@@ -62,7 +74,13 @@ function toListingDoc(
     // Bỏ HẲN key khi người đăng không chọn khu vực, thay vì ghi một subdoc rỗng — tin không
     // có `location` và tin có `location: {}` phải là cùng một thứ khi lọc.
     ...(input.location && { location: input.location }),
-    attributes: input.attributes ? new Map(Object.entries(input.attributes)) : new Map(),
+    // Ba field dưới đây đến từ `validateForCategory`, KHÔNG từ `input`: giá trị đã ép kiểu,
+    // key lạ đã bị loại, và `attrs` chỉ còn field lọc được.
+    attributes: new Map(Object.entries(validated.attributes)),
+    attrs: validated.attrs,
+    // Vắng hẳn khi chưa seed template nào — `templateRef` trỏ vào một bản ghi không tồn tại
+    // còn tệ hơn là không có nó.
+    ...(validated.templateId && { templateRef: toTemplateRef(validated) }),
     // Bốn field dưới đây do thuật toán định tuyến quyết định, không do client gửi lên.
     visibility: input.visibility ?? POST_VISIBILITY.ORG_INTERNAL,
     provinceCode,
@@ -161,7 +179,15 @@ export const listingService = {
     // Zod chỉ chốt được `categoryId` đúng dạng 24 hex. Không kiểm tra ở đây thì một id hợp lệ
     // về hình thức nhưng không trỏ tới danh mục nào vẫn tạo ra tin — và tin đó rơi khỏi mọi
     // bộ lọc danh mục mà không ai biết vì sao.
-    await categoryService.assertUsable(input.categoryId)
+    const category = await categoryService.assertUsable(input.categoryId)
+
+    // Ngay sau `assertUsable` vì nó cần một danh mục có thật để tra template. Đây là chốt duy
+    // nhất cho `attributes`: zod chỉ chặn được hình dạng, còn "field nào bắt buộc, option nào
+    // hợp lệ" thì nằm trong DB nên middleware tĩnh không với tới (plan §0.2).
+    const validated = await categoryTemplateService.validateForCategory(
+      input.categoryId,
+      input.attributes,
+    )
 
     const seller = await userRepository.findById(author.id)
     if (!seller) throw new NotFoundError('User not found')
@@ -186,7 +212,10 @@ export const listingService = {
           ? await hasCategoryModerator(input.categoryId, provinceCode!)
           : false,
       unitId: author.unitId,
-      autoApprove: isAutoApprove(author.trustLevel, recentRejections),
+      // Cờ của danh mục là phủ quyết, đứng SAU phép tính uy tín: có danh mục mà ảnh và mô tả
+      // hợp lệ vẫn không đủ để tự đăng (xem `Category.requireManualReview`).
+      autoApprove:
+        isAutoApprove(author.trustLevel, recentRejections) && !category.requireManualReview,
     })
 
     const isOutsider = routed.queue === MODERATION_QUEUE.ORG_OUTSIDER
@@ -212,6 +241,7 @@ export const listingService = {
       { name: seller.name, contact: seller.phone ?? '' },
       routed,
       provinceCode,
+      validated,
     )
 
     // Người ngoài ghi vào org mà họ KHÔNG thuộc về: request này không có scope org (đúng thiết
@@ -287,14 +317,37 @@ export const listingService = {
   },
 
   async update(id: string, userId: string, input: UpdateListingInput) {
-    await assertOwner(id, userId)
+    const existing = await assertOwner(id, userId)
     if (input.categoryId) await categoryService.assertUsable(input.categoryId)
 
     const { categoryId, location, attributes, ...rest } = input
     const update: Partial<IListing> = { ...rest }
     if (categoryId) update.category = new Types.ObjectId(categoryId)
     if (location) update.location = location
-    if (attributes) update.attributes = new Map(Object.entries(attributes))
+
+    /*
+     * Validate lại khi `attributes` HOẶC `categoryId` đổi — không chỉ khi `attributes` đổi.
+     *
+     * Đổi riêng danh mục là ca dễ bỏ sót nhất: thuộc tính cũ thuộc template cũ, giữ nguyên thì
+     * tin xe máy mang `batteryHealth` của điện thoại và `attrs` trỏ vào field template mới
+     * không có. Validate theo danh mục MỚI sẽ tự loại chúng — đó chính là việc "loại key lạ".
+     */
+    if (attributes || categoryId) {
+      const targetCategory = categoryId ?? existing.category.toString()
+      const validated = await categoryTemplateService.validateForCategory(
+        targetCategory,
+        // Danh mục đổi mà client không gửi lại `attributes` thì vẫn phải lọc bộ cũ qua template
+        // mới, nên nguồn là `attributes ?? bộ đang lưu` chứ không phải `attributes ?? {}`.
+        attributes ?? Object.fromEntries(existing.attributes),
+        // Giữ nguyên danh mục → ghim template của chính tin này, để form sửa và server xét
+        // cùng một bộ field. Đổi danh mục → template cũ vô nghĩa, lấy bản mới nhất.
+        categoryId ? undefined : existing.templateRef?.version,
+      )
+
+      update.attributes = new Map(Object.entries(validated.attributes))
+      update.attrs = validated.attrs
+      if (validated.templateId) update.templateRef = toTemplateRef(validated)
+    }
 
     return listingRepository.updateById(id, update)
   },

@@ -1,4 +1,5 @@
 import { categoryRepository } from './category.repository'
+import { ICategoryDocument } from './category.model'
 import { CategoryQuery, CreateCategoryInput, UpdateCategoryInput } from './category.schema'
 import { toCategoryDto } from './category.types'
 import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
@@ -20,10 +21,17 @@ export const categoryService = {
   /**
    * Tin chỉ được gắn vào danh mục đang bật. Gọi từ `listingService` — chỗ duy nhất chặn được
    * `categoryId` đúng định dạng 24 hex nhưng không trỏ tới danh mục nào.
+   *
+   * TRẢ VỀ document chứ không phải void: người gọi còn cần `requireManualReview` của chính
+   * danh mục vừa kiểm. Trả về ở đây là một lượt đọc; hỏi lại qua một method thứ hai là hai
+   * lượt đọc cho cùng một bản ghi, trên đường nóng của mọi lượt đăng tin.
    */
-  async assertUsable(categoryId: string) {
-    const exists = await categoryRepository.existsActive(categoryId)
-    if (!exists) throw new BadRequestError('Danh mục không tồn tại hoặc đã ngừng sử dụng')
+  async assertUsable(categoryId: string): Promise<ICategoryDocument> {
+    const category = await categoryRepository.findById(categoryId)
+    if (!category?.isActive) {
+      throw new BadRequestError('Danh mục không tồn tại hoặc đã ngừng sử dụng')
+    }
+    return category
   },
 
   async create(input: CreateCategoryInput, actorId: string) {

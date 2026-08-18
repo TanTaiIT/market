@@ -52,7 +52,30 @@ export interface IListing {
   status: ListingStatus
   viewCount: number
   favoriteCount: number
-  attributes: Map<string, string>
+  /**
+   * Thuộc tính động theo danh mục, đã qua `validateAttributes` nên KIỂU LÀ THẬT: number cho
+   * `odo`, boolean cho `warranty`, string[] cho `amenities`. Trước đây là `Map of String` —
+   * đổi vì `storage: "256"` không bao giờ match `$gte: 128`, tức mọi field số đều không lọc
+   * được theo khoảng.
+   */
+  attributes: Map<string, unknown>
+  /**
+   * Bản PHẲNG của `attributes` để lọc, chỉ gồm field `filterable`. Nhồi hết vào đây thì index
+   * phình vô ích trên M0 512 MB (đặc tả §5.3).
+   *
+   * Mảng `{k, v}` chứ không phải object: Mongo không index được key động, còn mảng cặp thì
+   * một index duy nhất phục vụ mọi field.
+   */
+  attrs: { k: string; v: unknown }[]
+  /**
+   * Template lúc tin được tạo. Form sửa tin phải dựng lại ĐÚNG bản này, không phải bản mới
+   * nhất — nếu không, tin cũ hiện field chưa từng có và mất giá trị của field đã bỏ.
+   */
+  templateRef?: {
+    id: Types.ObjectId
+    version: number
+    isFallback: boolean
+  }
   /** Vết của lượt duyệt gần nhất. Rỗng với tin chưa ai chạm tới. */
   moderation?: {
     reason?: string
@@ -143,8 +166,30 @@ const listingSchema = new Schema<IListingDocument>(
     viewCount: { type: Number, default: 0 },
     favoriteCount: { type: Number, default: 0 },
 
-    // Thuộc tính động theo category (vd: xe -> {brand, year, km})
-    attributes: { type: Map, of: String, default: {} },
+    // `Mixed` chứ không `String`: xem IListing.attributes. Đường ghi DUY NHẤT hợp lệ là
+    // `categoryTemplateService.validateForCategory` — Mixed không tự validate được gì, nên
+    // bỏ qua nó ở một call-site là để kiểu tuỳ tiện lọt thẳng vào DB.
+    attributes: { type: Map, of: Schema.Types.Mixed, default: {} },
+
+    // Sinh ở SERVICE, không phải hook `pre('save')` như bản phác thảo: `updateById` dùng
+    // `findByIdAndUpdate` nên không kích hoạt `save`, và tin vừa sửa sẽ lặng lẽ giữ `attrs` cũ
+    // — bộ lọc trả về tin không còn khớp điều kiện.
+    attrs: {
+      type: [new Schema({ k: { type: String }, v: { type: Schema.Types.Mixed } }, { _id: false })],
+      default: [],
+    },
+
+    templateRef: {
+      type: new Schema(
+        {
+          id: { type: Schema.Types.ObjectId, ref: 'CategoryTemplate', required: true },
+          version: { type: Number, required: true },
+          isFallback: { type: Boolean, default: false },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
 
     // Lý do từ chối hiện thẳng cho người đăng, nên snapshot tên người duyệt thay vì populate
     // (§2.3) — và giữ được cả khi tài khoản quản trị đó rời trường.
@@ -173,6 +218,10 @@ const listingSchema = new Schema<IListingDocument>(
       transform(_doc, ret) {
         const r = ret as Record<string, unknown>
         delete r.__v
+        // `attrs` là bản phẳng CHỈ để index tra — nó nhân đôi `attributes` vốn đã nằm ngay
+        // cạnh. Gửi kèm là trả gấp đôi dữ liệu thuộc tính trên mỗi tin, nhân với 50 tin một
+        // trang, cho một field không client nào đọc.
+        delete r.attrs
         return r
       },
     },
@@ -199,6 +248,14 @@ listingSchema.index({ organizationId: 1, unitId: 1, status: 1, createdAt: -1 })
 listingSchema.index({ visibility: 1, status: 1, createdAt: -1 })
 listingSchema.index({ visibility: 1, category: 1, provinceCode: 1, status: 1, createdAt: -1 })
 listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, createdAt: -1 })
+
+// CHƯA có index cho `attrs`, có chủ ý: hiện chưa truy vấn nào lọc theo nó (`buildFilter` mới
+// biết category/price/province/q), mà index không người đọc thì chỉ tốn chi phí ghi và đĩa
+// trên M0 512 MB. Nó về cùng lượt với `?attrs=` — index và query của nó phải land cùng nhau
+// thì mới đối chiếu được hình dạng `$elemMatch` thật.
+//
+// Lúc đó phải là ĐỦ HAI bản, cùng lý do với hai họ index ở trên: trục org bắt đầu bằng
+// `organizationId` (rule 13), trục danh mục bắt đầu bằng `visibility` vì org của nó là null.
 
 // Slug chỉ unique TRONG org, và tin đã xoá không giữ chỗ slug vĩnh viễn.
 listingSchema.index(

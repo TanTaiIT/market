@@ -27,6 +27,7 @@ export const createCategorySchema = z
     slug: categorySlugSchema.optional(),
     icon: z.string().max(8).optional().openapi({ example: '📚' }),
     order: z.number().int().min(0).optional(),
+    requireManualReview: z.boolean().optional(),
   })
   .strict()
   .openapi('CreateCategory')
@@ -37,6 +38,7 @@ export const updateCategorySchema = z
     icon: z.string().max(8).optional(),
     order: z.number().int().min(0).optional(),
     isActive: z.boolean().optional(),
+    requireManualReview: z.boolean().optional(),
   })
   .strict()
   .openapi('UpdateCategory')
@@ -49,6 +51,8 @@ export const categoryResponseSchema = z
     icon: z.string(),
     order: z.number(),
     isActive: z.boolean(),
+    /** Tin trong danh mục này luôn qua người duyệt, bỏ qua mọi ngưỡng uy tín. */
+    requireManualReview: z.boolean(),
   })
   .openapi('Category')
 

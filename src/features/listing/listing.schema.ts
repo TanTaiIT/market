@@ -57,7 +57,18 @@ export const createListingSchema = z
     // Tuỳ chọn: tin không có khu vực vẫn hợp lệ, chỉ là nó không lên được bộ lọc theo tỉnh
     // và không xuất hiện ở `/listings/nearby` của ai cả.
     location: locationInputSchema.optional(),
-    attributes: z.record(z.string()).optional(),
+    /**
+     * Thuộc tính động theo template của danh mục. Zod chỉ chặn được HÌNH DẠNG (một tầng, giá
+     * trị nguyên thuỷ hoặc mảng chuỗi) — "field nào bắt buộc, option nào hợp lệ" nằm trong DB
+     * nên `validate()` (middleware tĩnh) không với tới. Chốt thật ở
+     * `categoryTemplateService.validateForCategory`, gọi từ service.
+     *
+     * `unknown` chứ không `string`: form trả chuỗi nhưng client khác gửi số/boolean thật, và
+     * ép hết về chuỗi ở đây là mất đúng thứ vừa sửa ở model.
+     */
+    attributes: z
+      .record(z.union([z.string(), z.number(), z.boolean(), z.array(z.string())]))
+      .optional(),
 
     /**
      * Đăng vào đâu. Mặc định `org_internal` — mặc định an toàn: tin ở lại trong tổ chức cho
@@ -139,6 +150,12 @@ export const listingResponseSchema = z
     posterName: z.string().openapi({ description: 'Snapshot tên người đăng lúc tạo tin' }),
     posterContact: z.string().openapi({ description: 'Snapshot liên hệ công khai lúc tạo tin' }),
     location: locationSchema.optional(),
+    /** Đã ép kiểu theo template — số là số, boolean là boolean. Xem `CreateListing.attributes`. */
+    attributes: z.record(z.unknown()).optional(),
+    /** Bản template lúc tạo tin. Form sửa tin phải nạp ĐÚNG version này, không phải bản mới nhất. */
+    templateRef: z
+      .object({ id: objectId, version: z.number(), isFallback: z.boolean() })
+      .optional(),
     status: z.nativeEnum(LISTING_STATUS),
     viewCount: z.number(),
     favoriteCount: z.number(),

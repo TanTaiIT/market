@@ -171,6 +171,37 @@ export const LISTING_CONDITION = {
 } as const
 export type ListingCondition = (typeof LISTING_CONDITION)[keyof typeof LISTING_CONDITION]
 
+/**
+ * Kiểu của một field trong template tin đăng — quyết định cả component FE lẫn phép ép kiểu
+ * ở `validateAttributes`. Danh sách ĐÓNG: mỗi giá trị mới ở đây là một component RN phải
+ * viết thêm, nên thêm giá trị là một quyết định thiết kế chứ không phải một dòng config.
+ */
+export const FIELD_TYPE = {
+  TEXT: 'text',
+  TEXTAREA: 'textarea',
+  NUMBER: 'number',
+  SELECT: 'select',
+  MULTISELECT: 'multiselect',
+  BOOLEAN: 'boolean',
+  /** Vẫn lưu `Number`; tách khỏi `number` chỉ để FE dựng dropdown năm thay vì ô nhập tự do. */
+  YEAR: 'year',
+} as const
+export type FieldType = (typeof FIELD_TYPE)[keyof typeof FIELD_TYPE]
+
+/** Kiểu lưu ra `Number` — gom một chỗ để `validateAttributes` không phải liệt kê lại. */
+export const NUMERIC_FIELD_TYPES: FieldType[] = [FIELD_TYPE.NUMBER, FIELD_TYPE.YEAR]
+
+/**
+ * `draft` chưa ai thấy; `published` là bản đang phục vụ. KHÔNG có `archived`: bản cũ giữ
+ * nguyên `published` mãi mãi vì tin đã đăng vẫn đọc nó (đặc tả §Bước 6) — thứ chọn ra bản
+ * mới nhất là `version`, không phải trạng thái.
+ */
+export const TEMPLATE_STATUS = {
+  DRAFT: 'draft',
+  PUBLISHED: 'published',
+} as const
+export type TemplateStatus = (typeof TEMPLATE_STATUS)[keyof typeof TEMPLATE_STATUS]
+
 // Người dùng báo cáo tin hoặc người khác. Danh sách đóng để bàn quản trị lọc và thống kê được
 // — để người dùng gõ tự do thì không nhóm nổi.
 export const REPORT_KIND = {

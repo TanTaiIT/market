@@ -6,6 +6,15 @@ export interface ICategory {
   icon: string
   order: number
   isActive: boolean
+  /**
+   * Tin trong danh mục này KHÔNG BAO GIỜ tự đăng, dù người đăng uy tín tới đâu.
+   *
+   * Dành cho danh mục mà ảnh và mô tả hợp lệ vẫn không đủ để kết luận: Thú cưng là ca đầu tiên
+   * — loài vật trong ảnh có thể nằm trong danh sách cấm mà không mô hình nào nhận ra, và buôn
+   * bán động vật hoang dã là vi phạm hình sự. Uy tín kiếm được ở danh mục khác không mua được
+   * quyền bỏ qua bước này.
+   */
+  requireManualReview: boolean
   deletedAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -24,6 +33,7 @@ const categorySchema = new Schema<ICategoryDocument>(
     // Tắt thay vì xoá khi danh mục thôi được dùng: tin cũ vẫn trỏ vào nó, xoá là để lại
     // `Listing.category` mồ côi.
     isActive: { type: Boolean, default: true },
+    requireManualReview: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
   },
   {

@@ -12,8 +12,13 @@ import { JoinRequest } from '../src/features/join-request/join-request.model'
 import { PublicTrust } from '../src/features/trust/trust.model'
 import { Notification } from '../src/features/notification/notification.model'
 import { Category } from '../src/features/category/category.model'
+import {
+  CategoryTemplate,
+  FieldDefinition,
+} from '../src/features/category-template/category-template.model'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
 import { assertDisposableDb } from './assertDisposableDb'
+import { upsertCatalog, CATEGORIES } from './seedCatalog'
 import {
   JOINED_VIA,
   LISTING_STATUS,
@@ -174,17 +179,22 @@ async function seed() {
       JoinRequest.deleteMany({}),
       PublicTrust.deleteMany({}),
       Notification.deleteMany({}),
+      /*
+       * Xoá cả BA cùng nhau, không chỉ `Category`.
+       *
+       * `upsertCatalog()` ngay dưới tạo lại đủ ba trong một lượt nên `template.categoryId` vẫn
+       * trỏ đúng — không có cửa sổ nào để mồ côi. Bỏ sót `Category` ở đây thì ngược lại: upsert
+       * chỉ thêm chứ không xoá, nên danh mục của lần seed trước ở lại vĩnh viễn và app hiện
+       * lẫn lộn hai thế hệ chip lọc.
+       */
       Category.deleteMany({}),
+      CategoryTemplate.deleteMany({}),
+      FieldDefinition.deleteMany({}),
     ])
 
-    // Danh mục là từ điển dùng chung, không thuộc org nào — khớp bốn chip lọc bên app mobile.
-    const categories = await Category.insertMany([
-      { name: 'Sách vở', slug: 'sach-vo', icon: '📚', order: 1 },
-      { name: 'Xe đạp', slug: 'xe-dap', icon: '🚲', order: 2 },
-      { name: 'Điện tử', slug: 'dien-tu', icon: '💻', order: 3 },
-      { name: 'Đồ dùng', slug: 'do-dung', icon: '🎒', order: 4 },
-    ])
-    const categoryId = categories[0]._id
+    // Danh mục + field + template đến từ `seedCatalog` — cùng nguồn với `seed-templates.ts`.
+    const categoryIdBySlug = await upsertCatalog()
+    const categoryId = new Types.ObjectId(categoryIdBySlug.get('dien-thoai')!)
 
     // Master là một User bình thường + một grant scope `system`. Không còn collection riêng.
     const master = await User.create({
@@ -247,7 +257,9 @@ async function seed() {
     })
   })
 
-  console.log('Seeded: 4 danh mục, 3 org (2 trường có nhóm con + 1 org phẳng), 15 listings.')
+  console.log(
+    `Seeded: ${CATEGORIES.length} danh mục + template, 3 org (2 trường có nhóm con + 1 org phẳng), 15 listings.`,
+  )
   console.log(`Master:      master@platform.local / platform123`)
   console.log(`Chủ org:     owner@hung-vuong.local / ${PASSWORD}`)
   console.log(`Thành viên:  member@hung-vuong.local / ${PASSWORD}`)

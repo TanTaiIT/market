@@ -8,6 +8,7 @@ import {
   createCategorySchema,
   updateCategorySchema,
 } from './category.schema'
+import categoryTemplateRoutes from '../category-template/category-template.routes'
 import { validate } from '../../middlewares/validate.middleware'
 import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
@@ -18,6 +19,14 @@ const router = Router()
 // tổ chức nào, nên nó là việc vận hành hệ thống chứ không phải việc của một org.
 router.get('/', validate({ query: categoryQuerySchema }), categoryController.list)
 router.get('/:id', validate({ params: categoryParamsSchema }), categoryController.getById)
+
+// Template thuộc tính của danh mục. Sub-router chứ không phải một handler ở đây: nó có model,
+// service và vòng đời version riêng — xem `features/category-template/`.
+//
+// Đứng SAU `/:id` vẫn tới được: Express khớp theo thứ tự khai báo, nhưng `.get('/:id')` đòi
+// khớp TRỌN path nên `/xxx/template` không rơi vào đó mà đi tiếp xuống đây. Nếu sau này thêm
+// một `.get('/:id/*')` phía trên, thứ tự sẽ thành vấn đề thật.
+router.use('/:id/template', categoryTemplateRoutes)
 
 router.post(
   '/',

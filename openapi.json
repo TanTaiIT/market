@@ -574,7 +574,23 @@
           "attributes": {
             "type": "object",
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
             }
           },
           "visibility": {
@@ -769,7 +785,23 @@
           "attributes": {
             "type": "object",
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ]
             }
           },
           "visibility": {
@@ -949,6 +981,32 @@
               }
             },
             "additionalProperties": false
+          },
+          "attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "nullable": true
+            }
+          },
+          "templateRef": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[0-9a-fA-F]{24}$"
+              },
+              "version": {
+                "type": "number"
+              },
+              "isFallback": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "version",
+              "isFallback"
+            ]
           },
           "status": {
             "type": "string",
@@ -1420,6 +1478,9 @@
           "order": {
             "type": "integer",
             "minimum": 0
+          },
+          "requireManualReview": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1444,6 +1505,9 @@
             "minimum": 0
           },
           "isActive": {
+            "type": "boolean"
+          },
+          "requireManualReview": {
             "type": "boolean"
           }
         },
@@ -1470,6 +1534,9 @@
           },
           "isActive": {
             "type": "boolean"
+          },
+          "requireManualReview": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -1478,7 +1545,156 @@
           "slug",
           "icon",
           "order",
-          "isActive"
+          "isActive",
+          "requireManualReview"
+        ]
+      },
+      "FieldOption": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string",
+            "example": "like_new"
+          },
+          "label": {
+            "type": "string",
+            "example": "Như mới (99%)"
+          }
+        },
+        "required": [
+          "value",
+          "label"
+        ]
+      },
+      "FieldShowIf": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "eq": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "in": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "key"
+        ]
+      },
+      "TemplateField": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "batteryHealth"
+          },
+          "label": {
+            "type": "string",
+            "example": "Độ chai pin"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "number",
+              "select",
+              "multiselect",
+              "boolean",
+              "year"
+            ]
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldOption"
+            }
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "helpText": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string",
+            "example": "%"
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "order": {
+            "type": "number",
+            "description": "Cách nhau 10 để sau chèn giữa được"
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "filterable": {
+            "type": "boolean"
+          },
+          "group": {
+            "type": "string",
+            "example": "Cấu hình"
+          },
+          "showIf": {
+            "$ref": "#/components/schemas/FieldShowIf"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "type",
+          "options",
+          "order",
+          "required",
+          "filterable"
+        ]
+      },
+      "CategoryTemplate": {
+        "type": "object",
+        "properties": {
+          "templateId": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "version": {
+            "type": "number"
+          },
+          "isFallback": {
+            "type": "boolean"
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateField"
+            }
+          }
+        },
+        "required": [
+          "templateId",
+          "version",
+          "isFallback",
+          "fields"
         ]
       },
       "OpenConversation": {
@@ -4982,6 +5198,78 @@
           },
           "409": {
             "description": "Phải luôn còn ít nhất một master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/categories/{id}/template": {
+      "get": {
+        "operationId": "categoryGetTemplate",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Template thuộc tính của một danh mục",
+        "description": "Trả về danh sách field ĐÃ GHÉP sẵn giữa template và từ điển `field_definitions` — client không phải gọi vòng hai để tra `label`/`options`. Danh mục chưa có template riêng thì rơi về bản chung, nhận biết bằng `isFallback: true`.\n\nForm SỬA TIN truyền `?version=` lấy từ `Listing.templateRef.version` để dựng lại đúng bộ field lúc tin được tạo — không có nó thì tin cũ hiện field của template mới.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "version",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Template của danh mục",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryTemplate"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chưa seed template nào",
             "content": {
               "application/json": {
                 "schema": {

@@ -17,11 +17,6 @@ export const categoryRepository = {
     return Category.findById(id)
   },
 
-  /** Dùng lúc tạo tin: tin chỉ được gắn vào danh mục đang bật. */
-  existsActive(id: string) {
-    return Category.exists({ _id: id, isActive: true })
-  },
-
   existsBySlug(slug: string) {
     return Category.exists({ slug })
   },

@@ -141,8 +141,11 @@ describe('Category — đọc công khai', () => {
 
   it('DTO không lộ field nội bộ', async () => {
     const res = await request(app).get('/api/v1/categories').expect(200)
+    // `requireManualReview` công khai có chủ ý: bàn quản trị đọc nó từ chính endpoint này để
+    // bật/tắt, và với người đăng thì nó là lời hứa "tin ở đây luôn có người xem", không phải
+    // bí mật vận hành. `deletedAt`/`createdAt`/`updatedAt`/`_id` vẫn phải nằm ngoài.
     expect(Object.keys(res.body.data[0]).sort()).toEqual(
-      ['icon', 'id', 'isActive', 'name', 'order', 'slug'].sort(),
+      ['icon', 'id', 'isActive', 'name', 'order', 'requireManualReview', 'slug'].sort(),
     )
   })
 })

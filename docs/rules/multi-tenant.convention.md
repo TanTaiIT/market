@@ -28,7 +28,8 @@ năng, nó là rò rỉ dữ liệu giữa hai khách hàng khác nhau.
 
 1. **Mọi collection nghiệp vụ đều gắn `tenantPlugin`.** Không có collection nào "tạm thời
    chưa cần tenant". Ngoại lệ duy nhất đã được duyệt: `User`, `Membership`, `RoleGrant`,
-   `JoinRequest`, `Trust`, `Organization`, `Category` — xem §1.3 để biết vì sao và bù bằng gì.
+   `JoinRequest`, `Trust`, `Organization`, `Category`, `FieldDefinition`, `CategoryTemplate`
+   — xem §1.3 để biết vì sao và bù bằng gì.
 2. **Không tự viết filter `organizationId` trong repository/service.** Scope đến từ
    context. Tự viết nghĩa là đang có hai nguồn sự thật, và cái viết tay sẽ sai trước.
 3. **Ghi luôn rơi về `ownOrgId`.** Không route nào, không role nào, không cờ nào mở rộng
@@ -92,6 +93,8 @@ thì nới scope cho **mọi** truy vấn của collection.
 | `Trust` | Uy tín thuộc trục danh mục, không thuộc tổ chức nào | — |
 | `Organization` | Chính nó *là* tenant | Chỉ truy cập qua repository của feature đó |
 | `Category` | Dùng chung toàn hệ thống (quyết định #7) | Không có dữ liệu riêng của khách hàng |
+| `FieldDefinition` | Từ điển field của template tin đăng — cùng lý do với `Category` | Không có dữ liệu riêng của khách hàng; ghi chỉ qua `scripts/seed-templates.ts` |
+| `CategoryTemplate` | Template gắn với `Category`, mà `Category` đã ngoài tenant | Như trên; API chỉ mở đường ĐỌC (`GET /categories/{id}/template`) |
 
 Muốn thêm một collection vào danh sách này → **dừng lại và hỏi**, không tự quyết.
 
