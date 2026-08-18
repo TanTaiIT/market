@@ -10,6 +10,12 @@ import { RoleGrant } from '../src/features/role-grant/role-grant.model'
 import { JoinRequest } from '../src/features/join-request/join-request.model'
 import { PublicTrust } from '../src/features/trust/trust.model'
 import { Notification } from '../src/features/notification/notification.model'
+import { Category } from '../src/features/category/category.model'
+import {
+  CategoryTemplate,
+  FieldDefinition,
+} from '../src/features/category-template/category-template.model'
+import { upsertCatalog } from './seedCatalog'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
 import { normalizeOrgSlug } from '../src/common/utils/orgSlug'
 import { JOINED_VIA, MEMBERSHIP_ROLES, SCOPE_TYPES, SYSTEM_ROLES } from '../src/common/constants'
@@ -22,6 +28,11 @@ import { JOINED_VIA, MEMBERSHIP_ROLES, SCOPE_TYPES, SYSTEM_ROLES } from '../src/
  * mà đó chính là dữ liệu cần đọc để dựng `memberships` và `role_grants`.
  *
  * Idempotent: mọi bước đều lọc "chưa có" hoặc upsert. Chạy lại nhiều lần cho cùng kết quả.
+ *
+ * **Trên DB rỗng script này gần như không làm gì** — mọi bước backfill đều lọc "đã tồn tại" hoặc
+ * đọc collection v1 vốn không có. Chỉ hai việc cuối còn tác dụng: upsert từ điển danh mục và
+ * đồng bộ index. Muốn có dữ liệu mẫu để chạy thử thì dùng `npm run seed` (nó xoá sạch rồi dựng
+ * lại), KHÔNG phải script này.
  */
 
 interface LegacyUser {
@@ -256,6 +267,16 @@ async function backfillListingAxis() {
     .collection('listings')
     .updateMany({ unitId: { $exists: false } }, { $set: { unitId: null } })
   console.log(`listings: gán unitId cho ${unit.modifiedCount} bản ghi`)
+
+  // CỐ Ý không backfill `templateRef` và `attrs`.
+  //
+  // `templateRef` mang nghĩa "tin này được tạo dưới template nào". Tin v1 ra đời khi chưa có
+  // template nào cả, nên gán cho nó bản chung hiện tại là ghi một điều KHÔNG đúng: form sửa tin
+  // sẽ dựng đúng bộ field của bản đó và tưởng người đăng từng thấy chúng. Vắng mặt mới là câu
+  // trả lời thật, và cả `listing.service` lẫn `db.ts` bên app đều đã chịu được nhánh đó.
+  //
+  // `attrs` là bản phẳng sinh ở service từ field `filterable`. Tin v1 không có attribute nào
+  // khớp template nên bản phẳng của chúng rỗng — và mảng vắng mặt đã tương đương rỗng khi lọc.
 }
 
 async function migrate() {
@@ -272,6 +293,16 @@ async function migrate() {
     // sau, khi đã chắc chắn không quay lại v1.
     await cleanupLegacyUserFields({ dropOrganizationId: false })
 
+    // Từ điển danh mục / field / template. Đưa vào migration chứ không bắt chạy `seed:templates`
+    // riêng: một DB vừa migrate mà chưa có template thì mọi lượt đăng tin đều thiếu bộ field, và
+    // "nhớ chạy thêm một script nữa" là loại bước người ta quên đúng lúc đang deploy.
+    //
+    // An toàn trên dữ liệu thật: `upsertCatalog` chỉ upsert theo khoá tự nhiên (`slug`, `key`),
+    // không xoá gì — cùng hàm mà `seed:templates` gọi. Danh mục do người vận hành tự thêm không
+    // bị đụng tới.
+    const catalog = await upsertCatalog()
+    console.log(`catalog: ${catalog.size} danh mục + field/template đã upsert`)
+
     // syncIndexes vừa tạo index mới vừa DROP index không còn khai báo trong schema — đúng thứ
     // ta cần cho `(organizationId, email)` cũ và index `ownerId` unique.
     // ponytail: rebuild toàn bộ index, chấp nhận được ở quy mô hiện tại; trên collection
@@ -286,6 +317,12 @@ async function migrate() {
       Listing,
       PublicTrust,
       Notification,
+      // Ba model của cụm category-template. Thiếu chúng ở đây thì index mới (`attrs`, unique
+      // `slug`/`key`, unique bản template theo danh mục) không được tạo lúc migrate — và ở
+      // production `autoIndex` thường tắt, nên sẽ không có ai tạo hộ.
+      Category,
+      CategoryTemplate,
+      FieldDefinition,
     ]) {
       const dropped = await model.syncIndexes()
       console.log(`${model.modelName}: dropped stale indexes ${JSON.stringify(dropped)}`)
