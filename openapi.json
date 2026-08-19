@@ -7554,7 +7554,7 @@
             }
           },
           "403": {
-            "description": "Cần quyền owner hoặc moderator",
+            "description": "Không có quyền duyệt, hoặc tin thuộc trục bạn không phụ trách",
             "content": {
               "application/json": {
                 "schema": {
@@ -7638,7 +7638,7 @@
             }
           },
           "403": {
-            "description": "Cần quyền owner hoặc moderator",
+            "description": "Không có quyền duyệt, hoặc tin thuộc trục bạn không phụ trách",
             "content": {
               "application/json": {
                 "schema": {
