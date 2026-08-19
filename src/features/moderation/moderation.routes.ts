@@ -70,6 +70,8 @@ router.delete(
 const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
 const unauthorized = errorResponse('Thiếu hoặc sai access token')
 const notModerator = errorResponse('Cần quyền owner hoặc moderator')
+// Thao tác ghi còn một cửa nữa sau cửa route: quyền phải khớp TRỤC của chính tin đó.
+const wrongScope = errorResponse('Không có quyền duyệt, hoặc tin thuộc trục bạn không phụ trách')
 
 registry.registerPath({
   method: 'get',
@@ -135,7 +137,7 @@ registry.registerPath({
     200: jsonResponse('Đã cập nhật', envelope(listingResponseSchema)),
     400: errorResponse('Từ chối mà thiếu lý do'),
     401: unauthorized,
-    403: notModerator,
+    403: wrongScope,
     404: errorResponse('Không tìm thấy tin'),
   },
 })
@@ -151,7 +153,7 @@ registry.registerPath({
   responses: {
     200: jsonResponse('Đã gỡ', envelope(z.null())),
     401: unauthorized,
-    403: notModerator,
+    403: wrongScope,
     404: errorResponse('Không tìm thấy tin'),
   },
 })

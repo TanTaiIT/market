@@ -42,17 +42,19 @@ export const moderationController = {
 
   // PATCH /moderation/listings/:id
   setListingStatus: catchAsync(async (req, res) => {
-    const listing = await moderationService.setListingStatus(
-      req.params.id,
-      req.body,
-      orgActor(req, 'moderation.setStatus'),
-    )
+    const listing = await moderationService.setListingStatus(req.params.id, req.body, {
+      ...orgActor(req, 'moderation.setStatus'),
+      grants: req.grants!,
+    })
     success(res, { message: 'Listing status updated', data: listing })
   }),
 
   // DELETE /moderation/listings/:id
   removeListing: catchAsync(async (req, res) => {
-    await moderationService.removeListing(req.params.id, orgActor(req, 'moderation.remove'))
+    await moderationService.removeListing(req.params.id, {
+      ...orgActor(req, 'moderation.remove'),
+      grants: req.grants!,
+    })
     success(res, { message: 'Listing removed' })
   }),
 }

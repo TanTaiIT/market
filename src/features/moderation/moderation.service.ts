@@ -21,6 +21,8 @@ import {
   POST_VISIBILITY,
   VN_PROVINCE_NAMES,
 } from '../../common/constants'
+import { ForbiddenError } from '../../common/errors'
+import { Grant, canModerateCategory, canModerateOrg } from '../../common/authz/policy'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToOrgAdmins } from '../../sockets/emit'
 import { logger } from '../../config/logger'
@@ -93,6 +95,38 @@ async function applyTrustEffect(listing: IListingDocument, status: ListingStatus
   })
 }
 
+/**
+ * Chốt phạm vi THẬT của một thao tác duyệt.
+ *
+ * Route cố tình chỉ hỏi "có duyệt được thứ gì đó trong org này không" (`requireOrgModerator`,
+ * rule 5). Dừng ở đó thì một quản lý org: (1) tự ghim được tin TRỤC CÔNG KHAI của thành viên
+ * lên trang chung, bỏ qua người phụ trách danh mục — trái đúng thứ `listing.routing.ts` chốt;
+ * và (2) vì nhánh đọc công khai của `tenantPlugin` cho thấy mọi tin public đã duyệt, họ ẩn
+ * được cả tin của người ngoài org.
+ *
+ * Trục nào luật nấy, cùng cặp hàm mà `listing.routing.ts` dùng để định tuyến: công khai → ô
+ * (danh mục × tỉnh), nội bộ → chính org đó (staff phải đúng nhóm con).
+ *
+ * 403 chứ không 404: bàn duyệt vừa liệt kê tin này ra, giấu sự tồn tại của nó không còn nghĩa.
+ */
+function assertCanModerate(listing: IListingDocument, grants: Grant[]): void {
+  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
+    const target = {
+      categoryId: listing.category.toString(),
+      provinceCode: listing.provinceCode ?? '',
+    }
+    if (canModerateCategory(grants, target)) return
+    throw new ForbiddenError('Tin công khai do người phụ trách danh mục duyệt, không phải tổ chức')
+  }
+
+  const target = {
+    orgId: listing.organizationId?.toString() ?? '',
+    unitId: listing.unitId?.toString() ?? null,
+  }
+  if (canModerateOrg(grants, target)) return
+  throw new ForbiddenError('Tin này không thuộc phạm vi duyệt của bạn')
+}
+
 async function actorName(actor: ModeratorActor): Promise<string> {
   const user = await userRepository.findById(actor.id)
   return user?.name ?? 'Quản trị'
@@ -149,9 +183,16 @@ export const moderationService = {
     }
   },
 
-  async setListingStatus(id: string, input: SetListingStatusInput, actor: ModeratorActor) {
+  async setListingStatus(
+    id: string,
+    input: SetListingStatusInput,
+    actor: ModeratorActor & { grants: Grant[] },
+  ) {
+    const existing = await listingService.getById(id)
+    assertCanModerate(existing, actor.grants)
+
     const name = await actorName(actor)
-    const previousStatus = (await listingService.getById(id)).status
+    const previousStatus = existing.status
     const listing = await listingService.setModerationStatus(id, {
       status: input.status,
       reason: input.reason,
@@ -295,7 +336,9 @@ export const moderationService = {
     return listing
   },
 
-  async removeListing(id: string, actor: ModeratorActor) {
+  async removeListing(id: string, actor: ModeratorActor & { grants: Grant[] }) {
+    assertCanModerate(await listingService.getById(id), actor.grants)
+
     const name = await actorName(actor)
     const listing = await listingService.removeByModerator(id)
 

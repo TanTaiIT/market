@@ -431,6 +431,14 @@ interface TemplateSeed {
   fieldKeys: ITemplateField[]
 }
 
+/*
+ * `filterable` = field ngăn lọc của app dựng ra, KHÔNG phải "field quan trọng". Ngăn lọc dựng
+ * thẳng từ cờ này nên mở hết là một cột dài hơn màn hình — giữ ở mức người mua thật sự thu hẹp
+ * bằng (hãng, dung lượng, diện tích), tắt những field chỉ để mô tả (màu, hướng nhà, nội thất).
+ *
+ * Cùng một `key` có thể mở ở danh mục này mà tắt ở danh mục kia: `override.options` làm tập giá
+ * trị khác hẳn nhau (xem `repairHistory` của Xe cộ), nên mỗi template tự quyết, không đồng bộ.
+ */
 export const TEMPLATES: TemplateSeed[] = [
   /*
    * Bản chung. Chỉ 4 field, KHÔNG cái nào bắt buộc: nó phải phục vụ được cả sách vở lẫn nhạc
@@ -482,7 +490,7 @@ export const TEMPLATES: TemplateSeed[] = [
       { key: 'model', order: 20, required: true },
       { key: 'storage', order: 30, required: true, filterable: true },
       { key: 'color', order: 40, required: false },
-      { key: 'batteryHealth', order: 50, required: false, filterable: true },
+      { key: 'batteryHealth', order: 50, required: false, filterable: false },
       // `required` có chủ ý: đây là thông tin người mua quan tâm nhất và là chỗ hay bị giấu.
       { key: 'repairHistory', order: 60, required: true, filterable: true },
       { key: 'accessories', order: 70, required: false },
@@ -534,8 +542,8 @@ export const TEMPLATES: TemplateSeed[] = [
       },
       { key: 'model', order: 30, required: true, override: { placeholder: 'VD: MacBook Air M2' } },
       { key: 'specs', order: 40, required: false },
-      { key: 'screenSize', order: 50, required: false, filterable: true },
-      { key: 'manufactureYear', order: 60, required: false, filterable: true },
+      { key: 'screenSize', order: 50, required: false, filterable: false },
+      { key: 'manufactureYear', order: 60, required: false, filterable: false },
       { key: 'origin', order: 70, required: false },
       { key: 'accessories', order: 80, required: false },
       { key: 'repairHistory', order: 90, required: true, filterable: true },
@@ -552,11 +560,11 @@ export const TEMPLATES: TemplateSeed[] = [
       { key: 'propertyType', order: 20, required: true, filterable: true },
       { key: 'area', order: 30, required: true, filterable: true },
       { key: 'bedrooms', order: 40, required: false, filterable: true },
-      { key: 'bathrooms', order: 50, required: false, filterable: true },
+      { key: 'bathrooms', order: 50, required: false, filterable: false },
       { key: 'floors', order: 60, required: false },
-      { key: 'direction', order: 70, required: false, filterable: true },
+      { key: 'direction', order: 70, required: false, filterable: false },
       { key: 'legalStatus', order: 80, required: true, filterable: true },
-      { key: 'furniture', order: 90, required: false, filterable: true },
+      { key: 'furniture', order: 90, required: false, filterable: false },
       { key: 'frontageWidth', order: 100, required: false },
       { key: 'roadWidth', order: 110, required: false },
       { key: 'projectName', order: 120, required: false },
@@ -597,18 +605,18 @@ export const TEMPLATES: TemplateSeed[] = [
       { key: 'model', order: 30, required: true, override: { placeholder: 'VD: Vision 2019' } },
       { key: 'manufactureYear', order: 40, required: true, filterable: true },
       { key: 'mileage', order: 50, required: true, filterable: true },
-      { key: 'fuelType', order: 60, required: false, filterable: true },
+      { key: 'fuelType', order: 60, required: false, filterable: false },
       { key: 'transmission', order: 70, required: false, filterable: true },
-      { key: 'engineCapacity', order: 80, required: false, filterable: true },
-      { key: 'seats', order: 90, required: false, filterable: true },
+      { key: 'engineCapacity', order: 80, required: false, filterable: false },
+      { key: 'seats', order: 90, required: false, filterable: false },
       { key: 'color', order: 100, required: false },
-      { key: 'plateProvince', order: 110, required: false, filterable: true },
+      { key: 'plateProvince', order: 110, required: false, filterable: false },
       { key: 'ownership', order: 120, required: true, filterable: true },
       {
         key: 'repairHistory',
         order: 130,
         required: true,
-        filterable: true,
+        filterable: false,
         // Từ điển đang mang lựa chọn của điện thoại ("Đã thay màn hình", "Đã thay pin") — vô
         // nghĩa với xe. Cùng một câu hỏi, khác hẳn tập câu trả lời.
         override: {
@@ -674,16 +682,16 @@ export const TEMPLATES: TemplateSeed[] = [
         },
       },
       { key: 'model', order: 30, required: false, override: { placeholder: 'VD: NR-BL340' } },
-      { key: 'capacity', order: 40, required: false, filterable: true },
+      { key: 'capacity', order: 40, required: false, filterable: false },
       { key: 'power', order: 50, required: false },
-      { key: 'usageDuration', order: 60, required: false, filterable: true },
+      { key: 'usageDuration', order: 60, required: false, filterable: false },
       { key: 'quantity', order: 70, required: false },
       { key: 'origin', order: 80, required: false },
       {
         key: 'repairHistory',
         order: 90,
         required: false,
-        filterable: true,
+        filterable: false,
         override: {
           options: opts(
             ['original', 'Nguyên bản, chưa sửa'],

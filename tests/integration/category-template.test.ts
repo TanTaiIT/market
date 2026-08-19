@@ -232,3 +232,83 @@ describe('POST /listings — attributes đi qua template', () => {
     expect(keys).not.toContain('model')
   })
 })
+
+const attrs = (o: Record<string, unknown>) => encodeURIComponent(JSON.stringify(o))
+
+/**
+ * Lọc theo thuộc tính động (`?attrs=`).
+ *
+ * Hai chốt chặn là phần đáng test nhất ở đây: thiếu chúng thì client lọc được bằng key bất kỳ,
+ * vừa quét toàn bảng vừa thành đường dò xem dữ liệu có thuộc tính nào.
+ */
+describe('GET /listings?attrs=', () => {
+  beforeAll(async () => {
+    const { publishListing } = await import('../helpers/fixtures')
+
+    for (const [brand, storage] of [
+      ['apple', '256'],
+      ['samsung', '128'],
+    ] as const) {
+      const res = await request(app)
+        .post('/api/v1/listings')
+        .set(orgHeaders)
+        .send({
+          ...listingBody(phoneCategoryId, {
+            brand,
+            storage,
+            repairHistory: 'original',
+            model: 'Test model',
+          }),
+          title: `Máy hãng ${brand} bộ nhớ ${storage}`,
+          visibility: 'public',
+          provinceCode: 'Hồ Chí Minh',
+        })
+        .expect(201)
+      await publishListing(res.body.data._id)
+    }
+  }, 60_000)
+
+  it('lọc đúng theo một thuộc tính', async () => {
+    const res = await request(app)
+      .get(`/api/v1/listings?category=${phoneCategoryId}&attrs=${attrs({ brand: 'apple' })}`)
+      .expect(200)
+
+    const titles = res.body.data.map((l: { title: string }) => l.title)
+    expect(titles).toContain('Máy hãng apple bộ nhớ 256')
+    expect(titles).not.toContain('Máy hãng samsung bộ nhớ 128')
+  })
+
+  it('nhiều thuộc tính cùng lúc là VÀ, không phải HOẶC', async () => {
+    const res = await request(app)
+      .get(
+        `/api/v1/listings?category=${phoneCategoryId}&attrs=${attrs({
+          brand: 'apple',
+          storage: '128',
+        })}`,
+      )
+      .expect(200)
+
+    // Không tin nào vừa apple vừa 128 — gộp chung một `$elemMatch` sẽ ra kết quả này một cách
+    // tình cờ, nên ca đối chứng ở test trên mới là thứ chứng minh `$and` đúng.
+    expect(res.body.data).toHaveLength(0)
+  })
+
+  it('thiếu `category` thì 400 — không có template nào để đối chiếu key', async () => {
+    const res = await request(app).get(`/api/v1/listings?attrs=${attrs({ brand: 'apple' })}`)
+    expect(res.status).toBe(400)
+  })
+
+  it('key không `filterable` bị từ chối, không lặng lẽ bỏ qua', async () => {
+    // `color` có trong template Điện thoại nhưng `filterable: false`.
+    const res = await request(app).get(
+      `/api/v1/listings?category=${phoneCategoryId}&attrs=${attrs({ color: 'đen' })}`,
+    )
+    expect(res.status).toBe(400)
+    expect(res.body.message).toContain('color')
+  })
+
+  it('JSON hỏng thì 400, KHÔNG âm thầm trả về cả kho', async () => {
+    const res = await request(app).get(`/api/v1/listings?category=${phoneCategoryId}&attrs=%7Bbad`)
+    expect(res.status).toBe(400)
+  })
+})

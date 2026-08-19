@@ -1,6 +1,6 @@
 import { FilterQuery, Types } from 'mongoose'
 import { Listing, IListing, IListingDocument } from './listing.model'
-import { ListingQuery } from './listing.schema'
+import { AttrQuery, ListingQuery } from './listing.schema'
 import { PaginationParams } from '../../common/utils/pagination'
 import {
   LISTING_STATUS,
@@ -22,6 +22,18 @@ function escapeRegex(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** Một ràng buộc `attrs` → vế `v` của `$elemMatch`. Xem `attrConstraintSchema` cho ba dạng. */
+function matchValue(constraint: AttrQuery): Record<string, unknown> {
+  if (Array.isArray(constraint)) return { v: { $in: constraint } }
+  if (typeof constraint === 'object') {
+    const range: Record<string, number> = {}
+    if (constraint.gte !== undefined) range.$gte = constraint.gte
+    if (constraint.lte !== undefined) range.$lte = constraint.lte
+    return { v: range }
+  }
+  return { v: constraint }
+}
+
 /**
  * Xây filter Mongo từ query đã validate. `organizationId` KHÔNG xuất hiện ở đây —
  * tenantPlugin chèn nó ở tầng dưới, repository cố tình không được phép tự quyết.
@@ -32,6 +44,22 @@ export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDo
 
   if (params.category) filter.category = params.category
   if (params.seller) filter.seller = params.seller
+
+  /*
+   * Lọc thuộc tính động qua bản phẳng `attrs`, KHÔNG qua `attributes`.
+   *
+   * `attributes` là Map với key động — Mongo không index được key động, nên lọc trên nó là quét
+   * toàn bộ. `attrs` là mảng cặp `{k, v}` nên một index duy nhất phục vụ được mọi field.
+   *
+   * Mỗi ràng buộc là một `$elemMatch` RIÊNG, gộp bằng `$and`. Nhét chung một `$elemMatch` sẽ
+   * thành "có MỘT phần tử vừa k=brand vừa k=fuelType" — không phần tử nào thoả, kết quả luôn rỗng.
+   */
+  const constraints = Object.entries(params.attrs ?? {})
+  if (constraints.length > 0) {
+    filter.$and = constraints.map(([k, v]) => ({
+      attrs: { $elemMatch: { k, ...matchValue(v) } },
+    }))
+  }
   if (params.condition) filter.condition = params.condition
   if (params.province) filter['location.province'] = params.province
 
@@ -93,6 +121,17 @@ export const listingRepository = {
   // Category chưa tồn tại (feature còn là skeleton) nên populate nó ném MissingSchemaError.
   findById(id: string) {
     return Listing.findById(id)
+  },
+
+  /**
+   * Đọc nhiều tin cùng lúc (danh sách tin đã lưu). KHÔNG sắp xếp: `$in` của Mongo trả về theo
+   * thứ tự tự nhiên của collection, nên thứ tự phải do caller dựng lại từ chính mảng id.
+   *
+   * Tin đã xoá hoặc ngoài scope đọc rơi khỏi kết quả — caller phải chịu được mảng ngắn hơn
+   * mảng id truyền vào, và đó là hành vi ĐÚNG: tin đã gỡ không hiện lại chỉ vì ai đó từng lưu.
+   */
+  findByIds(ids: Types.ObjectId[]) {
+    return Listing.find({ _id: { $in: ids } })
   },
 
   async paginate(params: ListingFilterParams, { skip, limit }: PaginationParams) {
@@ -172,6 +211,22 @@ export const listingRepository = {
     )
     listing.viewCount += 1
     return listing
+  },
+
+  /**
+   * Bộ đếm lượt lưu. `runUnscoped` vì đúng lý do của `incrementView`: lượt ghi này đến từ
+   * NGƯỜI ĐỌC tin, mà scope ghi của họ hẹp hơn scope đọc (tin trục công khai của org khác).
+   * Chỉ gọi sau khi thao tác đã được scope cho phép.
+   *
+   * Điều kiện `favoriteCount > 0` nằm trong filter chứ không kiểm ở service: hai lượt bỏ tim
+   * chạy song song sẽ cùng đọc ra 1 rồi cùng trừ, đẩy bộ đếm xuống âm — chỉ Mongo mới chốt
+   * được điều kiện đó cùng lúc với phép trừ.
+   */
+  adjustFavoriteCount(id: Types.ObjectId, delta: number) {
+    const filter = delta < 0 ? { _id: id, favoriteCount: { $gt: 0 } } : { _id: id }
+    return runUnscoped('favorite counter of an already-authorized listing', () =>
+      Listing.updateOne(filter, { $inc: { favoriteCount: delta } }).exec(),
+    )
   },
 
   softDelete(id: string) {

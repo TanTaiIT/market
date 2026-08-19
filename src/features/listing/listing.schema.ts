@@ -101,6 +101,23 @@ export const quotaStatusSchema = z
 
 export const updateListingSchema = createListingSchema.partial().strict().openapi('UpdateListing')
 
+/**
+ * Một ràng buộc trên thuộc tính động. Ba dạng, phủ đủ mọi `FIELD_TYPE`:
+ * - `"honda"` / `true` / `2019` — bằng đúng (select, boolean, text)
+ * - `["honda","yamaha"]` — thuộc tập (multiselect, hoặc chọn nhiều giá trị của select)
+ * - `{ gte, lte }` — khoảng (number, year)
+ */
+const attrConstraintSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.string()).min(1).max(20),
+  z
+    .object({ gte: z.number().optional(), lte: z.number().optional() })
+    .strict()
+    .refine((r) => r.gte !== undefined || r.lte !== undefined, 'Khoảng phải có gte hoặc lte'),
+])
+
 export const listingQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
@@ -111,7 +128,31 @@ export const listingQuerySchema = z.object({
   condition: z.nativeEnum(LISTING_CONDITION).optional(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
+  /**
+   * Lọc theo thuộc tính động, JSON đã url-encode: `?attrs={"brand":"honda","seats":{"gte":7}}`.
+   *
+   * JSON chứ không phải một cú pháp rút gọn tự chế (`brand:honda|seats:7..`): kiểu giá trị ở
+   * đây có cả số, boolean, mảng và khoảng — mã hoá tay là tự viết một parser nữa để rồi đoán
+   * nhầm `"true"` là chuỗi hay boolean.
+   *
+   * `.catch()` KHÔNG dùng: JSON hỏng phải ra 400 chứ không âm thầm bỏ bộ lọc rồi trả về cả kho.
+   */
+  attrs: z
+    .string()
+    .max(2000)
+    .transform((raw, ctx) => {
+      try {
+        return JSON.parse(raw) as unknown
+      } catch {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '`attrs` không phải JSON hợp lệ' })
+        return z.NEVER
+      }
+    })
+    .pipe(z.record(attrConstraintSchema).refine((o) => Object.keys(o).length <= 12))
+    .optional(),
 })
+
+export type AttrQuery = z.infer<typeof attrConstraintSchema>
 
 /**
  * "Gần đây" = cùng địa giới hành chính, không phải cùng bán kính. `ward` chỉ để XẾP TRƯỚC

@@ -1,6 +1,7 @@
 import { ClientSession, Types } from 'mongoose'
 import { Membership, IMembership, IMembershipDocument } from './membership.model'
 import { MEMBERSHIP_STATUS } from '../../common/constants'
+import { PaginationParams } from '../../common/utils/pagination'
 
 type Id = string | Types.ObjectId
 
@@ -20,6 +21,19 @@ export const membershipRepository = {
     return Membership.find({ userId, ...ACTIVE })
       .sort({ joinedAt: 1 })
       .exec()
+  },
+
+  /**
+   * Danh bạ của một org. Xếp theo `joinedAt` TĂNG dần: chủ tổ chức vào trước nên đứng đầu,
+   * và thứ tự không nhảy mỗi lần có người mới như khi xếp giảm dần.
+   */
+  async paginateByOrganization(organizationId: Id, { skip, limit }: PaginationParams) {
+    const filter = { organizationId, ...ACTIVE }
+    const [items, total] = await Promise.all([
+      Membership.find(filter).sort({ joinedAt: 1 }).skip(skip).limit(limit).exec(),
+      Membership.countDocuments(filter).exec(),
+    ])
+    return { items, total }
   },
 
   countActiveByOrganization(organizationId: Id) {

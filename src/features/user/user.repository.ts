@@ -21,6 +21,11 @@ export const userRepository = {
     return query
   },
 
+  /** Đọc theo lô cho danh bạ/danh sách — user đã xoá mềm tự rơi khỏi kết quả nhờ hook của model. */
+  findByIds(ids: Types.ObjectId[]) {
+    return User.find({ _id: { $in: ids } }).exec()
+  },
+
   findByEmail(email: string, opts: { withPassword?: boolean } = {}) {
     const query = User.findOne({ email: email.toLowerCase() })
     if (opts.withPassword) query.select('+password')

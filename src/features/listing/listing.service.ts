@@ -285,7 +285,34 @@ export const listingService = {
     })
   },
 
+  /**
+   * Bộ lọc thuộc tính động phải qua HAI chốt trước khi chạm DB — cả hai đều ở service, không
+   * ở zod: zod là middleware tĩnh, mà tập key hợp lệ chỉ biết được sau khi tra template
+   * (cùng lý do `validateForCategory` đứng ở đây chứ không ở `validate()`).
+   *
+   * 1. **Phải có `category`.** Không có nó thì không có template nào để đối chiếu, và
+   *    `attrs.k` là key tự do — mỗi lượt lọc thành một lần quét toàn bảng.
+   * 2. **Key phải `filterable` trong đúng template đó.** Chấp nhận key bất kỳ vừa mở đường
+   *    quét bảng, vừa biến bộ lọc thành công cụ dò xem thuộc tính nào tồn tại trong dữ liệu.
+   *
+   * Ném 400 chứ không lặng lẽ bỏ key sai: client lọc bằng key gõ nhầm mà vẫn nhận 200 sẽ tin
+   * là kết quả đã được lọc.
+   */
   async list(query: ListingQuery) {
+    if (query.attrs) {
+      if (!query.category) {
+        throw new BadRequestError('Lọc theo thuộc tính cần chọn danh mục trước')
+      }
+      const template = await categoryTemplateService.getForCategory(query.category)
+      const allowed = new Set(template.fields.filter((f) => f.filterable).map((f) => f.key))
+      const rejected = Object.keys(query.attrs).filter((k) => !allowed.has(k))
+      if (rejected.length > 0) {
+        throw new BadRequestError(
+          `Không lọc được theo: ${rejected.join(', ')} — danh mục này không mở lọc cho chúng`,
+        )
+      }
+    }
+
     const pagination = parsePagination(query)
     const { items, total } = await listingRepository.paginate(query, pagination)
     return {
@@ -322,6 +349,27 @@ export const listingService = {
     const listing = await listingRepository.findById(id)
     if (!listing) throw new NotFoundError('Listing not found')
     return listing
+  },
+
+  /**
+   * Đọc nhiều tin theo id, GIỮ NGUYÊN thứ tự mảng id truyền vào — nguồn của thứ tự là bảng
+   * favorite (mới lưu trước), còn Mongo thì trả `$in` theo thứ tự của nó.
+   *
+   * Tin ngoài scope hoặc đã gỡ bị loại, nên mảng trả về có thể ngắn hơn mảng id.
+   */
+  async getManyByIds(ids: Types.ObjectId[]) {
+    if (ids.length === 0) return []
+    const items = await listingRepository.findByIds(ids)
+    const byId = new Map(items.map((item) => [item._id.toString(), item]))
+    return ids.map((id) => byId.get(id.toString())).filter((item) => item !== undefined)
+  },
+
+  /**
+   * Cộng/trừ bộ đếm lượt lưu. Tách khỏi feature favorite vì `Listing` là model của feature này
+   * — favorite chạm thẳng vào nó là hai feature cùng ghi một collection.
+   */
+  adjustFavoriteCount(id: Types.ObjectId, delta: number) {
+    return listingRepository.adjustFavoriteCount(id, delta)
   },
 
   async update(id: string, userId: string, input: UpdateListingInput) {

@@ -252,13 +252,14 @@ listingSchema.index({ visibility: 1, status: 1, createdAt: -1 })
 listingSchema.index({ visibility: 1, category: 1, provinceCode: 1, status: 1, createdAt: -1 })
 listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, createdAt: -1 })
 
-// CHƯA có index cho `attrs`, có chủ ý: hiện chưa truy vấn nào lọc theo nó (`buildFilter` mới
-// biết category/price/province/q), mà index không người đọc thì chỉ tốn chi phí ghi và đĩa
-// trên M0 512 MB. Nó về cùng lượt với `?attrs=` — index và query của nó phải land cùng nhau
-// thì mới đối chiếu được hình dạng `$elemMatch` thật.
-//
-// Lúc đó phải là ĐỦ HAI bản, cùng lý do với hai họ index ở trên: trục org bắt đầu bằng
+// Index cho `attrs`, land CÙNG lượt với `?attrs=` trong `buildFilter` — đúng như ghi chú cũ ở
+// đây hẹn. Đủ HAI bản, cùng lý do với hai họ index ở trên: trục org bắt đầu bằng
 // `organizationId` (rule 13), trục danh mục bắt đầu bằng `visibility` vì org của nó là null.
+//
+// `category` đứng ngay sau khoá trục: bộ lọc thuộc tính LUÔN đi kèm danh mục (service chặn
+// nếu thiếu), nên nó thu hẹp trước khi tới `attrs`.
+listingSchema.index({ organizationId: 1, category: 1, status: 1, 'attrs.k': 1, 'attrs.v': 1 })
+listingSchema.index({ visibility: 1, category: 1, status: 1, 'attrs.k': 1, 'attrs.v': 1 })
 
 // Slug chỉ unique TRONG org, và tin đã xoá không giữ chỗ slug vĩnh viễn.
 listingSchema.index(

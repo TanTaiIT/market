@@ -268,3 +268,101 @@ describe('Trang công khai và fallback về master', () => {
     expect(res.status).toBe(403)
   })
 })
+
+/**
+ * Quyền DUYỆT bám theo TRỤC của tin, không theo bàn đang mở.
+ *
+ * `requireOrgModerator` ở tầng route cố tình rộng (rule 5) nên nó chỉ trả lời "có duyệt được
+ * thứ gì đó trong org này không". Thiếu chốt ở service thì quản lý org tự ghim được tin công
+ * khai lên trang chung, và — vì nhánh đọc công khai cho thấy mọi tin đã duyệt — ẩn được cả tin
+ * của người ngoài org. Hai ca đầu ở đây chính là hai lỗ đó.
+ */
+describe('Duyệt tin — phạm vi theo trục', () => {
+  let memberPublic = ''
+  let memberInternal = ''
+  let outsiderPublic = ''
+
+  beforeAll(async () => {
+    const { addMember, publishListing, registerUser } = await import('../helpers/fixtures')
+
+    // Người mới hoàn toàn: `member`/`outsider` ở trên đã dùng hết quota tin chờ duyệt, đăng
+    // thêm là 409 chứ không phải lỗi phân quyền — đúng thứ test này KHÔNG muốn đo.
+    const poster = await registerUser(app, 'poster@two-axis.local', 'Người đăng')
+    await addMember(poster.id, orgId)
+    const loner = await registerUser(app, 'loner@two-axis.local', 'Người một mình')
+    const asPoster = () => orgAuth(poster.token, SLUG)
+
+    memberPublic = (
+      await post(asPoster(), {
+        ...listingPayload('Tin công khai cần manager danh mục duyệt', jobsCategory),
+        visibility: 'public',
+        provinceCode: HCM,
+      }).expect(201)
+    ).body.data._id
+
+    memberInternal = (
+      await post(asPoster(), {
+        ...listingPayload('Tin nội bộ của trường', jobsCategory),
+        visibility: 'org_internal',
+      }).expect(201)
+    ).body.data._id
+
+    // Tin đã duyệt của người ngoài org: đọc được từ mọi org qua nhánh công khai của plugin,
+    // nên nó là ca chứng minh "đọc được ≠ duyệt được".
+    outsiderPublic = (
+      await post(bearer(loner), {
+        ...listingPayload('Tin của người ngoài mọi tổ chức', jobsCategory),
+        visibility: 'public',
+        provinceCode: HCM,
+      }).expect(201)
+    ).body.data._id
+    await publishListing(outsiderPublic)
+  }, 60_000)
+
+  it('quản lý org KHÔNG ghim được tin công khai của chính thành viên mình', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/moderation/listings/${memberPublic}`)
+      .set(orgAuth(owner.token, SLUG))
+      .send({ status: 'active' })
+
+    expect(res.status).toBe(403)
+  })
+
+  it('quản lý org KHÔNG ẩn được tin của người ngoài tổ chức', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/moderation/listings/${outsiderPublic}`)
+      .set(orgAuth(owner.token, SLUG))
+      .send({ status: 'hidden' })
+
+    expect(res.status).toBe(403)
+  })
+
+  it('quản lý org vẫn duyệt bình thường tin NỘI BỘ của org mình', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/moderation/listings/${memberInternal}`)
+      .set(orgAuth(owner.token, SLUG))
+      .send({ status: 'active' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.status).toBe('active')
+  })
+
+  it('có grant đúng ô (danh mục × tỉnh) thì ghim được tin công khai', async () => {
+    const { grantRole } = await import('../helpers/fixtures')
+    await grantRole({
+      userId: owner.id,
+      role: 'manager',
+      scopeType: 'category_province',
+      categoryId: jobsCategory,
+      provinceCodes: [HCM],
+    })
+
+    const res = await request(app)
+      .patch(`/api/v1/moderation/listings/${memberPublic}`)
+      .set(orgAuth(owner.token, SLUG))
+      .send({ status: 'active' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.status).toBe('active')
+  })
+})
