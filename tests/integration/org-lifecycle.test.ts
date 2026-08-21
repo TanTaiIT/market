@@ -132,3 +132,43 @@ describe('Slug cũ vẫn dẫn về đúng tổ chức sau khi đổi tên', () 
     expect(res.status).toBe(403)
   })
 })
+
+/**
+ * Dropdown chọn org. Trước đây nhánh tên là regex không neo đầu trên `name` — không index,
+ * nên cả câu `$or` quét trọn collection cho mỗi ký tự người dùng gõ. Nay tra theo TỪ đã chuẩn
+ * hoá (`nameTokens`), mỗi từ có bounds thật trên index multikey.
+ */
+const names = (res: { body: { data: { name: string }[] } }) => res.body.data.map((o) => o.name)
+
+describe('GET /organizations/lookup', () => {
+  const lookup = (q: string) =>
+    request(app)
+      .get(`/api/v1/organizations/lookup?q=${encodeURIComponent(q)}`)
+      .set({ Authorization: `Bearer ${master.token}` })
+
+  it('gõ một từ GIỮA tên vẫn ra — ca mà tiền tố cả chuỗi không giải được', async () => {
+    const res = await lookup('lop').expect(200)
+    expect(names(res)).toContain('Trường Có Lớp')
+  })
+
+  it('gõ không dấu vẫn ra', async () => {
+    expect(names(await lookup('truong').expect(200))).toContain('Trường Có Lớp')
+    expect(names(await lookup('phang').expect(200))).toContain('Nhóm Phẳng')
+  })
+
+  it('nhiều từ phải khớp ĐỦ, không phải khớp một trong số đó', async () => {
+    const res = await lookup('nhom phang').expect(200)
+    expect(names(res)).toEqual(['Nhóm Phẳng'])
+
+    // "nhom" khớp "Nhóm Phẳng" nhưng "lop" thì không — đủ để loại nó ra.
+    expect(names(await lookup('nhom lop').expect(200))).toHaveLength(0)
+  })
+
+  it('tra được cả theo slug', async () => {
+    expect(names(await lookup('truongcolop').expect(200))).toContain('Trường Có Lớp')
+  })
+
+  it('không khớp gì thì rỗng, không phải lỗi', async () => {
+    expect(names(await lookup('khongcogi').expect(200))).toHaveLength(0)
+  })
+})

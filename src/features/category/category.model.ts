@@ -57,7 +57,9 @@ const categorySchema = new Schema<ICategoryDocument>(
 // populate vào model chưa đăng ký ném MissingSchemaError lúc chạy (convention §2.3).
 
 categorySchema.index({ slug: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } })
-categorySchema.index({ isActive: 1, order: 1 })
+// `name` ở đuôi để index cấp trọn thứ tự `sort({ order: 1, name: 1 })` của `categoryRepository.list`.
+// Thiếu nó thì index chỉ lo được vế lọc, còn sort vẫn chạy trong bộ nhớ.
+categorySchema.index({ isActive: 1, order: 1, name: 1 })
 
 function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
   if (!this.getOptions().withDeleted) {

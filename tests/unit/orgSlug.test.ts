@@ -4,6 +4,7 @@ import {
   normalizeOrgSlug,
   isReservedSlug,
   suggestOrgSlugs,
+  orgNameTokens,
 } from '../../src/common/utils/orgSlug'
 
 describe('orgSlug - chuẩn hoá', () => {
@@ -65,5 +66,34 @@ describe('orgSlug - gợi ý khi trùng', () => {
   it('không sinh trùng nhau', () => {
     const suggestions = suggestOrgSlugs('abc', { district: null, provinceCode: null })
     expect(new Set(suggestions).size).toBe(suggestions.length)
+  })
+})
+
+/**
+ * `orgNameTokens` là khoá tra của dropdown chọn org. Nó thay cho regex không neo đầu trên
+ * `name` — thứ khiến cả câu `$or` rơi về COLLSCAN vì `name` không có index.
+ */
+describe('orgNameTokens', () => {
+  it('bỏ dấu và tách theo từ', () => {
+    expect(orgNameTokens('Trường Hùng Vương')).toEqual(['truong', 'hung', 'vuong'])
+  })
+
+  it('gõ một từ giữa tên vẫn khớp được — chính là ca mà tiền tố cả chuỗi làm hỏng', () => {
+    // "truonghungvuong".startsWith("hung") là false; token "hung" thì khớp.
+    expect(orgNameTokens('Trường Hùng Vương')).toContain('hung')
+  })
+
+  it('gộp từ trùng, bỏ khoảng trắng thừa và ký tự lạ', () => {
+    expect(orgNameTokens('Cửa  hàng   XYZ!!! hàng')).toEqual(['cua', 'hang', 'xyz'])
+  })
+
+  it('chuỗi rỗng hoặc toàn ký tự lạ ra mảng rỗng — caller phải chịu được, không phải `$or: []`', () => {
+    expect(orgNameTokens('')).toEqual([])
+    expect(orgNameTokens('!!! ???')).toEqual([])
+  })
+
+  it('fold ký tự nhìn giống Latin, cùng luật với slug', () => {
+    // "аbc" viết bằng а Cyrillic phải ra cùng token với "abc", nếu không thì tra không ra.
+    expect(orgNameTokens('аbc edu')).toEqual(['abc', 'edu'])
   })
 })

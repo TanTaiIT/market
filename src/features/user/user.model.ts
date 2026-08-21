@@ -106,7 +106,9 @@ const userSchema = new Schema<IUserDocument>(
 // nằm ở `memberships`, không ở bảng này.
 // partialFilterExpression: thiếu nó thì một tài khoản đã xoá giữ chỗ email vĩnh viễn.
 userSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } })
-userSchema.index({ phone: 1 })
+// KHÔNG index `phone`: nó chỉ được đọc/ghi như một field hồ sơ, không call-site nào lọc theo
+// nó. Thêm lại khi có đường "tìm người theo số" thật — index không ai dùng vẫn phải cập nhật
+// mỗi lượt ghi và vẫn chiếm chỗ trong bộ nhớ.
 
 const BCRYPT_ROUNDS = 12
 

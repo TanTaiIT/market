@@ -9,13 +9,15 @@ import {
   VERIFICATION_TIERS,
   VerificationTier,
 } from '../../common/constants'
-import { normalizeOrgSlug } from '../../common/utils/orgSlug'
+import { normalizeOrgSlug, orgNameTokens } from '../../common/utils/orgSlug'
 
 export interface IOrganization {
   name: string
   slug: string
   /** Khoá so trùng (bỏ dấu gạch, fold ký tự nhìn giống Latin) — chống mạo danh, không hiển thị. */
   slugNormalized: string
+  /** Tên tách theo TỪ đã chuẩn hoá — khoá tra của dropdown, xem `orgNameTokens`. */
+  nameTokens: string[]
   orgType: OrgType
   capabilities: OrgCapabilities
   verificationTier: VerificationTier
@@ -51,6 +53,7 @@ const organizationSchema = new Schema<IOrganizationDocument>(
     name: { type: String, required: true, trim: true, maxlength: 150 },
     slug: { type: String, required: true, lowercase: true, trim: true },
     slugNormalized: { type: String, required: true, lowercase: true, trim: true },
+    nameTokens: { type: [String], default: [] },
 
     orgType: { type: String, enum: Object.values(ORG_TYPES), default: ORG_TYPES.GENERIC },
     capabilities: {
@@ -80,9 +83,14 @@ const organizationSchema = new Schema<IOrganizationDocument>(
 
 // Dẫn xuất ở model chứ không ở service: slug đổi qua nhiều đường (tạo, đổi tên, migration) và
 // một đường quên đồng bộ là khoá chống mạo danh im lặng lệch khỏi slug thật.
-organizationSchema.pre('validate', function syncNormalizedSlug(next) {
+organizationSchema.pre('validate', function syncDerivedKeys(next) {
   if (this.slug && this.isModified('slug')) {
     this.slugNormalized = normalizeOrgSlug(this.slug)
+  }
+  // Cùng lý do, cho khoá tra của dropdown: tên đổi qua đường đổi tên lẫn migration, để service
+  // tự nhớ đồng bộ là có ngày dropdown tìm theo tên cũ.
+  if (this.name && this.isModified('name')) {
+    this.nameTokens = orgNameTokens(this.name)
   }
   next()
 })
@@ -93,11 +101,18 @@ organizationSchema.index({ slug: 1 }, { unique: true })
 // Unique thứ hai, không thừa: `slug` chặn trùng chính xác, `slugNormalized` chặn cả biến thể
 // nhìn giống nhau (`abc-edu` vs `abcedu` vs `аbc-edu` viết bằng а Cyrillic).
 organizationSchema.index({ slugNormalized: 1 }, { unique: true })
-// KHÔNG unique: một người có thể làm chủ nhiều org. Ràng buộc "1 user ↔ 1 org" của bản cũ đã
-// mất nghĩa từ khi tài khoản trở thành toàn cục.
-organizationSchema.index({ ownerId: 1 })
-// Dropdown chọn org: lọc theo địa bàn rồi mới tới tên.
-organizationSchema.index({ provinceCode: 1, status: 1 })
+
+/*
+ * Dropdown chọn org, nhánh tra theo TÊN. Multikey nên mỗi từ có bounds riêng: gõ "hung" là một
+ * lượt tra tiền tố, không phải quét cả bảng.
+ *
+ * Thay cho hai index đã bỏ, cả hai đều chưa từng được query nào chạm tới:
+ * `{ ownerId: 1 }` — `ownerId` chỉ được GHI lúc tạo org, không lọc, không authz (quyền đến từ
+ *   `role_grants`), thậm chí không có trong DTO.
+ * `{ provinceCode: 1, status: 1 }` — ghi chú cũ nói "dropdown lọc theo địa bàn", nhưng `search()`
+ *   không hề lọc `provinceCode`; tham số cùng tên trên query string chỉ dùng để gợi ý slug.
+ */
+organizationSchema.index({ nameTokens: 1 })
 
 export const Organization: Model<IOrganizationDocument> = mongoose.model<IOrganizationDocument>(
   'Organization',

@@ -76,8 +76,14 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
     (d) chạm dữ liệu ngoài request (seed/job/migration) → bọc `runUnscoped('lý do', ...)`,
     đó là danh sách grep được của mọi lối đi xuyên tenant.
 13. Mọi index trên collection có tenant phải lấy `organizationId` làm khoá đầu tiên.
-    Ngoại lệ duy nhất: TTL index (Mongo không cho compound). Text index bị **cấm** trên
-    collection có tenant — full-text đi đường Atlas Search.
+    Text index bị **cấm** trên collection có tenant — full-text đi đường Atlas Search.
+    Đúng **ba** ngoại lệ, mỗi cái phải có ghi chú ngay tại chỗ khai index nói vì sao:
+    (a) TTL index — Mongo không cho compound;
+    (b) collection `dualAxis` (hiện chỉ `Listing`): trục danh mục có `organizationId: null` nên
+        prefix đó vô dụng, index của trục này mở đầu bằng `visibility`;
+    (c) đường đọc chạy trong `runUnscoped` và scope bằng khoá khác — `Listing` lọc theo `seller`
+        cho màn "tin của tôi" là ca duy nhất hiện có.
+    Nghi ngờ một index có được dùng không thì ĐO, đừng đoán: `npm run explain:indexes`.
 
 ## Testing
 - Test đặt trong `tests/unit/` (hàm thuần) hoặc `tests/integration/` (đi qua HTTP,

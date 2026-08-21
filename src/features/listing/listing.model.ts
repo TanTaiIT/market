@@ -241,16 +241,51 @@ listingSchema.plugin(tenantPlugin, { dualAxis: true })
 listingSchema.index({ organizationId: 1, status: 1, createdAt: -1 })
 listingSchema.index({ organizationId: 1, category: 1, status: 1, createdAt: -1 })
 listingSchema.index({ organizationId: 1, seller: 1, status: 1, createdAt: -1 })
-listingSchema.index({ organizationId: 1, 'location.ward': 1, status: 1, createdAt: -1 })
-listingSchema.index({ organizationId: 1, price: 1, status: 1 })
 // Hàng đợi duyệt của staff nhóm con.
 listingSchema.index({ organizationId: 1, unitId: 1, status: 1, createdAt: -1 })
+
+/*
+ * Bộ lọc khu vực. Bản cũ index `location.ward` mà KHÔNG có `location.province` — phục vụ một
+ * query shape không tồn tại: `buildFilter` chỉ có tham số `province`, còn `findByArea` thì luôn
+ * dùng cả cặp, không bao giờ lọc xã trần.
+ *
+ * `ward` cố tình KHÔNG nằm trong index, dù `findByArea` có lọc nó. Nhét vào giữa
+ * `location.province` và `createdAt` thì `?province=` — bộ lọc chính của bảng tin — mất sort
+ * index-backed và phải sort trong bộ nhớ TOÀN BỘ tin của tỉnh đó (đo được: 36 doc ở seed 1000
+ * tin, và con số này lớn tuyến tính theo dữ liệu). Để `ward` làm residual filter thì
+ * `/listings/nearby` quét thừa theo một hệ số CHẶN được (số xã mỗi tỉnh), còn `?province=` giữ
+ * được cả thứ tự lẫn early-termination ở `limit`.
+ *
+ * Chú ý `location.province` (TÊN tỉnh, người dùng chọn để lọc) khác `provinceCode` (snapshot
+ * định tuyến hàng đợi duyệt) — hai field khác nhau, index của cái này không đỡ cái kia.
+ */
+listingSchema.index({ organizationId: 1, 'location.province': 1, status: 1, createdAt: -1 })
+listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, createdAt: -1 })
+
+/*
+ * KHÔNG có index cho khoảng giá. Bản cũ có `{organizationId, price, status}` và nó vừa sai thứ
+ * tự ESR (range `price` đứng trước equality `status`) vừa không bao giờ được chọn: mọi bảng tin
+ * đều `sort({createdAt: -1})`, nên planner đi theo index có `createdAt` rồi lọc giá dọc đường —
+ * đo bằng `npm run explain:indexes` thấy nó dùng SORT_MERGE trên hai index `…createdAt`, không
+ * chạm index giá. Thêm lại thì phải kèm bản cho trục danh mục, và phải chứng minh bằng số.
+ */
 
 // Trục danh mục: bảng tin công khai (visibility + status) và hàng đợi của manager danh mục
 // (visibility + category + tỉnh).
 listingSchema.index({ visibility: 1, status: 1, createdAt: -1 })
 listingSchema.index({ visibility: 1, category: 1, provinceCode: 1, status: 1, createdAt: -1 })
 listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, createdAt: -1 })
+
+/*
+ * "Tin của tôi" — NGOẠI LỆ của rule 13 (index trên collection có tenant phải mở đầu bằng
+ * `organizationId`), và là ngoại lệ bắt buộc chứ không phải tiện tay.
+ *
+ * `paginateMine` chạy trong `runUnscoped`: nó scope theo NGƯỜI ĐĂNG, cố tình bỏ trục, để tin
+ * công khai đang chờ duyệt của người không thuộc org nào vẫn hiện ra. Filter vì thế không có
+ * `organizationId`, nên mọi index mở đầu bằng khoá đó đều vô dụng — đo được COLLSCAN quét trọn
+ * 1000 tin để trả về 20.
+ */
+listingSchema.index({ seller: 1, createdAt: -1 })
 
 // Index cho `attrs`, land CÙNG lượt với `?attrs=` trong `buildFilter` — đúng như ghi chú cũ ở
 // đây hẹn. Đủ HAI bản, cùng lý do với hai họ index ở trên: trục org bắt đầu bằng

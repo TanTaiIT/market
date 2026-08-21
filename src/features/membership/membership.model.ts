@@ -65,8 +65,10 @@ const membershipSchema = new Schema<IMembershipDocument>(
 // Một người chỉ có một quan hệ với một org. Hai bản ghi cùng lúc nghĩa là thu hồi một cái vẫn
 // còn cái kia — đúng loại lỗ hổng khó thấy nhất khi rà quyền.
 membershipSchema.index({ userId: 1, organizationId: 1 }, { unique: true })
-// Danh sách thành viên của org + màn duyệt hàng loạt.
-membershipSchema.index({ organizationId: 1, status: 1 })
+// Danh sách thành viên của org + màn duyệt hàng loạt. `joinedAt` ở đuôi để index cấp luôn THỨ
+// TỰ mà danh bạ dùng (`sort({ joinedAt: 1 })`), không phải chỉ để lọc: thiếu nó thì Mongo kéo
+// trọn danh bạ org ra rồi sort trong bộ nhớ. Không tốn thêm index nào — bản cũ là prefix.
+membershipSchema.index({ organizationId: 1, status: 1, joinedAt: 1 })
 // Hàng đợi duyệt tin theo nhóm con.
 membershipSchema.index({ organizationId: 1, unitId: 1 })
 
