@@ -14,10 +14,17 @@ import { parsePagination, buildPaginationMeta } from '../../common/utils/paginat
 
 type Viewer = OrgActor & { grants: Grant[] }
 
-/** Nhóm mà người này ĐỨNG TRONG — quyết định họ nhận được thông báo nào. */
+/**
+ * Nhóm mà người này ĐỨNG TRONG — quyết định họ nhận được thông báo nào. Kèm `recipientId` để
+ * hộp thư có cả tin đích danh; `managedAudience` cố tình KHÔNG có, vì bàn quản trị liệt kê thứ
+ * mình gửi được chứ không phải hộp thư riêng của người khác.
+ */
 async function inboxAudience(viewer: Viewer): Promise<NotificationAudience> {
   const membership = await membershipRepository.findActive(viewer.id, viewer.organizationId)
-  return { units: membership?.unitId ? [membership.unitId] : [] }
+  return {
+    units: membership?.unitId ? [membership.unitId] : [],
+    recipientId: new Types.ObjectId(viewer.id),
+  }
 }
 
 /**
@@ -94,6 +101,24 @@ export const notificationService = {
       items: items.map((doc) => toNotificationDto(doc, viewer.id)),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
+  },
+
+  /**
+   * Thông báo do HỆ THỐNG sinh, gửi cho đúng một người. Không có endpoint nào gọi tới: nó là
+   * hệ quả của một thao tác ở feature khác (duyệt tin, duyệt đơn), nên caller là service.
+   *
+   * `organizationId` phải là org của ĐỐI TƯỢNG, không phải của người thao tác — xem
+   * `notificationRepository.createForUser`. Tin trục danh mục (`organizationId: null`) chưa gửi
+   * được: `Notification` là collection có tenant, cùng khoản nợ với `AuditLog` dual-axis.
+   */
+  async notifyUser(input: {
+    organizationId: Types.ObjectId | null
+    userId: Types.ObjectId
+    title: string
+    body: string
+  }) {
+    if (!input.organizationId) return null
+    return notificationRepository.createForUser({ ...input, organizationId: input.organizationId })
   },
 
   async markRead(id: string, userId: string) {

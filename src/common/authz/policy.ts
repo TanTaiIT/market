@@ -1,4 +1,11 @@
-import { SYSTEM_ROLES, SCOPE_TYPES, SystemRole, ScopeType } from '../constants'
+import {
+  POST_VISIBILITY,
+  SYSTEM_ROLES,
+  SCOPE_TYPES,
+  PostVisibility,
+  SystemRole,
+  ScopeType,
+} from '../constants'
 
 /**
  * Tầng policy: hàm THUẦN trên một tập grant đã nạp sẵn — không chạm DB, không biết Express.
@@ -115,6 +122,38 @@ export function canModerateCategory(grants: Grant[], target: CategoryTarget): bo
       sameId(g.categoryId, target.categoryId) &&
       coversProvince(g, target.provinceCode),
   )
+}
+
+/**
+ * Tin ở dạng policy đọc được. Cố tình KHÔNG phải `IListingDocument`: policy là tầng dưới cùng,
+ * kéo model của một feature vào đây là mở đường cho nó phụ thuộc ngược lên tầng trên.
+ */
+export interface ListingTarget {
+  visibility: PostVisibility
+  organizationId: string | null
+  unitId: string | null
+  categoryId: string
+  provinceCode: string | null
+}
+
+/**
+ * Duyệt được ĐÚNG tin này không — TRỤC CỦA TIN chọn người có thẩm quyền, không phải vai của
+ * người đang hỏi. Gộp hai nhánh vào một hàm để không có call-site nào chỉ kiểm một nửa: đó
+ * đúng là cách `report.service` từng ẩn được tin trục danh mục bằng quyền của org.
+ */
+export function canModerateListing(grants: Grant[], listing: ListingTarget): boolean {
+  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
+    return canModerateCategory(grants, {
+      categoryId: listing.categoryId,
+      // `''` không khớp tỉnh nào, nhưng grant toàn quốc (`provinceCodes` rỗng) vẫn phủ được —
+      // đúng ý: tin công khai thiếu tỉnh chỉ master và người phụ trách toàn quốc mới đụng.
+      provinceCode: listing.provinceCode ?? '',
+    })
+  }
+  return canModerateOrg(grants, {
+    orgId: listing.organizationId ?? '',
+    unitId: listing.unitId,
+  })
 }
 
 /** `outer` (của manager) có phủ trọn `inner` (định cấp cho staff) không. */

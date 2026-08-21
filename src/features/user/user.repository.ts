@@ -43,6 +43,16 @@ export const userRepository = {
     }).exec()
   },
 
+  /**
+   * Bao nhiêu người trong danh sách này còn ĐĂNG NHẬP ĐƯỢC — `deletedAt` do hook
+   * `pre('countDocuments')` của model lo, ở đây chỉ còn điều kiện `isActive` mà `auth.service`
+   * dùng để từ chối đăng nhập. Xem `roleGrantService` §5.4 cho lý do phép đếm này tồn tại.
+   */
+  countUsable(ids: Types.ObjectId[]): Promise<number> {
+    if (ids.length === 0) return Promise.resolve(0)
+    return User.countDocuments({ _id: { $in: ids }, isActive: true }).exec()
+  },
+
   softDelete(id: string | Types.ObjectId): Promise<IUserDocument | null> {
     return User.findOneAndUpdate(
       { _id: id },

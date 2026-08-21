@@ -41,6 +41,20 @@ export const membershipRepository = {
   },
 
   /**
+   * Lưu trữ mọi tư cách thành viên của một người, dùng khi tài khoản bị xoá.
+   *
+   * Không xoá bản ghi: danh bạ cũ và `joinedAt` là dữ liệu của TỔ CHỨC, không phải của tài
+   * khoản — org vẫn cần biết người này từng thuộc nhóm nào. `archived` là trạng thái mà mọi
+   * đường đọc đã lọc sẵn (`ACTIVE`), nên chỉ cần đổi cột là họ biến khỏi danh bạ.
+   */
+  archiveAllForUser(userId: Id) {
+    return Membership.updateMany(
+      { userId, ...ACTIVE },
+      { status: MEMBERSHIP_STATUS.ARCHIVED, archivedAt: new Date() },
+    ).exec()
+  },
+
+  /**
    * Thăng/giáng uy tín trong org. Đếm bài sạch cộng dồn thay vì cộng thẳng vào `trustLevel`:
    * "5 bài sạch mới lên một bậc" phải đo được, và một lần bị từ chối phải xoá được chuỗi đó.
    */

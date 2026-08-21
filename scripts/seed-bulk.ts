@@ -14,14 +14,24 @@ import { OrgUnit } from '../src/features/org-unit/org-unit.model'
 import { JoinRequest } from '../src/features/join-request/join-request.model'
 import { Conversation, Message } from '../src/features/chat/chat.model'
 import { Report } from '../src/features/report/report.model'
+import { Favorite } from '../src/features/favorite/favorite.model'
+import { PublicTrust } from '../src/features/trust/trust.model'
 import { AuditLog } from '../src/features/moderation/moderation.model'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
 import { assertDisposableDb } from './assertDisposableDb'
 import {
+  AUDIT_ACTION,
   LISTING_STATUS,
   LISTING_CONDITION,
   MEMBERSHIP_ROLES,
+  MODERATION_QUEUE,
+  JOIN_REQUEST_STATUS,
   JOINED_VIA,
+  POST_VISIBILITY,
+  PostVisibility,
+  REPORT_KIND,
+  REPORT_STATUS,
+  REPORT_TARGET,
   SCOPE_TYPES,
   SYSTEM_ROLES,
   ListingStatus,
@@ -40,6 +50,10 @@ import {
  * Topology org giữ y hệt `seed.ts` (hung-vuong, cao-thang, xyz) nên mọi tài khoản đăng nhập
  * cũ vẫn dùng được, chỉ khác là dữ liệu dày lên.
  *
+ * Phủ CẢ HAI TRỤC và mọi collection nghiệp vụ. Bản trước chỉ sinh tin trục org, nên
+ * `scripts/explain-indexes.ts` không đo nổi 10 trong 20 đường đọc: filter khớp 0 doc thì
+ * explain nào cũng "nhanh" và index nào planner chọn cũng không nói lên điều gì.
+ *
  * Chạy: `npm run seed:bulk`
  */
 
@@ -48,6 +62,27 @@ const PASSWORD = 'password123'
 const BCRYPT_ROUNDS = 12
 const DAY_MS = 24 * 60 * 60 * 1000
 const HISTORY_DAYS = 180
+
+/**
+ * Tỉ lệ tin đi TRỤC DANH MỤC: `organizationId: null` + `visibility: public` + `provinceCode`.
+ * Đây là nửa còn lại của mô hình hai trục — thiếu nó thì bảng tin của khách vãng lai, bộ lọc
+ * tỉnh, `/listings/nearby` và hàng đợi của manager danh mục đều đọc ra rỗng.
+ */
+const PUBLIC_AXIS_SHARE = 0.3
+
+/**
+ * Bản ghi phụ trợ cho MỖI org. Đủ để bộ lọc, bàn duyệt và explain có việc làm — đây không
+ * phải số liệu đo tải, cứ nâng lên khi cần dữ liệu dày hơn.
+ */
+const PER_ORG = {
+  units: 2,
+  joinRequests: 6,
+  notifications: 8,
+  conversations: 10,
+  reports: 6,
+  auditLogs: 12,
+  favorites: 25,
+} as const
 
 // Cùng seed -> cùng dữ liệu ở mọi lần chạy: bug "chỉ tái hiện trên máy tôi" vì random khác nhau
 // là thứ không đáng phải đi tìm. Đổi số này khi muốn một bộ dữ liệu khác.
@@ -216,8 +251,12 @@ function weightedPool<T>(entries: Array<[T, number]>, total: number): T[] {
 const STATUS_MIX: Array<[ListingStatus, number]> = [
   // `active` chiếm đa số để bảng tin còn lật được nhiều trang; các trạng thái nội bộ vẫn đủ
   // dày để bàn duyệt và màn "tin của tôi" có việc mà làm.
-  [LISTING_STATUS.ACTIVE, 62],
+  [LISTING_STATUS.ACTIVE, 59],
   [LISTING_STATUS.PENDING, 10],
+  // Hàng đợi `org_outsider`: tin do người NGOÀI gửi vào org. Nó nằm trong
+  // `MODERATABLE_STATUSES` nên bàn duyệt đọc phải — không seed thì tab đó luôn rỗng và không
+  // ai phát hiện lúc nó hỏng.
+  [LISTING_STATUS.PENDING_UNVERIFIED, 3],
   [LISTING_STATUS.SOLD, 9],
   [LISTING_STATUS.DRAFT, 6],
   [LISTING_STATUS.REJECTED, 5],
@@ -280,9 +319,29 @@ function attributesFor(categorySlug: CategorySlug, brand: string): Record<string
   }
 }
 
+/**
+ * Chỉ những khoá này mới xuống `attrs`. Bản phẳng sinh ra để INDEX tra, nên nhồi hết mọi
+ * thuộc tính vào là index phình cho những field không ai lọc (đặc tả §5.3) — `language` và
+ * `publisher` nằm ngoài đúng vì lý do đó.
+ */
+const FILTERABLE_ATTR_KEYS = new Set(['brand', 'year', 'size', 'warranty'])
+
+/**
+ * `attributes` (Map, để hiển thị) → `attrs` (mảng cặp `{k, v}`, để lọc). Trong app đây là
+ * việc của `listing.service`; seed đi thẳng `insertMany` nên không qua đó, mà bỏ trống `attrs`
+ * thì mọi bộ lọc thuộc tính trả rỗng và index multikey không bao giờ được chạm tới.
+ */
+function flattenAttrs(attributes: Record<string, string>): Array<{ k: string; v: string }> {
+  return Object.entries(attributes)
+    .filter(([k]) => FILTERABLE_ATTR_KEYS.has(k))
+    .map(([k, v]) => ({ k, v }))
+}
+
 // ── SEED USERS / ORGS ───────────────────────────────────────────────
 
 type SeedUser = { _id: Types.ObjectId; name: string; phone: string }
+
+type SeedUnit = { _id: Types.ObjectId; name: string }
 
 type SeedOrg = {
   id: Types.ObjectId
@@ -292,6 +351,8 @@ type SeedOrg = {
   moderator: SeedUser
   /** Owner + members: những người được gán làm `seller` của tin. */
   sellers: SeedUser[]
+  /** Nhóm con — `unitId` của tin và của thông báo trỏ vào đây. */
+  units: SeedUnit[]
   share: number
 }
 
@@ -362,6 +423,19 @@ function buildOrg(spec: (typeof ORG_SEEDS)[number], passwordHash: string) {
     makeUser(vietnameseName(), `member${i + 1}@${spec.slug}.local`, 'member'),
   )
 
+  // Nhóm con phẳng (không lồng nhau): `parentUnitId` để null là đủ cho mọi đường đọc hiện có,
+  // và một cây hai tầng chỉ thêm ca biên mà chưa endpoint nào hỏi tới.
+  const units: SeedUnit[] = Array.from({ length: PER_ORG.units }, (_, i) => ({
+    _id: new Types.ObjectId(),
+    name: `Khối ${i + 10}`,
+  }))
+  const unitRows = units.map((unit) => ({
+    _id: unit._id,
+    organizationId: orgId,
+    name: unit.name,
+    moderatorId: moderator._id,
+  }))
+
   const org: SeedOrg = {
     id: orgId,
     name: spec.name,
@@ -369,15 +443,28 @@ function buildOrg(spec: (typeof ORG_SEEDS)[number], passwordHash: string) {
     owner,
     moderator,
     sellers: [owner, ...members],
+    units,
     share: spec.share,
   }
-  return { org, rows, memberships, grants }
+  return { org, rows, memberships, grants, unitRows }
 }
 
 // ── SEED LISTINGS ───────────────────────────────────────────────────
 
+/** Trục của tin. Quyết định `organizationId`, `visibility` và `provinceCode` cùng một lúc. */
+type Axis = 'org' | 'public'
+
 type ListingSeed = {
-  organizationId: Types.ObjectId
+  // `_id` do seed cấp chứ không để Mongo sinh: favorite/report/chat/audit đều trỏ tới tin, và
+  // chờ `insertMany` trả về rồi mới nối là phải đọc ngược 1000 document chỉ để lấy lại id.
+  _id: Types.ObjectId
+  /** `null` = trục danh mục: tin không thuộc org nào. */
+  organizationId: Types.ObjectId | null
+  visibility: PostVisibility
+  /** Snapshot tỉnh, CHỈ có ở trục danh mục — nó là khoá định tuyến hàng đợi duyệt. */
+  provinceCode: string | null
+  /** Nhóm con của người đăng, chỉ có ở trục org. */
+  unitId: Types.ObjectId | null
   title: string
   slug: string
   description: string
@@ -398,6 +485,7 @@ type ListingSeed = {
   viewCount: number
   favoriteCount: number
   attributes: Record<string, string>
+  attrs: Array<{ k: string; v: string }>
   moderation?: { reason: string; byUserId: Types.ObjectId; byName: string; at: Date }
   expiresAt?: Date
   deletedAt: Date | null
@@ -412,6 +500,7 @@ function buildListing(
   categories: Map<CategorySlug, Types.ObjectId>,
   status: ListingStatus,
   condition: ListingCondition,
+  axis: Axis,
 ): ListingSeed {
   // Danh mục đã tắt chỉ nhận rất ít tin — nó là ngoại lệ cần có mẫu, không phải danh mục thường.
   const categorySlug: CategorySlug = chance(2)
@@ -431,8 +520,19 @@ function buildListing(
     to: new Date(NOW - 5 * 60 * 1000),
   })
 
+  const isPublic = axis === 'public'
+  const attributes = attributesFor(categorySlug, brand)
+
   const listing: ListingSeed = {
-    organizationId: org.id,
+    _id: new Types.ObjectId(),
+    // Ba field này đi CÙNG NHAU. Tách rời là dựng ra tin nửa nạc nửa mỡ mà app thật không sinh
+    // được: tin công khai thiếu `provinceCode` thì `required` của model nổ, còn tin org mà có
+    // `provinceCode` thì lọt vào hàng đợi của manager danh mục dù nó không thuộc trục đó.
+    organizationId: isPublic ? null : org.id,
+    visibility: isPublic ? POST_VISIBILITY.PUBLIC : POST_VISIBILITY.ORG_INTERNAL,
+    provinceCode: isPublic ? province : null,
+    // Nhóm con là chuyện nội bộ org; trục danh mục không có tầng đó.
+    unitId: isPublic ? null : chance(60) ? pick(org.units)._id : null,
     title,
     // Hậu tố là bộ đếm toàn cục chứ không phải chuỗi ngẫu nhiên: unique index
     // (organizationId, slug) không được phép va, mà 1000 chuỗi random 6 ký tự vẫn có xác suất
@@ -458,7 +558,8 @@ function buildListing(
     status,
     viewCount: faker.number.int({ min: 0, max: 4000 }),
     favoriteCount: faker.number.int({ min: 0, max: 250 }),
-    attributes: attributesFor(categorySlug, brand),
+    attributes,
+    attrs: flattenAttrs(attributes),
     expiresAt: expiresAtFor(status),
     deletedAt: null,
     createdAt,
@@ -674,7 +775,330 @@ const EDGE_CASES: Array<{ label: string; apply: (doc: ListingSeed, ctx: EdgeCont
       doc.isNegotiable = true
     },
   },
+  {
+    label: 'trục danh mục — tin công khai đã duyệt',
+    apply: (doc) => {
+      doc.title = 'Máy ảnh Canon EOS bán toàn quốc'
+      doc.status = LISTING_STATUS.ACTIVE
+      toPublicAxis(doc, 'Hồ Chí Minh')
+    },
+  },
+  {
+    label: 'trục danh mục — chờ manager danh mục duyệt',
+    apply: (doc, ctx) => {
+      doc.title = 'Đàn guitar Yamaha chờ duyệt trục danh mục'
+      doc.status = LISTING_STATUS.PENDING
+      doc.moderation = undefined
+      doc.category = ctx.categories.get('nhac-cu')!
+      toPublicAxis(doc, 'Hà Nội')
+    },
+  },
 ]
+
+/**
+ * Chuyển một tin sang trục danh mục. Gom vào một hàm vì bốn field phải đổi CÙNG LÚC — sửa tay
+ * ở từng edge case là kiểu chỗ người ta quên `unitId` rồi ngồi tìm xem sao tin công khai lại
+ * dính nhóm con của một org.
+ */
+function toPublicAxis(doc: ListingSeed, province: VnProvinceName): void {
+  doc.organizationId = null
+  doc.visibility = POST_VISIBILITY.PUBLIC
+  doc.provinceCode = province
+  doc.unitId = null
+  doc.location.province = province
+  doc.location.ward = wardsOf(province)[0]
+}
+
+// ── SEED CÁC COLLECTION PHỤ ─────────────────────────────────────────
+
+/** Tin trục org của một org — chat/report/audit đều cần `organizationId`, tin công khai không có. */
+function orgListings(listings: ListingSeed[], org: SeedOrg): ListingSeed[] {
+  return listings.filter((doc) => doc.organizationId?.equals(org.id) && doc.deletedAt === null)
+}
+
+/**
+ * Đơn xin vào org, gửi bởi người của org KHÁC — người đã là thành viên thì không xin vào nữa,
+ * mà đó lại là toàn bộ dân số seed.
+ *
+ * Có cả đơn PENDING đã QUÁ HẠN: `joinRequestRepository.expireStale` quét đúng tập này mỗi lần
+ * ai đó mở hàng đợi, và không có mẫu thì đường quét đó không bao giờ chạy thật.
+ */
+function buildJoinRequests(orgs: SeedOrg[]): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = []
+
+  orgs.forEach((org, orgIndex) => {
+    const outsiders = orgs
+      .filter((other) => other !== org)
+      .flatMap((other) => other.sellers)
+      .slice(0, PER_ORG.joinRequests)
+
+    outsiders.forEach((user, i) => {
+      // Một cặp (user, org) chỉ được có ĐÚNG MỘT đơn pending — unique partial index chốt điều
+      // đó. Chia theo chỉ số nên mỗi người chỉ rơi vào một nhánh.
+      const bucket = (i + orgIndex) % 4
+      const createdAt = new Date(NOW - (i + 1) * 3 * DAY_MS)
+      const base = {
+        userId: user._id,
+        organizationId: org.id,
+        claimedName: user.name,
+        claimedUnit: pick(org.units).name,
+        note: 'Tôi là thành viên cũ, xin được vào lại tổ chức.',
+        createdAt,
+        updatedAt: createdAt,
+      }
+
+      if (bucket === 0) {
+        rows.push({
+          ...base,
+          status: JOIN_REQUEST_STATUS.PENDING,
+          expiresAt: new Date(NOW + 7 * DAY_MS),
+        })
+      } else if (bucket === 1) {
+        // Quá hạn nhưng status vẫn PENDING: đúng trạng thái mà `expireStale` sinh ra để dọn.
+        rows.push({
+          ...base,
+          status: JOIN_REQUEST_STATUS.PENDING,
+          expiresAt: new Date(NOW - 2 * DAY_MS),
+        })
+      } else if (bucket === 2) {
+        rows.push({
+          ...base,
+          status: JOIN_REQUEST_STATUS.APPROVED,
+          reviewedBy: org.moderator._id,
+          reviewedAt: new Date(createdAt.getTime() + DAY_MS),
+          expiresAt: new Date(NOW - 10 * DAY_MS),
+        })
+      } else {
+        rows.push({
+          ...base,
+          status: JOIN_REQUEST_STATUS.REJECTED,
+          reviewedBy: org.moderator._id,
+          reviewedAt: new Date(createdAt.getTime() + DAY_MS),
+          rejectReason: 'Không tìm thấy tên trong danh sách lớp',
+          expiresAt: new Date(NOW - 10 * DAY_MS),
+        })
+      }
+    })
+  })
+
+  return rows
+}
+
+/**
+ * Thông báo org. Ba dạng, vì cả ba đều là đường đọc riêng:
+ * phát cả tổ chức (`unitId: null`), phát cho một nhóm con, và ĐÍCH DANH một người (`userId`).
+ *
+ * Thiếu dạng thứ ba thì `scope=inbox` không bao giờ chạm nhánh `$or` của thông báo riêng, mà
+ * đó lại là nhánh mới nhất — kiểu chỗ hỏng lặng lẽ vì không có dữ liệu nào đi qua.
+ */
+function buildNotifications(orgs: SeedOrg[]): Record<string, unknown>[] {
+  return orgs.flatMap((org) =>
+    Array.from({ length: PER_ORG.notifications }, (_, i) => {
+      const createdAt = new Date(NOW - i * 2 * DAY_MS)
+      const shape = i % 3
+      const unit = shape === 1 ? pick(org.units) : null
+      const recipient = shape === 2 ? pick(org.sellers) : null
+
+      return {
+        organizationId: org.id,
+        userId: recipient?._id ?? null,
+        unitId: unit?._id ?? null,
+        title: recipient
+          ? 'Tin của bạn bị từ chối'
+          : unit
+            ? `Thông báo ${unit.name}`
+            : `Thông báo chung ${org.name}`,
+        body: recipient
+          ? 'Ảnh không rõ sản phẩm, vui lòng chụp lại rồi đăng lại.'
+          : 'Nhắc lịch nộp hồ sơ và cập nhật thông tin tin đăng trước cuối tuần.',
+        // Thông báo đích danh chỉ một người đọc được, nên `readBy` nhiều nhất là chính họ.
+        readBy: recipient
+          ? chance(50)
+            ? [recipient._id]
+            : []
+          : faker.helpers.arrayElements(
+              org.sellers.map((u) => u._id),
+              { min: 0, max: 4 },
+            ),
+        createdAt,
+        updatedAt: createdAt,
+      }
+    }),
+  )
+}
+
+/** Hội thoại + tin nhắn. Người mua luôn khác người bán, nếu không unique index sẽ vô nghĩa. */
+function buildConversations(orgs: SeedOrg[], listings: ListingSeed[]) {
+  const conversations: Record<string, unknown>[] = []
+  const messages: Record<string, unknown>[] = []
+
+  for (const org of orgs) {
+    const pool = orgListings(listings, org).slice(0, PER_ORG.conversations)
+
+    for (const listing of pool) {
+      const seller = org.sellers.find((u) => u._id.equals(listing.seller))
+      const buyer = org.sellers.find((u) => !u._id.equals(listing.seller))
+      if (!seller || !buyer) continue
+
+      const conversationId = new Types.ObjectId()
+      const turns = faker.number.int({ min: 2, max: 6 })
+      const startedAt = new Date(NOW - faker.number.int({ min: 1, max: 30 }) * DAY_MS)
+      let lastAt = startedAt
+      let lastText = ''
+      let lastSender = buyer._id
+
+      for (let turn = 0; turn < turns; turn += 1) {
+        const sender = turn % 2 === 0 ? buyer : seller
+        lastAt = new Date(startedAt.getTime() + turn * 60 * 60 * 1000)
+        lastText = turn % 2 === 0 ? 'Sản phẩm còn không bạn?' : 'Còn nhé, bạn qua xem được luôn.'
+        lastSender = sender._id
+        messages.push({
+          organizationId: org.id,
+          conversationId,
+          senderId: sender._id,
+          senderName: sender.name,
+          text: lastText,
+          createdAt: lastAt,
+          updatedAt: lastAt,
+        })
+      }
+
+      conversations.push({
+        _id: conversationId,
+        organizationId: org.id,
+        listingId: listing._id,
+        listingTitle: listing.title,
+        buyerId: buyer._id,
+        sellerId: seller._id,
+        // Đúng 2 người — validator của schema từ chối mọi con số khác.
+        participants: [
+          { user: buyer._id, name: buyer.name, lastReadAt: lastAt },
+          { user: seller._id, name: seller.name, lastReadAt: null },
+        ],
+        lastMessage: lastText,
+        lastMessageAt: lastAt,
+        lastSenderId: lastSender,
+        createdAt: startedAt,
+        updatedAt: lastAt,
+      })
+    }
+  }
+
+  return { conversations, messages }
+}
+
+/** Báo cáo vi phạm. Giữ đa số OPEN để hàng đợi có việc, phần còn lại đã xử để có mẫu `resolution`. */
+function buildReports(orgs: SeedOrg[], listings: ListingSeed[]): Record<string, unknown>[] {
+  const rows: Record<string, unknown>[] = []
+
+  for (const org of orgs) {
+    const pool = orgListings(listings, org).slice(0, PER_ORG.reports)
+
+    pool.forEach((listing, i) => {
+      const reporter = org.sellers.find((u) => !u._id.equals(listing.seller)) ?? org.moderator
+      const resolved = i % 3 === 2
+      const createdAt = new Date(NOW - (i + 1) * DAY_MS)
+      rows.push({
+        organizationId: org.id,
+        targetType: REPORT_TARGET.LISTING,
+        targetId: listing._id,
+        targetTitle: listing.title,
+        kind: pick(Object.values(REPORT_KIND)),
+        quote: 'Người bán yêu cầu chuyển khoản trước khi cho xem hàng.',
+        reporterId: reporter._id,
+        reporterName: reporter.name,
+        status: resolved ? REPORT_STATUS.RESOLVED : REPORT_STATUS.OPEN,
+        ...(resolved
+          ? {
+              resolution: {
+                action: 'hide',
+                byUserId: org.moderator._id,
+                byName: org.moderator.name,
+                at: new Date(createdAt.getTime() + DAY_MS),
+              },
+            }
+          : {}),
+        createdAt,
+        updatedAt: createdAt,
+      })
+    })
+  }
+
+  return rows
+}
+
+/** Vết kiểm toán của bàn duyệt — nguồn của màn "lịch sử thao tác". */
+function buildAuditLogs(orgs: SeedOrg[], listings: ListingSeed[]): Record<string, unknown>[] {
+  return orgs.flatMap((org) =>
+    orgListings(listings, org)
+      .slice(0, PER_ORG.auditLogs)
+      .map((listing, i) => {
+        const approved = i % 2 === 0
+        const createdAt = new Date(NOW - (i + 1) * 12 * 60 * 60 * 1000)
+        return {
+          organizationId: org.id,
+          actorId: org.moderator._id,
+          actorName: org.moderator.name,
+          action: approved ? AUDIT_ACTION.LISTING_APPROVE : AUDIT_ACTION.LISTING_REJECT,
+          targetType: 'listing',
+          targetId: listing._id,
+          summary: `${approved ? 'Duyệt' : 'Từ chối'} tin "${listing.title}"`.slice(0, 300),
+          fromStatus: LISTING_STATUS.PENDING,
+          toStatus: approved ? LISTING_STATUS.ACTIVE : LISTING_STATUS.REJECTED,
+          queue: MODERATION_QUEUE.ORG_MEMBER,
+          createdAt,
+          updatedAt: createdAt,
+        }
+      }),
+  )
+}
+
+/**
+ * Tin đã lưu. Ưu tiên tin CÔNG KHAI: lưu tin của org khác là ca thật hay gặp nhất, mà cũng là
+ * ca duy nhất chứng minh `favorite` không bị kẹt trong một tenant.
+ */
+function buildFavorites(orgs: SeedOrg[], listings: ListingSeed[]): Record<string, unknown>[] {
+  const savable = listings.filter(
+    (doc) => doc.deletedAt === null && doc.status === LISTING_STATUS.ACTIVE,
+  )
+  if (savable.length === 0) return []
+
+  const rows: Record<string, unknown>[] = []
+  const seen = new Set<string>()
+
+  for (const org of orgs) {
+    for (let i = 0; i < PER_ORG.favorites; i += 1) {
+      const user = pick(org.sellers)
+      const listing = pick(savable)
+      const key = `${user._id}-${listing._id}`
+      // Unique index (userId, listingId): trùng cặp là cả `insertMany` đổ, không chỉ một dòng.
+      if (seen.has(key)) continue
+      seen.add(key)
+
+      const createdAt = new Date(NOW - faker.number.int({ min: 1, max: 60 }) * DAY_MS)
+      rows.push({ userId: user._id, listingId: listing._id, createdAt, updatedAt: createdAt })
+    }
+  }
+
+  return rows
+}
+
+/** Uy tín trên trục danh mục: đủ bậc thì tin của người đó tự đăng, không qua hàng đợi. */
+function buildTrust(
+  orgs: SeedOrg[],
+  categories: Map<CategorySlug, Types.ObjectId>,
+): Record<string, unknown>[] {
+  const catIds = [...categories.values()]
+  return orgs.flatMap((org) =>
+    org.sellers.slice(0, 4).flatMap((user, i) =>
+      catIds.slice(0, 2).map((categoryId) => ({
+        userId: user._id,
+        categoryId,
+        level: (i % 3) + 1,
+      })),
+    ),
+  )
+}
 
 // ── MAIN ────────────────────────────────────────────────────────────
 
@@ -703,6 +1127,8 @@ async function seedBulk() {
       Message.deleteMany({}),
       Report.deleteMany({}),
       AuditLog.deleteMany({}),
+      Favorite.deleteMany({}),
+      PublicTrust.deleteMany({}),
     ])
 
     const categoryDocs = await Category.insertMany(CATEGORY_SEEDS.map((c) => ({ ...c })))
@@ -724,9 +1150,18 @@ async function seedBulk() {
       })),
     )
 
+    await OrgUnit.insertMany(built.flatMap((b) => b.unitRows))
+
     const orgs = built.map((b) => b.org)
     const statuses = weightedPool(STATUS_MIX, TOTAL_LISTINGS)
     const conditions = weightedPool(CONDITION_MIX, TOTAL_LISTINGS)
+
+    /**
+     * Trục rải theo CHỈ SỐ chứ không random: `chance(30)` cho mỗi tin thì tỉ lệ dao động giữa
+     * các lần chạy, mà EDGE_CASES lại ghi đè đúng những tin đầu tiên — hai thứ đó cộng lại có
+     * thể ra một lần seed không còn tin công khai nào ở org cuối.
+     */
+    const publicEvery = Math.round(1 / PUBLIC_AXIS_SHARE)
 
     // Chia tin theo tỉ trọng org, phần dư dồn cho org cuối để tổng luôn tròn TOTAL_LISTINGS.
     const docs: ListingSeed[] = []
@@ -734,7 +1169,10 @@ async function seedBulk() {
       const isLast = orgIndex === orgs.length - 1
       const quota = isLast ? TOTAL_LISTINGS - docs.length : Math.floor(TOTAL_LISTINGS * org.share)
       for (let i = 0; i < quota; i += 1) {
-        docs.push(buildListing(org, categories, statuses[docs.length], conditions[docs.length]))
+        const axis: Axis = i % publicEvery === 0 ? 'public' : 'org'
+        docs.push(
+          buildListing(org, categories, statuses[docs.length], conditions[docs.length], axis),
+        )
       }
     })
 
@@ -773,15 +1211,40 @@ async function seedBulk() {
       scopeType: SCOPE_TYPES.SYSTEM,
     })
 
-    report(docs, orgs)
+    // Collection phụ dựng SAU listing vì chúng trỏ vào `_id` của tin.
+    const { conversations, messages } = buildConversations(orgs, docs)
+    const aux = {
+      joinRequests: buildJoinRequests(orgs),
+      notifications: buildNotifications(orgs),
+      conversations,
+      messages,
+      reports: buildReports(orgs, docs),
+      auditLogs: buildAuditLogs(orgs, docs),
+      favorites: buildFavorites(orgs, docs),
+      trust: buildTrust(orgs, categories),
+    }
+
+    await JoinRequest.insertMany(aux.joinRequests)
+    await Notification.insertMany(aux.notifications)
+    await Conversation.insertMany(aux.conversations)
+    await Message.insertMany(aux.messages)
+    await Report.insertMany(aux.reports)
+    await AuditLog.insertMany(aux.auditLogs)
+    await Favorite.insertMany(aux.favorites)
+    await PublicTrust.insertMany(aux.trust)
+
+    report(docs, orgs, aux)
   })
 
   await mongoose.disconnect()
   process.exit(0)
 }
 
+/** Mọi bản ghi phụ đã ghi, để bảng tổng kết đếm được mà không phải đọc lại DB. */
+type AuxRows = Record<string, unknown[]>
+
 /** Đếm từ mảng thật sự đã ghi, không phải từ bảng tỉ lệ — bảng kia chỉ là ý định. */
-function report(docs: ListingSeed[], orgs: SeedOrg[]) {
+function report(docs: ListingSeed[], orgs: SeedOrg[], aux: AuxRows) {
   const tally = <T extends string>(key: (d: ListingSeed) => T) =>
     docs.reduce<Record<string, number>>((acc, d) => {
       const k = key(d)
@@ -790,12 +1253,16 @@ function report(docs: ListingSeed[], orgs: SeedOrg[]) {
     }, {})
 
   const alive = docs.filter((d) => d.deletedAt === null).length
+  const publicAxis = docs.filter((d) => d.organizationId === null)
   const byOrg = orgs.map(
-    (o) => `${o.slug}=${docs.filter((d) => d.organizationId.equals(o.id)).length}`,
+    (o) => `${o.slug}=${docs.filter((d) => d.organizationId?.equals(o.id)).length}`,
   )
 
   console.log('\n── Kết quả ─────────────────────────────')
   console.log(`Listings      : ${docs.length} (${alive} sống, ${docs.length - alive} soft-deleted)`)
+  console.log(
+    `Theo trục     : org=${docs.length - publicAxis.length}, danh mục=${publicAxis.length}`,
+  )
   console.log(`Theo org      : ${byOrg.join(', ')}`)
   console.log(`Theo status   : ${JSON.stringify(tally((d) => d.status))}`)
   console.log(`Theo condition: ${JSON.stringify(tally((d) => d.condition))}`)
@@ -804,7 +1271,14 @@ function report(docs: ListingSeed[], orgs: SeedOrg[]) {
   console.log(`Không ảnh     : ${docs.filter((d) => d.images.length === 0).length}`)
   console.log(`Đủ 12 ảnh     : ${docs.filter((d) => d.images.length === 12).length}`)
   console.log(`Có moderation : ${docs.filter((d) => d.moderation).length}`)
+  console.log(`Có attrs      : ${docs.filter((d) => d.attrs.length > 0).length}`)
+  console.log(`Có unitId     : ${docs.filter((d) => d.unitId !== null).length}`)
   console.log(`Ca biên       : ${EDGE_CASES.length} tin đầu của org ${orgs[0].slug}`)
+  console.log(
+    `Phụ trợ       : ${Object.entries(aux)
+      .map(([name, rows]) => `${name}=${rows.length}`)
+      .join(', ')}`,
+  )
   console.log('────────────────────────────────────────')
   console.log(
     `Login: POST /auth/login { orgSlug: "${orgs[0].slug}", email: "owner@${orgs[0].slug}.local", password: "${PASSWORD}" }`,

@@ -33,6 +33,9 @@ const SLUG = 'notice-org'
 const asOwner = () => orgAuth(owner.token, SLUG)
 const asStaff = () => orgAuth(unitStaff.token, SLUG)
 
+/** Tiêu đề của các thông báo trong response — thứ mọi assertion về phạm vi đọc cần tới. */
+const titlesOf = (body: { data: { title: string }[] }) => body.data.map((n) => n.title)
+
 beforeAll(async () => {
   mongod = await startTestDb()
   app = await createTestApp()
@@ -243,5 +246,80 @@ describe('Không rò `readBy` ra ngoài', () => {
       isRead: false,
       readCount: 1,
     })
+  })
+})
+
+/**
+ * Thông báo ĐÍCH DANH — cạnh `Notification → User` mà model trước đây không có.
+ *
+ * Thiếu nó thì mọi sự kiện thuộc về một người (tin bị từ chối kèm lý do, đơn xin vào org được
+ * duyệt) không có chỗ đáp: dữ liệu nằm trong `listing.moderation.reason` / `rejectReason` và
+ * người nhận phải tự đi tìm mới biết.
+ */
+describe('Thông báo đích danh', () => {
+  async function notifyDirect(userId: string, title: string) {
+    const { notificationRepository } =
+      await import('../../src/features/notification/notification.repository')
+    const { Types } = await import('mongoose')
+    return notificationRepository.createForUser({
+      organizationId: new Types.ObjectId(orgId),
+      userId: new Types.ObjectId(userId),
+      title,
+      body: 'Nội dung riêng cho một người',
+    })
+  }
+
+  it('chỉ người nhận thấy nó trong hộp thư', async () => {
+    await notifyDirect(memberInUnit.id, 'Riêng cho người trong nhóm')
+
+    const mine = await request(app)
+      .get('/api/v1/notifications')
+      .set(orgAuth(memberInUnit.token, SLUG))
+      .expect(200)
+    expect(titlesOf(mine.body)).toContain('Riêng cho người trong nhóm')
+
+    const others = await request(app)
+      .get('/api/v1/notifications')
+      .set(orgAuth(memberOutsideUnit.token, SLUG))
+      .expect(200)
+    expect(titlesOf(others.body)).not.toContain('Riêng cho người trong nhóm')
+  })
+
+  it('KHÔNG lọt vào scope=managed của quản trị', async () => {
+    await notifyDirect(memberOutsideUnit.id, 'Riêng cho người ngoài nhóm')
+
+    // Bàn quản trị liệt kê thứ MÌNH gửi được, không phải hộp thư riêng của từng thành viên —
+    // lọt vào đây là quản lý org đọc được thư riêng của cả tổ chức.
+    const managed = await request(app)
+      .get('/api/v1/notifications?scope=managed')
+      .set(asOwner())
+      .expect(200)
+    expect(titlesOf(managed.body)).not.toContain('Riêng cho người ngoài nhóm')
+    expect(titlesOf(managed.body)).not.toContain('Riêng cho người trong nhóm')
+  })
+
+  it('duyệt đơn xin vào tổ chức thì người gửi đơn nhận được thông báo', async () => {
+    const applicant = await registerUser(app, 'applicant@notice.local', 'Người xin vào')
+
+    await request(app)
+      .post('/api/v1/join-requests')
+      .set({ Authorization: `Bearer ${applicant.token}` })
+      .send({ orgSlug: SLUG, claimedName: 'Người xin vào' })
+      .expect(201)
+
+    const pending = await request(app).get('/api/v1/join-requests').set(asOwner()).expect(200)
+    const requestId = pending.body.data[0].id
+
+    await request(app)
+      .patch(`/api/v1/join-requests/${requestId}/approve`)
+      .set(asOwner())
+      .send({})
+      .expect(200)
+
+    const inbox = await request(app)
+      .get('/api/v1/notifications')
+      .set(orgAuth(applicant.token, SLUG))
+      .expect(200)
+    expect(titlesOf(inbox.body)).toContain('Đơn xin vào tổ chức đã được duyệt')
   })
 })

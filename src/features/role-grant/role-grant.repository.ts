@@ -18,9 +18,30 @@ export const roleGrantRepository = {
     return RoleGrant.findOne({ _id: id, ...ACTIVE }).exec()
   },
 
-  /** §5.4: gọi TRƯỚC khi thu hồi một master, không phải sau. */
-  countActiveMasters(): Promise<number> {
-    return RoleGrant.countDocuments({ role: SYSTEM_ROLES.MASTER, ...ACTIVE }).exec()
+  /**
+   * Chủ nhân của mọi grant master còn hiệu lực.
+   *
+   * Trả về NGƯỜI chứ không phải số lượng grant: xoá mềm tài khoản không chạm tới grant, nên
+   * `countDocuments` trên grant sẽ báo "vẫn còn master" trong khi không ai đăng nhập được nữa
+   * — đúng cái tình trạng §5.4 sinh ra để chặn. Ai còn dùng được thì `userRepository` mới trả
+   * lời được, nên phép đếm thật nằm ở service.
+   */
+  listActiveMasterUserIds(): Promise<Types.ObjectId[]> {
+    return RoleGrant.distinct('userId', { role: SYSTEM_ROLES.MASTER, ...ACTIVE }).exec()
+  },
+
+  /**
+   * Thu hồi sạch quyền của một người, dùng khi tài khoản bị xoá.
+   *
+   * `revokedBy: null` = hệ thống tự gỡ, phân biệt với một master bấm thu hồi. Không đi qua
+   * `revokeById` từng cái: đây là hệ quả của một thao tác duy nhất, gỡ nửa chừng rồi lỗi sẽ để
+   * lại một tài khoản đã xoá mà vẫn còn quyền.
+   */
+  revokeAllForUser(userId: string | Types.ObjectId) {
+    return RoleGrant.updateMany(
+      { userId, ...ACTIVE },
+      { revokedAt: new Date(), revokedBy: null },
+    ).exec()
   },
 
   revokeById(id: string | Types.ObjectId, revokedBy: Types.ObjectId | null) {

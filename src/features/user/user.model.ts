@@ -121,11 +121,16 @@ userSchema.methods.comparePassword = function comparePassword(candidate: string)
 }
 
 // Mặc định loại bản ghi đã soft-delete khỏi mọi query find
-userSchema.pre(/^find/, function excludeDeleted(this: mongoose.Query<unknown, unknown>, next) {
+function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
   if (!this.getOptions().withDeleted) {
     this.where({ deletedAt: null })
   }
   next()
-})
+}
+
+userSchema.pre(/^find/, excludeDeleted)
+// `countDocuments` KHÔNG khớp /^find/ (AGENT §10) — `countUsable` đếm master còn đăng nhập
+// được, mà thiếu hook này thì đúng tài khoản vừa bị xoá lại được tính là "vẫn còn master".
+userSchema.pre('countDocuments', excludeDeleted)
 
 export const User: Model<IUserDocument> = mongoose.model<IUserDocument>('User', userSchema)

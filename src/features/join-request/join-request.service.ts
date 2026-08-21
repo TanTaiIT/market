@@ -6,6 +6,7 @@ import { CreateJoinRequestInput } from './join-request.schema'
 import { organizationRepository } from '../organization/organization.repository'
 import { membershipRepository } from '../membership/membership.repository'
 import { orgUnitRepository } from '../org-unit/org-unit.repository'
+import { notificationService } from '../notification/notification.service'
 import {
   JOIN_REQUEST_LIMITS,
   JOIN_REQUEST_STATUS,
@@ -146,6 +147,16 @@ export const joinRequestService = {
       reviewedBy: new Types.ObjectId(actorId),
       reviewedAt: new Date(),
     })
+
+    // Người gửi đơn không có mặt lúc duyệt, và không có màn hình nào tự bật lên báo họ. Trước
+    // khi `Notification` có người nhận đích danh thì tin này không có chỗ nào để đáp.
+    await notificationService.notifyUser({
+      organizationId,
+      userId: doc.userId,
+      title: 'Đơn xin vào tổ chức đã được duyệt',
+      body: 'Bạn đã là thành viên. Mở lại ứng dụng và chọn tổ chức này để bắt đầu.',
+    })
+
     return toJoinRequestDto(updated!)
   },
 
@@ -166,6 +177,16 @@ export const joinRequestService = {
       reviewedAt: new Date(),
       rejectReason: reason ?? null,
     })
+
+    // Lý do đi KÈM thông báo: nó vốn chỉ nằm trong `rejectReason` của bản ghi đơn, mà người bị
+    // từ chối thì không còn màn hình nào trong org đó để mở ra đọc.
+    await notificationService.notifyUser({
+      organizationId,
+      userId: doc.userId,
+      title: 'Đơn xin vào tổ chức bị từ chối',
+      body: reason ?? 'Quản trị tổ chức không nêu lý do.',
+    })
+
     return toJoinRequestDto(updated!)
   },
 
