@@ -302,8 +302,14 @@ listingSchema.index(
   { unique: true, partialFilterExpression: { deletedAt: null } },
 )
 
-// TTL BẮT BUỘC single-field — Mongo từ chối compound TTL. Nó là tiến trình dọn nền,
-// không nằm trên đường query nên không ảnh hưởng hiệu năng tenant.
+/*
+ * TTL BẮT BUỘC single-field — Mongo từ chối compound TTL. Nó là tiến trình dọn nền, không nằm
+ * trên đường query nên không ảnh hưởng hiệu năng tenant.
+ *
+ * Index này XOÁ THẬT document khi tới hạn, không phải đổi `status` thành `expired`. Muốn "ẩn
+ * mà giữ lịch sử" thì phải BỎ index này rồi thay bằng một job nền tự set `status = EXPIRED` —
+ * hai cách loại trừ nhau, giữ cả hai thì job không bao giờ kịp chạy trước khi Mongo xoá mất.
+ */
 listingSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
 
 // KHÔNG có text index: scope đọc là `$in [...readableOrgIds]`, mà text index bắt buộc

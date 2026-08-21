@@ -53,8 +53,6 @@ const envSchema = z.object({
   JWT_REFRESH_SECRET: z.string().min(1, 'JWT_REFRESH_SECRET is required'),
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
-  REDIS_URL: z.string().optional(),
-
   AWS_S3_BUCKET: z.string().optional(),
   AWS_REGION: z.string().optional(),
 

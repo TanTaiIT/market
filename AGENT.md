@@ -8,8 +8,8 @@ Nền tảng rao vặt/mua bán (giống Chợ Tốt) — Node.js + Express + Mo
 - Runtime: Node.js 20+, Express 4.x, **TypeScript** (không có file `.js` trong `src/`)
 - DB: MongoDB + Mongoose 8
 - Auth: JWT (access + refresh), hash password bằng `@node-rs/bcrypt`
-- Upload ảnh: Multer (memoryStorage) → S3 *(module `upload` mới ở mức skeleton)*
-- Realtime: Socket.io (+ Redis adapter khi có `REDIS_URL`)
+- Upload ảnh: *chưa có* — module `upload` trả 501, chưa chọn thư viện lẫn nơi lưu
+- Realtime: Socket.io, adapter in-memory (chạy ĐÚNG một instance)
 - Validation + OpenAPI: Zod + `@asteasolutions/zod-to-openapi` (1 schema dùng cho cả hai)
 - Logger: **winston** (`src/config/logger.ts`)
 - Test: **Vitest** + Supertest + mongodb-memory-server
@@ -29,7 +29,6 @@ src/
   middlewares/
   common/{constants,errors,types,utils}/
   config/
-  jobs/
   sockets/
 ```
 
