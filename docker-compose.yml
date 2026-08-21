@@ -19,12 +19,9 @@ services:
       # hai thứ không được phép phụ thuộc vào một file không nằm trong git.
       NODE_ENV: development
       MONGO_URI: mongodb://mongo:27017/cho-tot-clone?replicaSet=rs0
-      REDIS_URL: redis://redis:6379
     depends_on:
       mongo:
         condition: service_healthy
-      redis:
-        condition: service_started
 
   mongo:
     image: mongo:7
@@ -50,11 +47,6 @@ services:
       timeout: 5s
       retries: 20
       start_period: 10s
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - '6379:6379'
 
 volumes:
   mongo-data:

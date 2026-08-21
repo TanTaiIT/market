@@ -4,6 +4,7 @@ import {
   isMaster,
   canModerateOrg,
   canModerateCategory,
+  canModerateListing,
   canGrant,
 } from '../../src/common/authz/policy'
 import { SYSTEM_ROLES, SCOPE_TYPES } from '../../src/common/constants'
@@ -152,5 +153,90 @@ describe('policy - ai cấp được quyền cho ai', () => {
     expect(canGrant({ userId: 'u-plain', grants: [] }, { userId: 'u1', grant: staffInOrgA })).toBe(
       false,
     )
+  })
+})
+
+/**
+ * `canModerateListing` chọn nhánh theo TRỤC CỦA TIN. Nó là chốt duy nhất đứng giữa
+ * `listingService.setModerationStatus` và mọi người gọi — kể cả `report.service`, vốn từng đi
+ * vòng qua phép kiểm khi nó còn nằm trong `moderation.service`.
+ */
+describe('canModerateListing — trục của tin chọn người có thẩm quyền', () => {
+  const publicInJobHcm = {
+    visibility: 'public' as const,
+    organizationId: null,
+    unitId: null,
+    categoryId: CAT_JOB,
+    provinceCode: HCM,
+  }
+  const internalOfOrgA = {
+    visibility: 'org_internal' as const,
+    organizationId: ORG_A,
+    unitId: UNIT_1,
+    categoryId: CAT_JOB,
+    provinceCode: null,
+  }
+
+  const orgManagerA: Grant[] = [
+    { role: SYSTEM_ROLES.MANAGER, scopeType: SCOPE_TYPES.ORG, orgId: ORG_A },
+  ]
+  const catManagerJobHcm: Grant[] = [
+    {
+      role: SYSTEM_ROLES.MANAGER,
+      scopeType: SCOPE_TYPES.CATEGORY_PROVINCE,
+      categoryId: CAT_JOB,
+      provinceCodes: [HCM],
+    },
+  ]
+
+  it('quyền org KHÔNG với tới tin trục danh mục', () => {
+    expect(canModerateListing(orgManagerA, publicInJobHcm)).toBe(false)
+  })
+
+  it('quyền đúng ô (danh mục × tỉnh) thì với tới', () => {
+    expect(canModerateListing(catManagerJobHcm, publicInJobHcm)).toBe(true)
+  })
+
+  it('sai danh mục hoặc sai tỉnh thì không', () => {
+    expect(canModerateListing(catManagerJobHcm, { ...publicInJobHcm, categoryId: CAT_BOOK })).toBe(
+      false,
+    )
+    expect(canModerateListing(catManagerJobHcm, { ...publicInJobHcm, provinceCode: HANOI })).toBe(
+      false,
+    )
+  })
+
+  it('ngược lại: quyền danh mục KHÔNG với tới tin nội bộ của org', () => {
+    expect(canModerateListing(catManagerJobHcm, internalOfOrgA)).toBe(false)
+    expect(canModerateListing(orgManagerA, internalOfOrgA)).toBe(true)
+  })
+
+  it('staff nhóm con chỉ duyệt được tin của nhóm mình', () => {
+    const staffUnit1: Grant[] = [
+      {
+        role: SYSTEM_ROLES.STAFF,
+        scopeType: SCOPE_TYPES.ORG_UNIT,
+        orgId: ORG_A,
+        unitId: UNIT_1,
+      },
+    ]
+    expect(canModerateListing(staffUnit1, internalOfOrgA)).toBe(true)
+    expect(canModerateListing(staffUnit1, { ...internalOfOrgA, unitId: UNIT_2 })).toBe(false)
+    // Tin không ghi nhóm con phải đẩy lên manager org, không rơi vào tay staff bất kỳ.
+    expect(canModerateListing(staffUnit1, { ...internalOfOrgA, unitId: null })).toBe(false)
+  })
+
+  it('tin công khai thiếu tỉnh: chỉ grant toàn quốc mới với tới', () => {
+    const nationwide: Grant[] = [
+      {
+        role: SYSTEM_ROLES.MANAGER,
+        scopeType: SCOPE_TYPES.CATEGORY_PROVINCE,
+        categoryId: CAT_JOB,
+        provinceCodes: [],
+      },
+    ]
+    const noProvince = { ...publicInJobHcm, provinceCode: null }
+    expect(canModerateListing(catManagerJobHcm, noProvince)).toBe(false)
+    expect(canModerateListing(nationwide, noProvince)).toBe(true)
   })
 })

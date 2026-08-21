@@ -18,11 +18,10 @@ export const reportController = {
 
   // PATCH /reports/:id
   resolve: catchAsync(async (req, res) => {
-    const report = await reportService.resolve(
-      req.params.id,
-      req.body,
-      orgActor(req, 'report.resolve'),
-    )
+    const report = await reportService.resolve(req.params.id, req.body, {
+      ...orgActor(req, 'report.resolve'),
+      grants: req.grants!,
+    })
     success(res, { message: 'Report resolved', data: report })
   }),
 }

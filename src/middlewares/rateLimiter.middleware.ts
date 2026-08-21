@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
-import { RateLimiterMemory, RateLimiterRedis, RateLimiterAbstract } from 'rate-limiter-flexible'
-import { getRedis } from '../config/redis'
+import { RateLimiterMemory } from 'rate-limiter-flexible'
 import { env } from '../config/env'
 import { TooManyRequestsError } from '../common/errors'
 
@@ -11,14 +10,15 @@ interface RateLimitConfig {
 }
 
 /**
- * Tạo rate-limit middleware. Dùng Redis nếu có (chia sẻ nhiều instance),
- * fallback in-memory khi chạy local không có Redis.
+ * Tạo rate-limit middleware, đếm TRONG BỘ NHỚ của process.
+ *
+ * Hệ quả cần biết trước khi scale: chạy N instance thì mỗi instance giữ bộ đếm riêng, nên trần
+ * thật là N × `points`. Đúng ở quy mô một instance hiện tại. Muốn đếm chung thì
+ * `rate-limiter-flexible` có sẵn `RateLimiterRedis` — đổi đúng dòng khởi tạo bên dưới, không
+ * phải sửa gì khác.
  */
 export function createRateLimiter({ keyPrefix, points, duration }: RateLimitConfig) {
-  const redis = getRedis()
-  const limiter: RateLimiterAbstract = redis
-    ? new RateLimiterRedis({ storeClient: redis, keyPrefix, points, duration })
-    : new RateLimiterMemory({ keyPrefix, points, duration })
+  const limiter = new RateLimiterMemory({ keyPrefix, points, duration })
 
   return async (req: Request, _res: Response, next: NextFunction) => {
     // Test chạy hàng chục request từ CÙNG một IP trong vài giây, mà `authLimiter` khoá theo IP
@@ -38,8 +38,6 @@ export function createRateLimiter({ keyPrefix, points, duration }: RateLimitConf
 
 // Chặt cho auth (chống brute-force): 10 req / phút
 export const authLimiter = createRateLimiter({ keyPrefix: 'rl:auth', points: 10, duration: 60 })
-// Upload: 30 req / phút
-export const uploadLimiter = createRateLimiter({ keyPrefix: 'rl:upload', points: 30, duration: 60 })
 // API chung: 120 req / phút
 export const apiLimiter = createRateLimiter({ keyPrefix: 'rl:api', points: 120, duration: 60 })
 /**

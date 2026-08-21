@@ -8,8 +8,8 @@ Nền tảng rao vặt/mua bán (giống Chợ Tốt) — Node.js + Express + Mo
 - Runtime: Node.js 20+, Express 4.x, **TypeScript** (không có file `.js` trong `src/`)
 - DB: MongoDB + Mongoose 8
 - Auth: JWT (access + refresh), hash password bằng `@node-rs/bcrypt`
-- Upload ảnh: Multer (memoryStorage) → S3 *(module `upload` mới ở mức skeleton)*
-- Realtime: Socket.io (+ Redis adapter khi có `REDIS_URL`)
+- Upload ảnh: *chưa có* — module `upload` trả 501, chưa chọn thư viện lẫn nơi lưu
+- Realtime: Socket.io, adapter in-memory (chạy ĐÚNG một instance)
 - Validation + OpenAPI: Zod + `@asteasolutions/zod-to-openapi` (1 schema dùng cho cả hai)
 - Logger: **winston** (`src/config/logger.ts`)
 - Test: **Vitest** + Supertest + mongodb-memory-server
@@ -29,7 +29,6 @@ src/
   middlewares/
   common/{constants,errors,types,utils}/
   config/
-  jobs/
   sockets/
 ```
 
@@ -76,8 +75,14 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
     (d) chạm dữ liệu ngoài request (seed/job/migration) → bọc `runUnscoped('lý do', ...)`,
     đó là danh sách grep được của mọi lối đi xuyên tenant.
 13. Mọi index trên collection có tenant phải lấy `organizationId` làm khoá đầu tiên.
-    Ngoại lệ duy nhất: TTL index (Mongo không cho compound). Text index bị **cấm** trên
-    collection có tenant — full-text đi đường Atlas Search.
+    Text index bị **cấm** trên collection có tenant — full-text đi đường Atlas Search.
+    Đúng **ba** ngoại lệ, mỗi cái phải có ghi chú ngay tại chỗ khai index nói vì sao:
+    (a) TTL index — Mongo không cho compound;
+    (b) collection `dualAxis` (hiện chỉ `Listing`): trục danh mục có `organizationId: null` nên
+        prefix đó vô dụng, index của trục này mở đầu bằng `visibility`;
+    (c) đường đọc chạy trong `runUnscoped` và scope bằng khoá khác — `Listing` lọc theo `seller`
+        cho màn "tin của tôi" là ca duy nhất hiện có.
+    Nghi ngờ một index có được dùng không thì ĐO, đừng đoán: `npm run explain:indexes`.
 
 ## Testing
 - Test đặt trong `tests/unit/` (hàm thuần) hoặc `tests/integration/` (đi qua HTTP,

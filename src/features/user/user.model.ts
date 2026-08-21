@@ -106,7 +106,9 @@ const userSchema = new Schema<IUserDocument>(
 // nằm ở `memberships`, không ở bảng này.
 // partialFilterExpression: thiếu nó thì một tài khoản đã xoá giữ chỗ email vĩnh viễn.
 userSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } })
-userSchema.index({ phone: 1 })
+// KHÔNG index `phone`: nó chỉ được đọc/ghi như một field hồ sơ, không call-site nào lọc theo
+// nó. Thêm lại khi có đường "tìm người theo số" thật — index không ai dùng vẫn phải cập nhật
+// mỗi lượt ghi và vẫn chiếm chỗ trong bộ nhớ.
 
 const BCRYPT_ROUNDS = 12
 
@@ -121,11 +123,16 @@ userSchema.methods.comparePassword = function comparePassword(candidate: string)
 }
 
 // Mặc định loại bản ghi đã soft-delete khỏi mọi query find
-userSchema.pre(/^find/, function excludeDeleted(this: mongoose.Query<unknown, unknown>, next) {
+function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
   if (!this.getOptions().withDeleted) {
     this.where({ deletedAt: null })
   }
   next()
-})
+}
+
+userSchema.pre(/^find/, excludeDeleted)
+// `countDocuments` KHÔNG khớp /^find/ (AGENT §10) — `countUsable` đếm master còn đăng nhập
+// được, mà thiếu hook này thì đúng tài khoản vừa bị xoá lại được tính là "vẫn còn master".
+userSchema.pre('countDocuments', excludeDeleted)
 
 export const User: Model<IUserDocument> = mongoose.model<IUserDocument>('User', userSchema)

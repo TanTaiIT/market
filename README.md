@@ -8,12 +8,11 @@ Marketplace/Classifieds API. Express + MongoDB (Mongoose) + **TypeScript**, ki�
 - **Logger**: winston (console, có timestamp; access log tự viết trong `app.ts`)
 - **Auth**: JWT access + refresh
 - **Realtime**: Socket.IO (chat)
-- **Rate limit / socket adapter**: Redis (optional — không có thì fallback in-memory)
+- **Rate limit**: rate-limiter-flexible, đếm in-memory theo process
 
 ## Yêu cầu
 - Node.js >= 20
 - MongoDB (local hoặc qua `docker-compose`)
-- Redis (tuỳ chọn — app vẫn chạy không cần Redis)
 
 ## Bắt đầu
 
@@ -148,13 +147,12 @@ thì đừng dùng lại file compose này kèm `env_file`.
 
 ```
 src/
-├── config/        env, database, logger (winston), redis, openapi
+├── config/        env, database, logger (winston), openapi
 ├── features/      auth, user, listing (core) + category, chat, upload, search, review, notification (skeleton)
 │   └── <feature>/ <feature>.{model,repository,service,controller,routes,schema,types}.ts
-├── middlewares/   auth, error, notFound, rateLimiter, validate, upload
+├── middlewares/   auth, error, notFound, rateLimiter, validate
 ├── common/        errors, utils, constants, types
 ├── sockets/       socket.io (chat)
-├── jobs/          BullMQ (expire listing...) — hiện là skeleton
 ├── app.ts         khởi tạo express
 └── server.ts      entrypoint
 tests/
@@ -184,8 +182,9 @@ tests/
 > Module skeleton trả `501 Not Implemented` kèm ghi chú TODO trong `*.routes.ts` để triển khai tiếp.
 > Chúng **không** có `registerPath` nên không nằm trong OpenAPI spec — danh sách được ghi vào
 > `info.description` của spec để client biết là "chưa có" thay vì "spec thiếu".
-> Khi làm module `upload` cần cài lại `@aws-sdk/client-s3`; module job cần `bullmq`
-> (đã gỡ khỏi `package.json` vì chưa dùng tới).
+> Khi làm module `upload` cần cài lại `multer` + `@aws-sdk/client-s3`; job nền cần `bullmq`
+> và một Redis (`ioredis`). Tất cả đã gỡ khỏi `package.json` vì chưa dùng tới — hạ tầng nằm
+> chờ một feature chưa có thì vẫn phải bảo trì, vẫn nằm trong image, mà không đổi lấy được gì.
 
 ## OpenAPI cho client codegen
 
@@ -215,5 +214,6 @@ Script cần `.env` hợp lệ vì `src/config/env.ts` validate env lúc import 
 - **Soft delete**: `deletedAt` cho user & listing. Hook `pre(/^find/)` tự loại trừ, và
   `countDocuments` phải đăng ký hook riêng (regex `/^find/` không khớp).
 - **Response chuẩn**: `{ success, message, data, meta? }`.
-- **Redis là optional**: không set `REDIS_URL` thì rate limit chạy in-memory và Socket.IO
-  dùng adapter in-memory → chỉ đúng khi chạy đúng 1 instance.
+- **Đúng MỘT instance**: rate limit đếm trong bộ nhớ process, Socket.IO dùng adapter in-memory.
+  Muốn scale ra nhiều instance thì cả hai cần một store dùng chung (Redis là bản chuẩn) —
+  điểm cần sửa đã ghi ngay tại `rateLimiter.middleware.ts` và `sockets/index.ts`.

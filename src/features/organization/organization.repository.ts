@@ -1,4 +1,4 @@
-import { ClientSession, Types } from 'mongoose'
+import { ClientSession, FilterQuery, Types } from 'mongoose'
 import {
   Organization,
   OrgSlugAlias,
@@ -6,7 +6,7 @@ import {
   IOrganizationDocument,
 } from './organization.model'
 import { TENANT_STATUS, TenantStatus } from '../../common/constants'
-import { normalizeOrgSlug } from '../../common/utils/orgSlug'
+import { normalizeOrgSlug, orgNameTokens } from '../../common/utils/orgSlug'
 
 /** Đủ để dựng tenant scope — cố tình không mang name/ownerId để cache nhẹ và không lộ thừa. */
 export interface OrgSummary {
@@ -83,15 +83,27 @@ export const organizationRepository = {
    */
   search(query: string, limit: number): Promise<IOrganizationDocument[]> {
     const normalized = normalizeOrgSlug(query)
-    const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const tokens = orgNameTokens(query)
 
-    return Organization.find({
-      ...ALIVE,
-      $or: [
-        ...(normalized ? [{ slugNormalized: { $regex: `^${normalized}` } }] : []),
-        { name: { $regex: escaped, $options: 'i' } },
-      ],
-    })
+    /*
+     * Cả hai nhánh đều là regex NEO ĐẦU trên một field có index, nên mỗi nhánh có bounds thật.
+     * Bản cũ dùng `{ name: { $regex: <người dùng gõ>, $options: 'i' } }`: không neo đầu, `name`
+     * không có index, và trong `$or` thì một nhánh không index kéo cả câu về COLLSCAN.
+     *
+     * Không còn phải escape regex: `normalizeOrgSlug`/`orgNameTokens` đã slugify nên chuỗi chỉ
+     * còn a-z0-9 — ký tự đặc biệt bị loại từ trước, không phải chặn ở đây.
+     */
+    const branches: FilterQuery<IOrganizationDocument>[] = []
+    if (normalized) branches.push({ slugNormalized: { $regex: `^${normalized}` } })
+    if (tokens.length > 0) {
+      // `$and` chứ không phải một điều kiện: gõ "hung vuong" phải khớp org có CẢ HAI từ, chứ
+      // không phải mọi org có một trong hai.
+      branches.push({ $and: tokens.map((token) => ({ nameTokens: { $regex: `^${token}` } })) })
+    }
+
+    // Chuỗi rỗng (hoặc toàn ký tự lạ) → không nhánh nào: trả về danh sách đầu như trước, chứ
+    // `$or: []` là lỗi cú pháp của Mongo.
+    return Organization.find(branches.length > 0 ? { ...ALIVE, $or: branches } : ALIVE)
       .sort({ name: 1 })
       .limit(limit)
       .exec()

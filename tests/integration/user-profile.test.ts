@@ -190,3 +190,38 @@ describe('Công tắc SĐT quyết định `posterContact` của tin mới', () 
     expect(me.body.data.phone).toBe('0901234567')
   })
 })
+
+/**
+ * Xoá tài khoản là thao tác CÓ HỆ QUẢ, không phải một cột `deletedAt`.
+ *
+ * Bản trước chỉ tắt tài khoản: membership vẫn `active` nên người đã xoá còn nằm trong danh bạ
+ * org, và role_grant vẫn hiệu lực nên chốt "luôn còn ít nhất một master" — vốn đếm GRANT —
+ * vẫn báo ổn trong khi không master nào đăng nhập được nữa.
+ */
+describe('Xoá tài khoản kéo theo quyền và tư cách thành viên', () => {
+  it('membership bị lưu trữ và role_grant bị thu hồi', async () => {
+    const { grantRole } = await import('../helpers/fixtures')
+    const { Membership } = await import('../../src/features/membership/membership.model')
+    const { RoleGrant } = await import('../../src/features/role-grant/role-grant.model')
+
+    const victim = await registerUser(app, 'victim@profile.local', 'Người rời đi')
+    await addMember(victim.id, orgId)
+    await grantRole({ userId: victim.id, role: 'staff', scopeType: 'org', orgId })
+
+    await request(app).delete('/api/v1/users/me').set(bearer(victim)).expect(200)
+
+    expect(await Membership.countDocuments({ userId: victim.id, status: 'active' })).toBe(0)
+    expect(await RoleGrant.countDocuments({ userId: victim.id, revokedAt: null })).toBe(0)
+  })
+
+  it('master cuối cùng không tự xoá được', async () => {
+    const { RoleGrant } = await import('../../src/features/role-grant/role-grant.model')
+
+    const res = await request(app).delete('/api/v1/users/me').set(bearer(master))
+    expect(res.status).toBe(409)
+
+    // Chặn xong phải KHÔNG để lại dấu vết: grant còn nguyên thì lần sau vẫn cấp quyền được.
+    expect(await RoleGrant.countDocuments({ role: 'master', revokedAt: null })).toBe(1)
+    await request(app).get('/api/v1/users/me').set(bearer(master)).expect(200)
+  })
+})

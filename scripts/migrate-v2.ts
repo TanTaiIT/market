@@ -17,7 +17,7 @@ import {
 } from '../src/features/category-template/category-template.model'
 import { upsertCatalog } from './seedCatalog'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
-import { normalizeOrgSlug } from '../src/common/utils/orgSlug'
+import { normalizeOrgSlug, orgNameTokens } from '../src/common/utils/orgSlug'
 import { JOINED_VIA, MEMBERSHIP_ROLES, SCOPE_TYPES, SYSTEM_ROLES } from '../src/common/constants'
 
 /**
@@ -87,6 +87,31 @@ async function backfillOrgSlugNormalized() {
       .updateOne({ _id: org._id }, { $set: { slugNormalized: normalizeOrgSlug(org.slug) } })
   }
   console.log(`organizations: dựng slugNormalized cho ${orgs.length} bản ghi`)
+}
+
+/**
+ * `organizations.nameTokens` — khoá tra của dropdown chọn org.
+ *
+ * Bắt buộc backfill, không phải tuỳ chọn: hook `pre('validate')` chỉ chạy khi document được
+ * LƯU, nên org đã có trong DB sẽ mãi thiếu field này và biến mất khỏi dropdown khi tìm theo
+ * tên — im lặng, vì query vẫn chạy đúng và chỉ trả về ít hơn.
+ *
+ * Ghi thẳng qua driver như `slugNormalized` ở trên: `updateOne` không kích hoạt `pre('validate')`,
+ * mà chạy qua model thì phải nạp rồi save từng document.
+ */
+async function backfillOrgNameTokens() {
+  const db = mongoose.connection.db!
+  const orgs = await db
+    .collection<{ _id: Types.ObjectId; name: string }>('organizations')
+    .find({ nameTokens: { $exists: false } })
+    .toArray()
+
+  for (const org of orgs) {
+    await db
+      .collection('organizations')
+      .updateOne({ _id: org._id }, { $set: { nameTokens: orgNameTokens(org.name) } })
+  }
+  console.log(`organizations: dựng nameTokens cho ${orgs.length} bản ghi`)
 }
 
 /**
@@ -286,6 +311,7 @@ async function migrate() {
   await runUnscoped('v2 migration', async () => {
     await dropChainRemnants()
     await backfillOrgSlugNormalized()
+    await backfillOrgNameTokens()
     await backfillMemberships()
     await migratePlatformAdmins()
     await backfillListingAxis()

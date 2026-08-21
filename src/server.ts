@@ -2,8 +2,6 @@ import http from 'http'
 import { createApp } from './app'
 import { connectDB, disconnectDB } from './config/database'
 import { initSockets, closeSockets } from './sockets'
-import { initJobs, shutdownJobs } from './jobs'
-import { closeRedis } from './config/redis'
 import { env } from './config/env'
 import { logger } from './config/logger'
 
@@ -14,14 +12,13 @@ async function bootstrap() {
   const httpServer = http.createServer(app)
 
   initSockets(httpServer)
-  await initJobs()
 
   httpServer.listen(env.PORT, () => {
     logger.info(`🚀 Server listening on http://localhost:${env.PORT}`)
     logger.info(`📚 API docs at http://localhost:${env.PORT}/docs`)
   })
 
-  // Graceful shutdown: ngừng nhận request -> đóng socket -> drain jobs -> đóng Mongo -> đóng Redis
+  // Graceful shutdown: ngừng nhận request -> đóng socket -> đóng Mongo
   const closeHttp = () =>
     new Promise<void>((resolve, reject) => {
       httpServer.close((err) => (err ? reject(err) : resolve()))
@@ -43,9 +40,7 @@ async function bootstrap() {
     try {
       await closeHttp()
       await closeSockets()
-      await shutdownJobs()
       await disconnectDB()
-      await closeRedis()
       logger.info('Graceful shutdown complete')
       clearTimeout(forceTimer)
       process.exit(0)

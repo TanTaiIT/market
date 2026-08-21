@@ -1,6 +1,7 @@
 import { Types } from 'mongoose'
 import { roleGrantRepository } from './role-grant.repository'
 import { toPolicyGrant, toRoleGrantDto } from './role-grant.types'
+import { userRepository } from '../user/user.repository'
 import { Grant, canGrant, canRevoke } from '../../common/authz/policy'
 import { SYSTEM_ROLES, SystemRole, ScopeType } from '../../common/constants'
 import { ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
@@ -14,6 +15,24 @@ export interface GrantInput {
   unitId?: string | null
   categoryId?: string | null
   provinceCodes?: string[]
+}
+
+/**
+ * Còn bao nhiêu master ĐĂNG NHẬP ĐƯỢC nếu bỏ `excludeUserId` ra khỏi danh sách — chốt §5.4.
+ *
+ * Hai điểm khiến nó không phải là một phép `countDocuments` trên `role_grants`:
+ * (1) xoá mềm tài khoản không thu hồi grant, nên grant còn đó mà người thì không vào được nữa;
+ * (2) loại trừ chính chủ nhân của grant sắp gỡ, thay vì so tổng với 1 — đếm tổng sẽ chặn nhầm
+ *     ca "gỡ grant của một master đã xoá tài khoản" trong khi vẫn còn đúng một master sống.
+ *
+ * Master rất ít nên hai lượt truy vấn nhỏ rẻ hơn một `$lookup`, và đọc ra ý định rõ hơn hẳn.
+ */
+export async function usableMastersExcluding(
+  excludeUserId: Types.ObjectId | string,
+): Promise<number> {
+  const ids = await roleGrantRepository.listActiveMasterUserIds()
+  const others = ids.filter((id) => !id.equals(excludeUserId))
+  return userRepository.countUsable(others)
 }
 
 function toId(value?: string | null): Types.ObjectId | null {
@@ -78,7 +97,7 @@ export const roleGrantService = {
     }
 
     // §5.4 — hệ thống không có master nào là hệ thống không ai cấp lại được quyền cho ai.
-    if (doc.role === SYSTEM_ROLES.MASTER && (await roleGrantRepository.countActiveMasters()) <= 1) {
+    if (doc.role === SYSTEM_ROLES.MASTER && (await usableMastersExcluding(doc.userId)) === 0) {
       throw new ConflictError('Phải luôn còn ít nhất một master')
     }
 

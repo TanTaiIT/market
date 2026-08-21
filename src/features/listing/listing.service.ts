@@ -1,7 +1,7 @@
 import { Types } from 'mongoose'
 import { listingRepository } from './listing.repository'
 import { CreateListingInput, UpdateListingInput, ListingQuery, NearbyQuery } from './listing.schema'
-import { IListing } from './listing.model'
+import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
 import { QUOTA, QuotaVerdict, checkQuota, isAutoApprove } from './listing.quota'
 import { userRepository } from '../user/user.repository'
@@ -9,6 +9,7 @@ import { categoryService } from '../category/category.service'
 import { categoryTemplateService } from '../category-template/category-template.service'
 import { organizationRepository } from '../organization/organization.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
+import { Grant, canModerateListing } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from '../../common/errors'
 import {
   LISTING_STATUS,
@@ -25,6 +26,42 @@ import {
 } from '../../common/utils/pagination'
 
 const LISTING_TTL_DAYS = 30
+
+/**
+ * Chốt phạm vi THẬT của một thao tác duyệt.
+ *
+ * Route cố tình chỉ hỏi "có duyệt được thứ gì đó trong org này không" (`requireOrgModerator`,
+ * rule 5). Dừng ở đó thì một quản lý org: (1) tự ghim được tin TRỤC CÔNG KHAI của thành viên
+ * lên trang chung, bỏ qua người phụ trách danh mục — trái đúng thứ `listing.routing.ts` chốt;
+ * và (2) vì nhánh đọc công khai của `tenantPlugin` cho thấy mọi tin public đã duyệt, họ ẩn
+ * được cả tin của người ngoài org.
+ *
+ * Trục nào luật nấy, cùng cặp hàm mà `listing.routing.ts` dùng để định tuyến: công khai → ô
+ * (danh mục × tỉnh), nội bộ → chính org đó (staff phải đúng nhóm con).
+ *
+ * Nằm ở ĐÂY chứ không ở `moderation.service` như trước: `tenantPlugin` cố tình cho MỌI scope
+ * ghi vào tin `organizationId: null` (trục danh mục không có tenant để ép), nên tầng dưới
+ * không chặn gì được. Khi phép kiểm còn ở phía người gọi thì `report.service.resolve` — gọi
+ * thẳng `setModerationStatus` — đi vòng qua nó, và một staff org ẩn được tin trục danh mục.
+ *
+ * 403 chứ không 404: bàn duyệt vừa liệt kê tin này ra, giấu sự tồn tại của nó không còn nghĩa.
+ */
+export function assertCanModerateListing(listing: IListingDocument, grants: Grant[]): void {
+  const allowed = canModerateListing(grants, {
+    visibility: listing.visibility,
+    organizationId: listing.organizationId?.toString() ?? null,
+    unitId: listing.unitId?.toString() ?? null,
+    categoryId: listing.category.toString(),
+    provinceCode: listing.provinceCode,
+  })
+  if (allowed) return
+
+  throw new ForbiddenError(
+    listing.visibility === POST_VISIBILITY.PUBLIC
+      ? 'Tin công khai do người phụ trách danh mục duyệt, không phải tổ chức'
+      : 'Tin này không thuộc phạm vi duyệt của bạn',
+  )
+}
 
 /** Kết quả `validateForCategory` — alias để `toListingDoc` không phải khai lại hình của nó. */
 type ValidatedForCategory = Awaited<ReturnType<typeof categoryTemplateService.validateForCategory>>
@@ -440,9 +477,11 @@ export const listingService = {
   async setModerationStatus(
     id: string,
     next: { status: ListingStatus; reason?: string; byUserId: string; byName: string },
+    grants: Grant[],
   ) {
     const listing = await listingRepository.findById(id)
     if (!listing) throw new NotFoundError('Listing not found')
+    assertCanModerateListing(listing, grants)
 
     const updated = await listingRepository.updateById(id, {
       status: next.status,
@@ -473,9 +512,10 @@ export const listingService = {
     return updated!
   },
 
-  async removeByModerator(id: string) {
+  async removeByModerator(id: string, grants: Grant[]) {
     const listing = await listingRepository.findById(id)
     if (!listing) throw new NotFoundError('Listing not found')
+    assertCanModerateListing(listing, grants)
     return listingRepository.softDelete(id)
   },
 

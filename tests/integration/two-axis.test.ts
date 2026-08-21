@@ -347,6 +347,40 @@ describe('Duyệt tin — phạm vi theo trục', () => {
     expect(res.body.data.status).toBe('active')
   })
 
+  /**
+   * `PATCH /reports/:id` cũng ẩn được tin và chỉ gác bằng `requireOrgModerator`, nên nó từng là
+   * đường vòng qua hai ca ở trên: `report.service` gọi thẳng `listingService.setModerationStatus`,
+   * bỏ qua phép kiểm vốn nằm trong `moderation.service`.
+   *
+   * Giờ bịt ở hai lớp. Lớp NGOÀI kiểm ở đây: báo cáo không nhận tin trục danh mục ngay từ đầu,
+   * vì `Report` là collection có tenant — nhận vào là đẩy báo cáo sang một hàng đợi mà không ai
+   * trong đó có thẩm quyền xử. Lớp TRONG (`assertCanModerateListing` nằm trong chính
+   * `setModerationStatus`) khoá bằng `tests/unit/policy.test.ts`.
+   */
+  it('không gửi được báo cáo cho tin trục danh mục', async () => {
+    const { addMember, registerUser } = await import('../helpers/fixtures')
+    const reporter = await registerUser(app, 'reporter@two-axis.local', 'Người báo cáo')
+    await addMember(reporter.id, orgId)
+
+    const res = await request(app).post('/api/v1/reports').set(orgAuth(reporter.token, SLUG)).send({
+      targetType: 'listing',
+      targetId: outsiderPublic,
+      kind: 'scam',
+      quote: 'Yêu cầu chuyển khoản trước khi cho xem hàng',
+    })
+
+    expect(res.status).toBe(400)
+
+    // Kiểm cả HẬU QUẢ: chặn mà vẫn ghi bản ghi thì hàng đợi vẫn bẩn. `Report` có tenantPlugin
+    // nên phép đếm ngoài request phải khai `runUnscoped`, đúng luật của mọi lối đi xuyên tenant.
+    const { Report } = await import('../../src/features/report/report.model')
+    const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
+    const leftovers = await runUnscoped('test: đếm báo cáo mọi org', () =>
+      Report.countDocuments({ targetId: outsiderPublic }).exec(),
+    )
+    expect(leftovers).toBe(0)
+  })
+
   it('có grant đúng ô (danh mục × tỉnh) thì ghim được tin công khai', async () => {
     const { grantRole } = await import('../helpers/fixtures')
     await grantRole({

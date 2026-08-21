@@ -18,6 +18,11 @@ export async function connectDB(): Promise<void> {
     await mongoose.connect(env.MONGO_URI, {
       maxPoolSize: 20,
       serverSelectionTimeoutMS: SERVER_SELECTION_TIMEOUT_MS,
+      // Mongoose mặc định BẬT: mỗi lần boot là một lượt `createIndex` cho mọi schema. Ở dev thì
+      // tiện (sửa index xong restart là có), ở production thì đó là việc nặng chạy đúng lúc
+      // deploy. `scripts/migrate-v2.ts` vốn đã giả định nó tắt ở production — nay giả định đó
+      // thành sự thật, và `syncIndexes` trong migration mới là nơi duy nhất tạo index thật.
+      autoIndex: !env.isProd,
     })
     // Log TÊN DATABASE, không phải "connected" suông: dev và production dùng chung một cluster
     // và chỉ khác nhau ở tên db, nên đây là chỗ duy nhất xác nhận được mình đang nối đúng chỗ.

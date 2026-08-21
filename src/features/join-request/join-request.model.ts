@@ -57,6 +57,20 @@ joinRequestSchema.index({ organizationId: 1, status: 1, createdAt: -1 })
 // Trần số đơn đang chờ của một user + màn "đơn của tôi".
 joinRequestSchema.index({ userId: 1, status: 1 })
 
+/*
+ * Quét đơn quá hạn (`expireStale`). Collection này KHÔNG gắn `tenantPlugin` — người gửi đơn
+ * theo định nghĩa chưa thuộc org nào — nên `updateMany({status, expiresAt})` là một lượt quét
+ * TOÀN CỤC: không index nào ở trên có prefix dùng được, và nó chạy mỗi lần ai đó mở hàng đợi
+ * hoặc duyệt một đơn.
+ *
+ * `partialFilterExpression` giữ index chỉ gồm đơn đang chờ — đúng tập mà phép quét nhắm tới,
+ * và đơn đã duyệt/từ chối/hết hạn thì rơi khỏi index thay vì phình nó lên mãi.
+ */
+joinRequestSchema.index(
+  { expiresAt: 1 },
+  { partialFilterExpression: { status: JOIN_REQUEST_STATUS.PENDING } },
+)
+
 export const JoinRequest: Model<IJoinRequestDocument> = mongoose.model<IJoinRequestDocument>(
   'JoinRequest',
   joinRequestSchema,

@@ -2,7 +2,7 @@ import { Types } from 'mongoose'
 import { moderationRepository } from './moderation.repository'
 import { ActivityQuery, ModListingQuery, SetListingStatusInput } from './moderation.schema'
 import { toAuditEventDto } from './moderation.types'
-import { listingService } from '../listing/listing.service'
+import { assertCanModerateListing, listingService } from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { IListingDocument } from '../listing/listing.model'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
@@ -11,6 +11,7 @@ import { categoryService } from '../category/category.service'
 import { reportRepository } from '../report/report.repository'
 import { userRepository } from '../user/user.repository'
 import { membershipRepository } from '../membership/membership.repository'
+import { notificationService } from '../notification/notification.service'
 import {
   AUDIT_ACTION,
   AuditAction,
@@ -21,8 +22,7 @@ import {
   POST_VISIBILITY,
   VN_PROVINCE_NAMES,
 } from '../../common/constants'
-import { ForbiddenError } from '../../common/errors'
-import { Grant, canModerateCategory, canModerateOrg } from '../../common/authz/policy'
+import { Grant } from '../../common/authz/policy'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToOrgAdmins } from '../../sockets/emit'
 import { logger } from '../../config/logger'
@@ -46,6 +46,16 @@ const ACTION_BY_STATUS: Record<string, AuditAction> = {
  *
  * Dùng chung cho cả `report` (đóng báo cáo cũng là thao tác quản trị) — đó là lý do hàm này
  * export ra ngoài feature thay vì nằm im trong service.
+ *
+ * `subjectOrgId` là org SỞ HỮU đối tượng bị tác động, không phải org của người thao tác, và
+ * `null` là giá trị hợp lệ — tin trục danh mục không thuộc org nào. Bắt buộc khai vì nếu để
+ * plugin tự lấy org từ scope thì nó lấy nhầm org của NGƯỜI DUYỆT: vết duyệt một tin công khai
+ * rơi vào nhật ký của org họ, nơi admin org đó đọc được qua `GET /moderation/activity`.
+ *
+ * Trục danh mục chưa có chỗ ghi (`AuditLog` là collection có tenant) — ghi log hệ thống rồi đi
+ * tiếp, trả `null`. Đây là MỘT đường xử lý cho mọi call-site: trước đây `reroute` tự bỏ qua,
+ * `setListingStatus`/`removeListing` thì ghi nhầm, cùng một tình huống mà ba cách khác nhau.
+ * Chuyển `AuditLog` sang dual-axis là việc còn nợ (v2-org-permission.plan.md).
  */
 export async function recordAudit(
   actor: { id: string; name: string; organizationId: string },
@@ -58,7 +68,17 @@ export async function recordAudit(
     toStatus?: string
     queue?: ModerationQueue
   },
+  subjectOrgId: Types.ObjectId | null,
 ) {
+  if (!subjectOrgId) {
+    logger.info('audit skipped (public axis has no org to file under)', {
+      actorId: actor.id,
+      action: entry.action,
+      summary: entry.summary,
+    })
+    return null
+  }
+
   const log = await moderationRepository.recordAudit({
     actorId: new Types.ObjectId(actor.id),
     actorName: actor.name,
@@ -96,35 +116,37 @@ async function applyTrustEffect(listing: IListingDocument, status: ListingStatus
 }
 
 /**
- * Chốt phạm vi THẬT của một thao tác duyệt.
+ * Báo cho NGƯỜI ĐĂNG kết quả duyệt tin của họ.
  *
- * Route cố tình chỉ hỏi "có duyệt được thứ gì đó trong org này không" (`requireOrgModerator`,
- * rule 5). Dừng ở đó thì một quản lý org: (1) tự ghim được tin TRỤC CÔNG KHAI của thành viên
- * lên trang chung, bỏ qua người phụ trách danh mục — trái đúng thứ `listing.routing.ts` chốt;
- * và (2) vì nhánh đọc công khai của `tenantPlugin` cho thấy mọi tin public đã duyệt, họ ẩn
- * được cả tin của người ngoài org.
+ * Lý do từ chối vốn chỉ nằm trong `listing.moderation.reason` — đúng, nhưng đó là dữ liệu KÉO:
+ * người đăng phải tự mở lại tin mới biết tin mình bị từ chối và vì sao. Thông báo là vế đẩy.
  *
- * Trục nào luật nấy, cùng cặp hàm mà `listing.routing.ts` dùng để định tuyến: công khai → ô
- * (danh mục × tỉnh), nội bộ → chính org đó (staff phải đúng nhóm con).
- *
- * 403 chứ không 404: bàn duyệt vừa liệt kê tin này ra, giấu sự tồn tại của nó không còn nghĩa.
+ * `hidden` cố tình không báo: ẩn là thao tác tạm của quản trị (chờ xác minh, gỡ theo báo cáo),
+ * không phải phán quyết về tin — báo cả ba trạng thái sẽ biến hộp thư thành nhật ký quản trị.
  */
-function assertCanModerate(listing: IListingDocument, grants: Grant[]): void {
-  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
-    const target = {
-      categoryId: listing.category.toString(),
-      provinceCode: listing.provinceCode ?? '',
-    }
-    if (canModerateCategory(grants, target)) return
-    throw new ForbiddenError('Tin công khai do người phụ trách danh mục duyệt, không phải tổ chức')
+async function notifyPoster(
+  listing: IListingDocument,
+  status: ListingStatus,
+  reason?: string,
+): Promise<void> {
+  if (status === LISTING_STATUS.ACTIVE) {
+    await notificationService.notifyUser({
+      organizationId: listing.organizationId,
+      userId: listing.seller,
+      title: 'Tin của bạn đã được duyệt',
+      body: `"${listing.title}" đã lên bảng tin.`,
+    })
+    return
   }
 
-  const target = {
-    orgId: listing.organizationId?.toString() ?? '',
-    unitId: listing.unitId?.toString() ?? null,
+  if (status === LISTING_STATUS.REJECTED) {
+    await notificationService.notifyUser({
+      organizationId: listing.organizationId,
+      userId: listing.seller,
+      title: 'Tin của bạn bị từ chối',
+      body: `"${listing.title}" — ${reason ?? 'Quản trị không nêu lý do.'}`,
+    })
   }
-  if (canModerateOrg(grants, target)) return
-  throw new ForbiddenError('Tin này không thuộc phạm vi duyệt của bạn')
 }
 
 async function actorName(actor: ModeratorActor): Promise<string> {
@@ -189,16 +211,15 @@ export const moderationService = {
     actor: ModeratorActor & { grants: Grant[] },
   ) {
     const existing = await listingService.getById(id)
-    assertCanModerate(existing, actor.grants)
+    assertCanModerateListing(existing, actor.grants)
 
     const name = await actorName(actor)
     const previousStatus = existing.status
-    const listing = await listingService.setModerationStatus(id, {
-      status: input.status,
-      reason: input.reason,
-      byUserId: actor.id,
-      byName: name,
-    })
+    const listing = await listingService.setModerationStatus(
+      id,
+      { status: input.status, reason: input.reason, byUserId: actor.id, byName: name },
+      actor.grants,
+    )
 
     const action = ACTION_BY_STATUS[input.status]
     await recordAudit(
@@ -214,8 +235,10 @@ export const moderationService = {
         fromStatus: previousStatus,
         toStatus: input.status,
       },
+      listing.organizationId,
     )
 
+    await notifyPoster(listing, input.status, input.reason)
     await applyTrustEffect(listing, input.status)
     return listing
   },
@@ -309,38 +332,32 @@ export const moderationService = {
       `Chuyển "${listing.title}" sang ô ` +
       `${input.categoryId ?? before.category.toString()} · ${input.provinceCode ?? before.provinceCode ?? '—'}`
 
-    if (listing.organizationId) {
-      const name = await actorName({
-        id: actorId,
-        organizationId: listing.organizationId.toString(),
-      })
-      await recordAudit(
-        { id: actorId, name, organizationId: listing.organizationId.toString() },
-        {
-          action: AUDIT_ACTION.LISTING_REASSIGN,
-          summary,
-          targetType: 'listing',
-          targetId: listing._id,
-          fromStatus: before.status,
-          toStatus: listing.status,
-          queue: MODERATION_QUEUE.CATEGORY,
-        },
-      )
-    } else {
-      // Tin trục danh mục không thuộc org nào, mà `AuditLog` vẫn là collection có tenant —
-      // chưa có chỗ để ghi vết. Tạm ghi log hệ thống; chuyển AuditLog sang dual-axis là việc
-      // còn nợ, đã ghi trong v2-org-permission.plan.md.
-      logger.info('listing rerouted (public axis)', { actorId, listingId: id, summary })
-    }
+    // Không còn nhánh if/else cho trục danh mục: `recordAudit` tự xử lý `organizationId: null`
+    // — cùng một cách với mọi thao tác duyệt khác, thay vì riêng chỗ này biết bỏ qua.
+    const orgId = listing.organizationId
+    const name = await actorName({ id: actorId, organizationId: orgId?.toString() ?? '' })
+    await recordAudit(
+      { id: actorId, name, organizationId: orgId?.toString() ?? '' },
+      {
+        action: AUDIT_ACTION.LISTING_REASSIGN,
+        summary,
+        targetType: 'listing',
+        targetId: listing._id,
+        fromStatus: before.status,
+        toStatus: listing.status,
+        queue: MODERATION_QUEUE.CATEGORY,
+      },
+      orgId,
+    )
 
     return listing
   },
 
   async removeListing(id: string, actor: ModeratorActor & { grants: Grant[] }) {
-    assertCanModerate(await listingService.getById(id), actor.grants)
+    assertCanModerateListing(await listingService.getById(id), actor.grants)
 
     const name = await actorName(actor)
-    const listing = await listingService.removeByModerator(id)
+    const listing = await listingService.removeByModerator(id, actor.grants)
 
     await recordAudit(
       { ...actor, name },
@@ -350,6 +367,7 @@ export const moderationService = {
         targetType: 'listing',
         targetId: listing!._id,
       },
+      listing!.organizationId,
     )
     return listing
   },

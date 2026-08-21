@@ -165,6 +165,26 @@ describe('Moderation — duyệt tin', () => {
     expect(res.body.data[0].moderation.byName).toBe('Owner mod-a')
   })
 
+  /**
+   * Lý do lưu trên tin là dữ liệu KÉO — người đăng phải tự mở lại tin mới thấy. Thông báo đích
+   * danh là vế đẩy, và nó chỉ tồn tại từ khi `Notification` có cột `userId`.
+   */
+  it('người đăng nhận được thông báo kèm lý do từ chối', async () => {
+    const third = await createListing(owner, 'Vé xem phim đã qua sử dụng')
+    await request(app)
+      .patch(`/api/v1/moderation/listings/${third}`)
+      .set(as(owner))
+      .send({ status: 'rejected', reason: 'Vé đã dùng không bán lại được' })
+      .expect(200)
+
+    const inbox = await request(app).get('/api/v1/notifications').set(as(owner)).expect(200)
+    const rejected = inbox.body.data.find(
+      (n: { title: string }) => n.title === 'Tin của bạn bị từ chối',
+    )
+    expect(rejected).toBeDefined()
+    expect(rejected.body).toContain('Vé đã dùng không bán lại được')
+  })
+
   it('org khác không đụng được tin của org này', async () => {
     const res = await request(app)
       .patch(`/api/v1/moderation/listings/${listingId}`)
