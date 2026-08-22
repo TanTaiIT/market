@@ -5,6 +5,10 @@ import type { Db } from 'mongodb'
 import { env } from './env'
 import { logger } from './logger'
 import { machineReviewService } from '../features/moderation/moderation.machine.service'
+import {
+  cleanupConfigFromEnv,
+  uploadCleanupService,
+} from '../features/upload/upload.cleanup.service'
 
 /**
  * Scheduler nền — Agenda chạy trên chính Mongo (collection `agendaJobs`), không thêm hạ tầng.
@@ -19,6 +23,7 @@ import { machineReviewService } from '../features/moderation/moderation.machine.
  */
 const JOBS = {
   MACHINE_REVIEW: 'machine-review:sweep',
+  IMAGE_CLEANUP: 'image-cleanup:sweep',
 } as const
 
 let agenda: Agenda | null = null
@@ -48,9 +53,27 @@ export async function startAgenda(): Promise<void> {
     { lockLifetime: 5 * 60 * 1000 },
   )
 
+  // Chỉ đăng ký khi có đủ CLOUDINARY_* — thiếu là tính năng chưa bật, đừng chạy một job mà
+  // lượt nào cũng bỏ qua rồi ghi log "thiếu env" mỗi ngày.
+  if (cleanupConfigFromEnv()) {
+    agenda.define(
+      JOBS.IMAGE_CLEANUP,
+      async () => {
+        await uploadCleanupService.sweep()
+      },
+      { lockLifetime: 10 * 60 * 1000 },
+    )
+  }
+
   await agenda.start()
   await agenda.every(env.MACHINE_REVIEW_EVERY, JOBS.MACHINE_REVIEW)
-  logger.info(`⏱️  Agenda started — machine review every ${env.MACHINE_REVIEW_EVERY}`)
+  if (cleanupConfigFromEnv()) {
+    await agenda.every(env.IMAGE_CLEANUP_EVERY, JOBS.IMAGE_CLEANUP)
+  }
+  logger.info(
+    `⏱️  Agenda started — machine review every ${env.MACHINE_REVIEW_EVERY}` +
+      (cleanupConfigFromEnv() ? `, image cleanup every ${env.IMAGE_CLEANUP_EVERY}` : ''),
+  )
 }
 
 export async function stopAgenda(): Promise<void> {

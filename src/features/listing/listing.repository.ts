@@ -423,4 +423,16 @@ export const listingRepository = {
 
     return { byStatus, byCategory, byDay }
   },
+
+  /**
+   * Mọi URL ảnh mà tin còn giữ — cho job dọn ảnh mồ côi (`upload.cleanup.service.ts`).
+   * Gồm cả snapshot avatar người đăng. Tin xoá mềm cố ý RỚT khỏi kết quả (hook của model):
+   * không có đường khôi phục tin, nên ảnh của nó là rác hợp lệ.
+   */
+  async allImageRefs(): Promise<string[]> {
+    const rows = await runUnscoped('image cleanup: gom URL ảnh của mọi tin', () =>
+      Listing.find().select('images posterAvatar').lean().exec(),
+    )
+    return rows.flatMap((r) => [...r.images, r.posterAvatar])
+  },
 }

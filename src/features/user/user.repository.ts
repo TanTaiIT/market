@@ -95,4 +95,10 @@ export const userRepository = {
       { new: true },
     ).exec()
   },
+
+  /** Avatar của mọi tài khoản — cho job dọn ảnh mồ côi (`upload.cleanup.service.ts`). */
+  async allAvatars(): Promise<string[]> {
+    const rows = await User.find().select('avatar').lean().exec()
+    return rows.map((r) => r.avatar)
+  },
 }
