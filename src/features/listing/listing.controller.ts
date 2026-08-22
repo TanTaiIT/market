@@ -27,8 +27,14 @@ async function listingAuthor(req: Request): Promise<ListingAuthor> {
 export const listingController = {
   // POST /listings
   create: catchAsync(async (req, res) => {
-    const listing = await listingService.create(req.body, await listingAuthor(req))
-    created(res, { message: 'Listing created (pending review)', data: listing })
+    const author = await listingAuthor(req)
+    const listing = await listingService.create(req.body, author)
+    created(res, {
+      message: 'Listing created (pending review)',
+      data: listing,
+      // Biên lai của HÀNH ĐỘNG chứ không phải thuộc tính của tin — nên nằm ở meta.
+      meta: { fee: listingService.feeQuote(author, req.body.categoryId) },
+    })
   }),
 
   // GET /listings/quota
@@ -38,6 +44,14 @@ export const listingController = {
       req.query.categoryId as string | undefined,
     )
     success(res, { message: 'Quota', data })
+  }),
+
+  // GET /listings/posting-stats
+  postingStats: catchAsync(async (req, res) => {
+    // validate() đã ghi query parse xong (kèm default) ngược vào req.query — chỉ việc đọc.
+    const days = Number(req.query.days)
+    const data = await listingService.postingStats(days)
+    success(res, { message: 'Posting stats', data, meta: { days } })
   }),
 
   // GET /listings

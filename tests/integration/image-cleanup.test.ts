@@ -78,7 +78,7 @@ function stubCloudinary(staleIds: string[]) {
   const deleted: string[] = []
   vi.stubGlobal(
     'fetch',
-    vi.fn(async (input: RequestInfo | URL) => {
+    vi.fn(async (input: string | URL) => {
       const u = String(input)
       if (u.includes('/resources/search')) {
         return new Response(

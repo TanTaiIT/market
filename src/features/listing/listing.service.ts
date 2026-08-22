@@ -3,6 +3,7 @@ import { listingRepository } from './listing.repository'
 import { CreateListingInput, UpdateListingInput, ListingQuery, NearbyQuery } from './listing.schema'
 import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
+import { PostingFee, postingFee } from './listing.pricing'
 import {
   QUOTA,
   QuotaVerdict,
@@ -408,6 +409,11 @@ export const listingService = {
     return listing
   },
 
+  /** Báo giá một lượt đăng — controller đọc để đính vào response, luật nằm ở `listing.pricing.ts`. */
+  feeQuote(author: ListingAuthor, categoryId?: string): PostingFee {
+    return postingFee({ trustLevel: author.trustLevel, categoryId })
+  },
+
   /** Trạng thái quota để client hiện "bạn còn N slot" thay vì để người dùng đoán (§8.4). */
   async quotaStatus(author: ListingAuthor, categoryId?: string) {
     const sellerId = new Types.ObjectId(author.id)
@@ -423,12 +429,16 @@ export const listingService = {
           )
         : 0
 
-    return checkQuota({
-      trustLevel: author.trustLevel,
-      isOutsider: Boolean(author.organizationId) && !author.isMember,
-      recentRejections,
-      pendingCount,
-    })
+    return {
+      ...checkQuota({
+        trustLevel: author.trustLevel,
+        isOutsider: Boolean(author.organizationId) && !author.isMember,
+        recentRejections,
+        pendingCount,
+      }),
+      // Field phí sống trong hợp đồng API từ GIAI ĐOẠN MIỄN PHÍ — xem listing.pricing.ts.
+      fee: this.feeQuote(author, categoryId),
+    }
   },
 
   /**
@@ -713,5 +723,10 @@ export const listingService = {
 
   moderationStats(trendDays: number) {
     return listingRepository.statsForModeration(trendDays)
+  },
+
+  /** Dữ liệu định giá cho hệ Xu — xem ghi chú dài ở `listingRepository.postingStats`. */
+  postingStats(days: number) {
+    return listingRepository.postingStats(new Date(Date.now() - days * 24 * 60 * 60 * 1000))
   },
 }

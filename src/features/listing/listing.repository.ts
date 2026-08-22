@@ -392,6 +392,59 @@ export const listingRepository = {
    * Số liệu cho màn tổng quan của bàn quản trị, gói trong ba aggregate chạy song song.
    * `tenantPlugin` chèn `$match organizationId` vào đầu mỗi pipeline nên không cần lọc tay.
    */
+  /**
+   * Đo lượng đăng tin toàn nền tảng — dữ liệu ĐỊNH GIÁ cho hệ Xu (xu-wallet.decision.md §3).
+   * Số này phải tích luỹ TRƯỚC ngày bật phí, nên endpoint tồn tại từ giai đoạn miễn phí.
+   *
+   * Đếm MỌI tin được tạo trong cửa sổ, kể cả bị từ chối hay đã xoá sau đó: thứ cần đo là
+   * NHU CẦU đăng (thứ sẽ bị tính phí), không phải số tin sống sót.
+   *
+   * Không có index cho `createdAt` trần và không thêm: đường lạnh master-only chạy vài lần
+   * mỗi tháng — một COLLSCAN đo được còn rẻ hơn một index phải nuôi trên mọi lượt ghi
+   * (đúng tinh thần rule 13: nghi ngờ thì ĐO, đừng thêm bừa).
+   */
+  async postingStats(since: Date) {
+    const [facets] = await runUnscoped('pricing prep: đo lượng đăng tin toàn nền tảng', () =>
+      Listing.aggregate<{
+        total: Array<{ count: number }>
+        posters: Array<{ count: number }>
+        byCategory: Array<{ _id: Types.ObjectId; count: number }>
+        posterHistogram: Array<{ _id: number | string; users: number }>
+      }>([
+        { $match: { createdAt: { $gte: since } } },
+        {
+          $facet: {
+            total: [{ $count: 'count' }],
+            posters: [{ $group: { _id: '$seller' } }, { $count: 'count' }],
+            byCategory: [
+              { $group: { _id: '$category', count: { $sum: 1 } } },
+              { $sort: { count: -1 } },
+              { $limit: 20 },
+            ],
+            // Ai đăng bao nhiêu — nhóm 4+ tin/cửa sổ chính là nhóm sẽ trả tiền.
+            posterHistogram: [
+              { $group: { _id: '$seller', posts: { $sum: 1 } } },
+              {
+                $bucket: {
+                  groupBy: '$posts',
+                  boundaries: [1, 2, 4, 11],
+                  default: '11+',
+                  output: { users: { $sum: 1 } },
+                },
+              },
+            ],
+          },
+        },
+      ]).exec(),
+    )
+
+    return {
+      totalPosts: facets.total[0]?.count ?? 0,
+      distinctPosters: facets.posters[0]?.count ?? 0,
+      byCategory: facets.byCategory,
+      posterHistogram: facets.posterHistogram,
+    }
+  },
   async statsForModeration(trendDays: number) {
     const since = new Date(Date.now() - trendDays * 24 * 60 * 60 * 1000)
 
