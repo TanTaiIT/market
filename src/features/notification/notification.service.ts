@@ -12,7 +12,8 @@ import { orgUnitRepository } from '../org-unit/org-unit.repository'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 
-type Viewer = OrgActor & { grants: Grant[] }
+/** Người đọc hộp thư. `organizationId: null` = không thuộc tổ chức nào, chỉ có tin đích danh. */
+type Viewer = { id: string; organizationId: string | null; grants: Grant[] }
 
 /**
  * Nhóm mà người này ĐỨNG TRONG — quyết định họ nhận được thông báo nào. Kèm `recipientId` để
@@ -20,10 +21,14 @@ type Viewer = OrgActor & { grants: Grant[] }
  * mình gửi được chứ không phải hộp thư riêng của người khác.
  */
 async function inboxAudience(viewer: Viewer): Promise<NotificationAudience> {
+  const recipientId = new Types.ObjectId(viewer.id)
+  if (!viewer.organizationId) return { organizationId: null, recipientId }
+
   const membership = await membershipRepository.findActive(viewer.id, viewer.organizationId)
   return {
+    organizationId: new Types.ObjectId(viewer.organizationId),
     units: membership?.unitId ? [membership.unitId] : [],
-    recipientId: new Types.ObjectId(viewer.id),
+    recipientId,
   }
 }
 
@@ -36,7 +41,12 @@ async function inboxAudience(viewer: Viewer): Promise<NotificationAudience> {
  */
 async function managedAudience(viewer: Viewer): Promise<NotificationAudience> {
   const { organizationId } = viewer
-  if (canModerateOrg(viewer.grants, { orgId: organizationId, unitId: null })) return { all: true }
+  // Bàn quản trị luôn đi kèm một org — `requireOrgModerator` ở route đã chốt.
+  if (!organizationId) return { organizationId: null, units: [] }
+  const orgObjectId = new Types.ObjectId(organizationId)
+  if (canModerateOrg(viewer.grants, { orgId: organizationId, unitId: null })) {
+    return { organizationId: orgObjectId, all: true }
+  }
 
   const units = viewer.grants
     .filter(
@@ -45,7 +55,7 @@ async function managedAudience(viewer: Viewer): Promise<NotificationAudience> {
     )
     .map((g) => new Types.ObjectId(g.unitId!.toString()))
 
-  return { units }
+  return { organizationId: orgObjectId, units }
 }
 
 export const notificationService = {
@@ -76,7 +86,11 @@ export const notificationService = {
       if (!unit) throw new BadRequestError('Nhóm con không tồn tại trong tổ chức này')
     }
 
+    // `organizationId` khai TƯỜNG MINH: trước đây `tenantPlugin` tự điền lúc save, giờ model đã
+    // ra khỏi plugin nên thiếu dòng này là thông báo phát chung không thuộc org nào và không ai
+    // đọc được nó.
     return notificationRepository.create({
+      organizationId: new Types.ObjectId(actor.organizationId),
       title: input.title,
       body: input.body,
       unitId: unitId ? new Types.ObjectId(unitId) : null,
@@ -111,14 +125,20 @@ export const notificationService = {
    * `notificationRepository.createForUser`. Tin trục danh mục (`organizationId: null`) chưa gửi
    * được: `Notification` là collection có tenant, cùng khoản nợ với `AuditLog` dual-axis.
    */
+  /**
+   * Thông báo đích danh. `organizationId: null` là HỢP LỆ — việc xảy ra trên trục danh mục
+   * không thuộc tổ chức nào.
+   *
+   * Bản trước `return null` ở đúng ca đó, và đó là lý do toàn bộ trục công khai im lặng: tin
+   * được duyệt, tin bị từ chối, không một dòng nào tới tay người đăng.
+   */
   async notifyUser(input: {
     organizationId: Types.ObjectId | null
     userId: Types.ObjectId
     title: string
     body: string
   }) {
-    if (!input.organizationId) return null
-    return notificationRepository.createForUser({ ...input, organizationId: input.organizationId })
+    return notificationRepository.createForUser(input)
   },
 
   async markRead(id: string, userId: string) {

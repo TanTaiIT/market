@@ -423,6 +423,26 @@ export const listingService = {
     return listingRepository.adjustFavoriteCount(id, delta)
   },
 
+  /**
+   * Ẩn mọi tin còn sống của một người (tài khoản bị khoá). Trả về số tin đã ẩn.
+   *
+   * MỞ KHOÁ không có chiều ngược: tin đã ẩn ở lại ẩn, người dùng tự mở lại từng tin nếu còn
+   * muốn bán — chúng đã rời bảng một thời gian, tự bật hàng loạt là hồi sinh cả tin đã hết thời.
+   */
+  async hideAllFromSeller(
+    sellerId: Types.ObjectId,
+    input: { reason: string; byUserId: string },
+  ): Promise<number> {
+    const actor = await userRepository.findById(input.byUserId)
+    const result = await listingRepository.hideAllBySeller(sellerId, {
+      reason: input.reason,
+      byUserId: new Types.ObjectId(input.byUserId),
+      byName: actor?.name ?? 'Quản trị hệ thống',
+      at: new Date(),
+    })
+    return result.modifiedCount
+  },
+
   async update(id: string, userId: string, input: UpdateListingInput) {
     const existing = await assertOwner(id, userId)
     if (input.categoryId) await categoryService.assertUsable(input.categoryId)

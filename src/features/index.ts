@@ -10,6 +10,7 @@ import membershipRoutes from './membership/membership.routes'
 import inviteRoutes from './invite/invite.routes'
 import roleGrantRoutes from './role-grant/role-grant.routes'
 import categoryRoutes from './category/category.routes'
+import fieldDefinitionRoutes from './category-template/field-definition.routes'
 import chatRoutes from './chat/chat.routes'
 import uploadRoutes from './upload/upload.routes'
 import searchRoutes from './search/search.routes'
@@ -33,6 +34,7 @@ router.use('/memberships', membershipRoutes)
 router.use('/invites', inviteRoutes)
 router.use('/role-grants', roleGrantRoutes)
 router.use('/categories', categoryRoutes)
+router.use('/field-definitions', fieldDefinitionRoutes)
 router.use('/chats', chatRoutes)
 router.use('/notifications', notificationRoutes)
 router.use('/reports', reportRoutes)

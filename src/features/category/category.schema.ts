@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
+import { templateFieldInputSchema } from '../category-template/category-template.schema'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
@@ -28,6 +29,17 @@ export const createCategorySchema = z
     icon: z.string().max(8).optional().openapi({ example: '📚' }),
     order: z.number().int().min(0).optional(),
     requireManualReview: z.boolean().optional(),
+    /**
+     * Template đi kèm, tuỳ chọn. Có thì tạo luôn bản v1 và **phát hành ngay** — master tạo
+     * danh mục là đã biết mình muốn form đăng tin trông thế nào.
+     *
+     * Bỏ trống vẫn hợp lệ: danh mục không có template riêng sẽ rơi về bản chung, và trước
+     * tính năng này mọi danh mục đều như vậy.
+     */
+    template: z
+      .object({ fields: z.array(templateFieldInputSchema).min(1).max(40) })
+      .strict()
+      .optional(),
   })
   .strict()
   .openapi('CreateCategory')

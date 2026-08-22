@@ -74,3 +74,117 @@ registry.register('FieldOption', fieldOptionSchema)
 registry.register('FieldShowIf', showIfSchema)
 registry.register('TemplateField', templateFieldResponseSchema)
 registry.register('CategoryTemplate', templateResponseSchema)
+
+// ── ĐƯỜNG GHI (master) ──────────────────────────────────────────────────────
+
+/**
+ * `key` là khoá trong `Listing.attributes` và **không bao giờ đổi được** sau khi có tin dùng
+ * nó. Ép camelCase ASCII ngay từ đầu vào: `Độ chai pin` hay `battery-health` lọt vào đây là
+ * một khoá dị dạng nằm lại trong DB vĩnh viễn.
+ */
+const fieldKeySchema = z
+  .string()
+  .min(2)
+  .max(40)
+  .regex(/^[a-z][a-zA-Z0-9]*$/, 'key phải là camelCase ASCII, bắt đầu bằng chữ thường')
+
+/**
+ * Định nghĩa một field MỚI cho từ điển, khai ngay trong lúc dựng template.
+ *
+ * Bắt khai đủ ở đây thay vì cho tạo field trống rồi sửa sau: field thiếu `label` hay thiếu
+ * `options` sẽ hiện ra form đăng tin dưới dạng một ô không ai biết phải điền gì.
+ */
+export const fieldDefinitionInputSchema = z
+  .object({
+    label: z.string().min(1).max(120).openapi({ example: 'Độ chai pin' }),
+    type: z.nativeEnum(FIELD_TYPE),
+    unit: z.string().max(20).optional().openapi({ example: '%' }),
+    min: z.number().optional(),
+    max: z.number().optional(),
+    filterable: z.boolean().default(false),
+    options: z.array(fieldOptionSchema).max(200).default([]),
+    placeholder: z.string().max(120).optional(),
+    helpText: z.string().max(200).optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    const needsOptions = input.type === FIELD_TYPE.SELECT || input.type === FIELD_TYPE.MULTISELECT
+    if (needsOptions && input.options.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['options'],
+        message: 'Field kiểu select/multiselect phải có ít nhất một lựa chọn',
+      })
+    }
+  })
+  .openapi('FieldDefinitionInput')
+
+export const createFieldDefinitionSchema = fieldDefinitionInputSchema
+  .innerType()
+  .extend({ key: fieldKeySchema })
+  .strict()
+  .openapi('CreateFieldDefinition')
+
+/**
+ * Một dòng trong template. `define` chỉ cần khi `key` chưa có trong từ điển — hệ thống tự thêm
+ * vào đó, nên master dựng xong một danh mục trong đúng một lượt gọi.
+ */
+export const templateFieldInputSchema = z
+  .object({
+    key: fieldKeySchema,
+    order: z.number().int().min(0).max(10_000),
+    required: z.boolean().default(false),
+    /** Bỏ trống = theo từ điển. Khác hẳn `false`, nên KHÔNG đặt default. */
+    filterable: z.boolean().optional(),
+    group: z.string().max(60).optional(),
+    showIf: showIfSchema.optional(),
+    override: z
+      .object({
+        label: z.string().max(120).optional(),
+        type: z.nativeEnum(FIELD_TYPE).optional(),
+        options: z.array(fieldOptionSchema).max(200).optional(),
+        placeholder: z.string().max(120).optional(),
+        helpText: z.string().max(200).optional(),
+      })
+      .strict()
+      .optional(),
+    define: fieldDefinitionInputSchema.optional(),
+  })
+  .strict()
+  .openapi('TemplateFieldInput')
+
+export const templateFieldsSchema = z
+  .object({ fields: z.array(templateFieldInputSchema).min(1).max(40) })
+  .strict()
+  .openapi('TemplateFields')
+
+export const templateVersionParamsSchema = z.object({
+  id: objectId,
+  version: z.coerce.number().int().positive(),
+})
+
+export const fieldDefinitionSchema = z
+  .object({
+    key: z.string(),
+    label: z.string(),
+    type: z.nativeEnum(FIELD_TYPE),
+    unit: z.string().optional(),
+    min: z.number().optional(),
+    max: z.number().optional(),
+    filterable: z.boolean(),
+    options: z.array(fieldOptionSchema),
+    placeholder: z.string().optional(),
+    helpText: z.string().optional(),
+  })
+  .openapi('FieldDefinition')
+
+export type FieldDefinitionInput = z.infer<typeof fieldDefinitionInputSchema>
+export type CreateFieldDefinitionInput = z.infer<typeof createFieldDefinitionSchema>
+export type TemplateFieldInput = z.infer<typeof templateFieldInputSchema>
+export type TemplateFieldsInput = z.infer<typeof templateFieldsSchema>
+
+registry.register('FieldDefinitionInput', fieldDefinitionInputSchema)
+registry.register('CreateFieldDefinition', createFieldDefinitionSchema)
+registry.register('TemplateFieldInput', templateFieldInputSchema)
+registry.register('TemplateFields', templateFieldsSchema)
+registry.register('FieldDefinition', fieldDefinitionSchema)

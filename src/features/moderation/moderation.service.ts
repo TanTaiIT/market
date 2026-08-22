@@ -146,7 +146,29 @@ async function notifyPoster(
       title: 'Tin của bạn bị từ chối',
       body: `"${listing.title}" — ${reason ?? 'Quản trị không nêu lý do.'}`,
     })
+    return
   }
+
+  // Ẩn tin cũng phải báo. Bản trước bỏ qua nhánh này, nên tin biến mất khỏi bảng mà người bán
+  // không có cách nào biết vì sao — họ chỉ thấy lượt xem đứng im.
+  if (status === LISTING_STATUS.HIDDEN) {
+    await notificationService.notifyUser({
+      organizationId: listing.organizationId,
+      userId: listing.seller,
+      title: 'Tin của bạn đã bị ẩn',
+      body: `"${listing.title}" — ${reason ?? 'Quản trị không nêu lý do.'}`,
+    })
+  }
+}
+
+/** Gỡ hẳn tin khỏi bảng: nặng hơn ẩn, và cũng là thứ người bán cần biết ngay nhất. */
+async function notifyRemoved(listing: IListingDocument): Promise<void> {
+  await notificationService.notifyUser({
+    organizationId: listing.organizationId,
+    userId: listing.seller,
+    title: 'Tin của bạn đã bị gỡ',
+    body: `"${listing.title}" không còn trên bảng tin.`,
+  })
 }
 
 async function actorName(actor: ModeratorActor): Promise<string> {
@@ -366,6 +388,7 @@ export const moderationService = {
     // và đã tới tay người mua, khác hẳn tin bị chặn từ hàng đợi — nhưng thang bậc hiện tại chỉ
     // có một nấc giáng. Phân mức độ vi phạm là việc của hệ điểm mới, không phải chỗ này.
     const trust = await trustRepository.record(listing!.seller, false)
+    await notifyRemoved(listing!)
 
     await recordAudit(
       { ...actor, name },

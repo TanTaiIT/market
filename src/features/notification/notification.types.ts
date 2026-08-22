@@ -14,7 +14,7 @@ export type NotificationDto = z.infer<typeof notificationResponseSchema>
 export function toNotificationDto(doc: INotificationDocument, viewerId: string): NotificationDto {
   return {
     id: doc._id.toString(),
-    organizationId: doc.organizationId.toString(),
+    organizationId: doc.organizationId ? doc.organizationId.toString() : null,
     unitId: doc.unitId ? doc.unitId.toString() : null,
     title: doc.title,
     body: doc.body,

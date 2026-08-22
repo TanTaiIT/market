@@ -43,7 +43,8 @@ export const notificationParamsSchema = z.object({ id: objectId })
 export const notificationResponseSchema = z
   .object({
     id: objectId,
-    organizationId: objectId,
+    /** `null` = việc xảy ra ngoài mọi tổ chức (tin trên trục danh mục, lời mời từ org lạ). */
+    organizationId: objectId.nullable(),
     /** `null` = gửi cho cả tổ chức. */
     unitId: objectId.nullable(),
     title: z.string(),

@@ -1,4 +1,4 @@
-import { ClientSession, Types } from 'mongoose'
+import { ClientSession, FilterQuery, Types } from 'mongoose'
 import { User, IUserDocument, IUser } from './user.model'
 
 /**
@@ -43,6 +43,32 @@ export const userRepository = {
 
   existsByEmail(email: string) {
     return User.exists({ email: email.toLowerCase(), deletedAt: null })
+  },
+
+  /**
+   * Bảng người dùng cho master. `q` neo đầu trên `email` (có index); vế `name` là quét — chấp
+   * nhận được vì đây là màn quản trị ít gọi, không phải đường nóng.
+   */
+  async paginateAdmin(
+    filters: { q?: string; status?: 'active' | 'locked' },
+    { skip, limit }: { skip: number; limit: number },
+  ) {
+    const filter: FilterQuery<IUserDocument> = {}
+    if (filters.status) filter.isActive = filters.status === 'active'
+    if (filters.q) {
+      // Người dùng gõ gì thì tìm đúng cái đó — một dấu `.` trong email không phải wildcard.
+      const escaped = filters.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      filter.$or = [
+        { email: { $regex: `^${escaped}`, $options: 'i' } },
+        { name: { $regex: escaped, $options: 'i' } },
+      ]
+    }
+
+    const [items, total] = await Promise.all([
+      User.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      User.countDocuments(filter).exec(),
+    ])
+    return { items, total }
   },
 
   updateById(id: string | Types.ObjectId, update: Partial<IUser>) {

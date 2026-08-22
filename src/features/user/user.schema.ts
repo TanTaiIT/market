@@ -95,8 +95,63 @@ export const meProfileSchema = publicProfileSchema
 
 export const userParamsSchema = z.object({ id: objectId })
 
+// ── BÀN QUẢN TRỊ (master) ───────────────────────────────────────────
+
+export const adminUserQuerySchema = z.object({
+  /** Khớp tiền tố email (có index) hoặc một phần tên. */
+  q: z.string().max(120).optional(),
+  status: z.enum(['active', 'locked']).optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+})
+
+/**
+ * Khoá thì BẮT BUỘC nêu lý do: nó đi vào thông báo cho chính người bị khoá và là thứ duy nhất
+ * trả lời được khiếu nại về sau. Mở khoá thì không cần — "được mở lại" tự nó đã là thông điệp.
+ */
+export const setUserStatusSchema = z
+  .object({
+    isActive: z.boolean(),
+    reason: z.string().min(5).max(300).optional(),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    if (!input.isActive && !input.reason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['reason'],
+        message: 'Khoá tài khoản phải nêu lý do',
+      })
+    }
+  })
+  .openapi('SetUserStatus')
+
+/**
+ * Một dòng của bảng người dùng. Có `email` — khác hẳn `PublicProfile`: đây là màn của master,
+ * và khoá/mở đúng người cần đối chiếu được bằng định danh thật chứ không chỉ cái tên hiển thị.
+ */
+export const adminUserSchema = z
+  .object({
+    id: objectId,
+    name: z.string(),
+    email: z.string(),
+    avatar: z.string(),
+    isActive: z.boolean(),
+    isEmailVerified: z.boolean(),
+    /** Bậc uy tín toàn cục — cho master thấy ngay "người này đang được tự đăng hay không". */
+    trustLevel: z.number(),
+    lastLoginAt: z.string().datetime().nullable(),
+    createdAt: z.string().datetime(),
+  })
+  .openapi('AdminUser')
+
+export type AdminUserQuery = z.infer<typeof adminUserQuerySchema>
+export type SetUserStatusInput = z.infer<typeof setUserStatusSchema>
+
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
 
 registry.register('UpdateProfile', updateProfileSchema)
 registry.register('PublicProfile', publicProfileSchema)
 registry.register('MeProfile', meProfileSchema)
+registry.register('SetUserStatus', setUserStatusSchema)
+registry.register('AdminUser', adminUserSchema)

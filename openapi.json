@@ -409,6 +409,70 @@
           }
         ]
       },
+      "SetUserStatus": {
+        "type": "object",
+        "properties": {
+          "isActive": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "isActive"
+        ],
+        "additionalProperties": false
+      },
+      "AdminUser": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "avatar": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "isEmailVerified": {
+            "type": "boolean"
+          },
+          "trustLevel": {
+            "type": "number"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "nullable": true,
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "avatar",
+          "isActive",
+          "isEmailVerified",
+          "trustLevel",
+          "lastLoginAt",
+          "createdAt"
+        ]
+      },
       "Organization": {
         "type": "object",
         "properties": {
@@ -1921,100 +1985,6 @@
           "grantedAt"
         ]
       },
-      "CreateCategory": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 60,
-            "example": "Sách vở"
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 60,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
-          },
-          "icon": {
-            "type": "string",
-            "maxLength": 8,
-            "example": "📚"
-          },
-          "order": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "requireManualReview": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": false
-      },
-      "UpdateCategory": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 2,
-            "maxLength": 60
-          },
-          "icon": {
-            "type": "string",
-            "maxLength": 8
-          },
-          "order": {
-            "type": "integer",
-            "minimum": 0
-          },
-          "isActive": {
-            "type": "boolean"
-          },
-          "requireManualReview": {
-            "type": "boolean"
-          }
-        },
-        "additionalProperties": false
-      },
-      "Category": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^[0-9a-fA-F]{24}$"
-          },
-          "name": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "icon": {
-            "type": "string"
-          },
-          "order": {
-            "type": "number"
-          },
-          "isActive": {
-            "type": "boolean"
-          },
-          "requireManualReview": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "slug",
-          "icon",
-          "order",
-          "isActive",
-          "requireManualReview"
-        ]
-      },
       "FieldOption": {
         "type": "object",
         "properties": {
@@ -2161,6 +2131,388 @@
           "version",
           "isFallback",
           "fields"
+        ]
+      },
+      "FieldDefinitionInput": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Độ chai pin"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "number",
+              "select",
+              "multiselect",
+              "boolean",
+              "year"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "%"
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "filterable": {
+            "type": "boolean",
+            "default": false
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldOption"
+            },
+            "maxItems": 200,
+            "default": []
+          },
+          "placeholder": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "helpText": {
+            "type": "string",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "label",
+          "type"
+        ],
+        "additionalProperties": false
+      },
+      "CreateFieldDefinition": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120,
+            "example": "Độ chai pin"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "number",
+              "select",
+              "multiselect",
+              "boolean",
+              "year"
+            ]
+          },
+          "unit": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "%"
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "filterable": {
+            "type": "boolean",
+            "default": false
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldOption"
+            },
+            "maxItems": 200,
+            "default": []
+          },
+          "placeholder": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "helpText": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "key": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 40,
+            "pattern": "^[a-z][a-zA-Z0-9]*$"
+          }
+        },
+        "required": [
+          "label",
+          "type",
+          "key"
+        ],
+        "additionalProperties": false
+      },
+      "TemplateFieldInput": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 40,
+            "pattern": "^[a-z][a-zA-Z0-9]*$"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "required": {
+            "type": "boolean",
+            "default": false
+          },
+          "filterable": {
+            "type": "boolean"
+          },
+          "group": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "showIf": {
+            "$ref": "#/components/schemas/FieldShowIf"
+          },
+          "override": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "text",
+                  "textarea",
+                  "number",
+                  "select",
+                  "multiselect",
+                  "boolean",
+                  "year"
+                ]
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/FieldOption"
+                },
+                "maxItems": 200
+              },
+              "placeholder": {
+                "type": "string",
+                "maxLength": 120
+              },
+              "helpText": {
+                "type": "string",
+                "maxLength": 200
+              }
+            },
+            "additionalProperties": false
+          },
+          "define": {
+            "$ref": "#/components/schemas/FieldDefinitionInput"
+          }
+        },
+        "required": [
+          "key",
+          "order"
+        ],
+        "additionalProperties": false
+      },
+      "TemplateFields": {
+        "type": "object",
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateFieldInput"
+            },
+            "minItems": 1,
+            "maxItems": 40
+          }
+        },
+        "required": [
+          "fields"
+        ],
+        "additionalProperties": false
+      },
+      "FieldDefinition": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "textarea",
+              "number",
+              "select",
+              "multiselect",
+              "boolean",
+              "year"
+            ]
+          },
+          "unit": {
+            "type": "string"
+          },
+          "min": {
+            "type": "number"
+          },
+          "max": {
+            "type": "number"
+          },
+          "filterable": {
+            "type": "boolean"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldOption"
+            }
+          },
+          "placeholder": {
+            "type": "string"
+          },
+          "helpText": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "type",
+          "filterable",
+          "options"
+        ]
+      },
+      "CreateCategory": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60,
+            "example": "Sách vở"
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60,
+            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+          },
+          "icon": {
+            "type": "string",
+            "maxLength": 8,
+            "example": "📚"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "requireManualReview": {
+            "type": "boolean"
+          },
+          "template": {
+            "type": "object",
+            "properties": {
+              "fields": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/TemplateFieldInput"
+                },
+                "minItems": 1,
+                "maxItems": 40
+              }
+            },
+            "required": [
+              "fields"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateCategory": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 60
+          },
+          "icon": {
+            "type": "string",
+            "maxLength": 8
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "requireManualReview": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Category": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "icon": {
+            "type": "string"
+          },
+          "order": {
+            "type": "number"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "requireManualReview": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "slug",
+          "icon",
+          "order",
+          "isActive",
+          "requireManualReview"
         ]
       },
       "OpenConversation": {
@@ -2315,6 +2667,7 @@
           },
           "organizationId": {
             "type": "string",
+            "nullable": true,
             "pattern": "^[0-9a-fA-F]{24}$"
           },
           "unitId": {
@@ -3295,6 +3648,235 @@
           },
           "404": {
             "description": "Không tìm thấy user",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users": {
+      "get": {
+        "operationId": "userListForAdmin",
+        "tags": [
+          "User"
+        ],
+        "summary": "Bảng người dùng (master)",
+        "description": "Kèm email, trạng thái khoá và bậc uy tín — màn quản trị cần định danh thật để khoá đúng người. `q` khớp tiền tố email hoặc một phần tên.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "locked"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AdminUser"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{id}/status": {
+      "patch": {
+        "operationId": "userSetStatus",
+        "tags": [
+          "User"
+        ],
+        "summary": "Khoá / mở khoá tài khoản (master)",
+        "description": "Khoá bắt buộc nêu lý do; lý do đến tay người bị khoá qua thông báo. Khoá thì ẨN luôn mọi tin còn sống của họ (kể cả tin chờ duyệt); mở khoá KHÔNG tự hiện lại — người dùng tự mở từng tin. Đăng nhập/refresh chặn ngay; access token đang sống chạy nốt tối đa 15 phút. Không khoá được chính mình và người đang giữ quyền master.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetUserStatus"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Trạng thái mới",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminUser"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Thiếu lý do khoá, hoặc tự khoá chính mình",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Trạng thái không đổi, hoặc người này đang giữ quyền master",
             "content": {
               "application/json": {
                 "schema": {
@@ -7023,6 +7605,333 @@
             }
           }
         }
+      },
+      "post": {
+        "operationId": "categoryTemplateCreateDraft",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Tạo bản nháp template cho một danh mục",
+        "description": "Version tự tăng từ bản cao nhất đang có, kể cả bản nháp. Field nào chưa có trong từ điển thì khai `define` ngay trong dòng đó — hệ thống tự thêm vào `/field-definitions`. Tối đa 8 field mở lọc: mỗi field lọc là một nhánh index phải quét trên mọi tin của danh mục.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateFields"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryTemplate"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Field chưa có trong từ điển, trùng key/order, hoặc quá số field lọc",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy danh mục",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/categories/{id}/template/{version}": {
+      "patch": {
+        "operationId": "categoryTemplateUpdateDraft",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Sửa bản nháp template",
+        "description": "Chỉ sửa được bản `draft`. Bản đã phát hành là bất biến — tin đăng ghim `templateRef.version` và form sửa tin dựng lại đúng bộ field lúc tin ra đời.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateFields"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryTemplate"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bản đã phát hành, hoặc template không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/categories/{id}/template/{version}/publish": {
+      "post": {
+        "operationId": "categoryTemplatePublish",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Phát hành bản nháp",
+        "description": "Từ lúc này tin mới của danh mục dùng bộ field này. Bản cũ ở lại `published` vĩnh viễn để tin đã đăng còn đọc được. Kiểm lại toàn vẹn một lần nữa tại đây: từ điển có thể đã xoá mềm một field kể từ khi bản nháp được tạo.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryTemplate"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bản này đã phát hành rồi, hoặc template không còn hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy template",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/categories": {
@@ -7299,6 +8208,168 @@
           },
           "404": {
             "description": "Không tìm thấy danh mục",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/field-definitions": {
+      "get": {
+        "operationId": "fieldDefinitionList",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Từ điển field dùng chung",
+        "description": "Nguồn để master chọn field khi dựng template cho một danh mục.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Từ điển field",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FieldDefinition"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "fieldDefinitionCreate",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Thêm một field mới vào từ điển",
+        "description": "`key` là camelCase ASCII và **không bao giờ đổi được** sau khi có tin dùng nó — nó là khoá trong `Listing.attributes`. Thường không cần gọi trực tiếp: khai `define` ngay trong template thì hệ thống tự thêm vào đây.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFieldDefinition"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã thêm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/FieldDefinition"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Key đã có trong từ điển",
             "content": {
               "application/json": {
                 "schema": {

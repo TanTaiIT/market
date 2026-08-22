@@ -3,25 +3,20 @@ import { toNotificationDto } from './notification.types'
 import { roleGrantService } from '../role-grant/role-grant.service'
 import { currentScope } from '../../common/tenant/tenantContext'
 import { orgActor } from '../../common/utils/actor'
-import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
 
 export const notificationController = {
   // GET /notifications
   list: catchAsync(async (req, res) => {
-    // Route này KHÔNG có `requireOrg`, và cố ý: v2 cho phép tài khoản không thuộc tổ chức nào
-    // (người đăng tin công khai). Với họ, "chưa có thông báo" là câu trả lời đúng — ném lỗi
-    // thiếu tổ chức sẽ biến một màn hình rỗng bình thường thành một màn hình hỏng.
-    const organizationId = currentScope()?.ownOrgId
-    if (!organizationId) {
-      success(res, {
-        message: 'Notifications',
-        data: [],
-        meta: buildPaginationMeta({ ...parsePagination(req.query as never), total: 0 }),
-      })
-      return
-    }
+    /*
+     * Route này KHÔNG có `requireOrg`, và cố ý: phần lớn người dùng không thuộc tổ chức nào.
+     *
+     * Bản trước trả thẳng mảng rỗng cho họ. Giờ thì không: thông báo đích danh đi theo NGƯỜI,
+     * nên người đăng tin trên trục danh mục vẫn phải biết tin mình được duyệt hay bị từ chối.
+     * Chỉ nhánh phát chung mới cần org, và không có org thì đơn giản là không có nhánh đó.
+     */
+    const organizationId = currentScope()?.ownOrgId ?? null
 
     // Chỉ nạp grant khi thật sự cần: `inbox` quyết định phạm vi bằng membership, nạp grant cho
     // nó là một truy vấn thừa trên đúng đường đi nóng nhất của màn thông báo.
@@ -31,7 +26,8 @@ export const notificationController = {
         : []
 
     const { items, meta } = await notificationService.list(req.query as never, {
-      ...orgActor(req, 'notification.list'),
+      id: req.user!.id,
+      organizationId: organizationId?.toString() ?? null,
       grants,
     })
     success(res, { message: 'Notifications', data: items, meta })

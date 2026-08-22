@@ -23,6 +23,18 @@ export const userController = {
   }),
 
   // GET /users/:id  (public profile người bán)
+  // GET /users
+  listForAdmin: catchAsync(async (req, res) => {
+    const { items, meta } = await userService.listForAdmin(req.query as never)
+    success(res, { message: 'Users', data: items, meta })
+  }),
+
+  // PATCH /users/:id/status
+  setStatus: catchAsync(async (req, res) => {
+    const user = await userService.setStatus(req.params.id, req.body, req.user!.id)
+    success(res, { message: user.isActive ? 'User unlocked' : 'User locked', data: user })
+  }),
+
   getById: catchAsync(async (req, res) => {
     const user = await userService.getById(req.params.id)
     success(res, { message: 'User profile', data: toPublicProfileDto(user) })

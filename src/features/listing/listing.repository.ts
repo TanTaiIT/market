@@ -229,6 +229,29 @@ export const listingRepository = {
     )
   },
 
+  /**
+   * Ẩn mọi tin còn "sống" của một người — bước dọn dẹp khi tài khoản bị khoá.
+   *
+   * `runUnscoped` vì tin của một người rải trên nhiều org lẫn trục công khai, còn master thao
+   * tác thì không đứng trong org nào — scope của request không phủ nổi tập cần ẩn.
+   *
+   * Ẩn cả tin CHỜ DUYỆT chứ không riêng tin đang hiển thị: để chúng lại là hàng đợi của người
+   * duyệt vẫn đầy rác của một tài khoản đã khoá.
+   */
+  hideAllBySeller(sellerId: Types.ObjectId, moderation: IListing['moderation']) {
+    return runUnscoped('lock account: hide every live listing of the locked user', () =>
+      Listing.updateMany(
+        {
+          seller: sellerId,
+          status: {
+            $in: [LISTING_STATUS.ACTIVE, LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIFIED],
+          },
+        },
+        { status: LISTING_STATUS.HIDDEN, moderation },
+      ).exec(),
+    )
+  },
+
   softDelete(id: string) {
     return Listing.findByIdAndUpdate(id, { deletedAt: new Date() }, { new: true })
   },

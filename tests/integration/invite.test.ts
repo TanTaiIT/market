@@ -84,6 +84,22 @@ describe('Mời người đã có tài khoản', () => {
     )
   })
 
+  /**
+   * Đây là ca chứng minh hộp thư thuộc về NGƯỜI, không thuộc tổ chức: `known` chưa phải thành
+   * viên của org mời họ, và đọc mà không gửi `X-Org-Slug`. Bản trước trả thẳng mảng rỗng cho
+   * mọi request không có org scope, nên lời mời gửi đi rồi nằm im không ai thấy.
+   */
+  it('đọc được thông báo dù chưa thuộc tổ chức nào và không gửi header org', async () => {
+    const res = await request(app)
+      .get('/api/v1/notifications')
+      .set('Authorization', `Bearer ${known.token}`)
+      .expect(200)
+
+    expect(res.body.data.map((n: { title: string }) => n.title)).toContain(
+      'Bạn được mời vào một nhóm',
+    )
+  })
+
   it('người KHÁC cầm được token cũng không dùng được lời mời đích danh', async () => {
     const other = await registerUser(app, 'nguoi-khac@invite.local', 'Người khác')
     const res = await request(app)

@@ -60,3 +60,19 @@ export function toTemplateDto(
     fields,
   }
 }
+
+/** Một dòng từ điển, cho màn dựng template của master chọn. */
+export function toFieldDefinitionDto(def: IFieldDefinitionDocument) {
+  return {
+    key: def.key,
+    label: def.label,
+    type: def.type,
+    unit: def.unit,
+    min: def.min,
+    max: def.max,
+    filterable: def.filterable,
+    options: def.options.map((option) => ({ value: option.value, label: option.label })),
+    placeholder: def.placeholder,
+    helpText: def.helpText,
+  }
+}
