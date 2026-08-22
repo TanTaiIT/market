@@ -252,6 +252,69 @@ export const listingRepository = {
     )
   },
 
+  // ── MACHINE REVIEW (job) ────────────────────────────────────────────────────
+  // Cả cụm chạy ngoài request nên tự khai `runUnscoped` tại đây — mỗi đường một lý do grep được.
+  // Chỉ nhận `PENDING`: `PENDING_UNVERIFIED` là tin người ngoài, máy không có quyền đụng
+  // (routing đã chốt "người ngoài không bao giờ tự đăng", máy duyệt hộ là lách đúng chốt đó).
+
+  findMachineQueue(limit: number) {
+    return runUnscoped('machine review: đọc hàng đợi pending chưa chấm', () =>
+      Listing.find({ status: LISTING_STATUS.PENDING, machineReview: null })
+        .sort({ createdAt: 1 })
+        .limit(limit)
+        .exec(),
+    )
+  },
+
+  /** Mẫu giá tin ACTIVE mới nhất của danh mục — xuyên trục, vì giá phổ biến không phân biệt org. */
+  async sampleActivePrices(categoryId: Types.ObjectId, limit: number): Promise<number[]> {
+    const rows = await runUnscoped('machine review: lấy mẫu giá của danh mục', () =>
+      Listing.find({ category: categoryId, status: LISTING_STATUS.ACTIVE })
+        .select('price')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean()
+        .exec(),
+    )
+    return rows.map((r) => r.price)
+  },
+
+  /**
+   * Cùng người bán, tiêu đề y hệt (không phân hoa/thường), còn sống, trong cửa sổ gần đây.
+   * `excludeId` null = tin đang XÉT chưa được ghi (cổng nội dung lúc create) — không có gì để loại.
+   */
+  async hasRecentDuplicateTitle(
+    sellerId: Types.ObjectId,
+    title: string,
+    excludeId: Types.ObjectId | null,
+    since: Date,
+  ): Promise<boolean> {
+    const dup = await runUnscoped('machine review: soi tin trùng của cùng người bán', () =>
+      Listing.exists({
+        seller: sellerId,
+        ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+        title: new RegExp(`^${escapeRegex(title)}$`, 'i'),
+        status: { $in: [LISTING_STATUS.ACTIVE, ...PENDING_STATUSES] },
+        createdAt: { $gte: since },
+      }).exec(),
+    )
+    return dup !== null
+  },
+
+  /**
+   * Ghi phán quyết máy, có chốt race: điều kiện `status: PENDING` làm người duyệt tay thắng —
+   * họ bấm trước thì lệnh này match 0 document và trả `null`, máy lặng lẽ bỏ qua. Không cần
+   * lock hay lease, và cũng vì thế chạy 2 instance không xử trùng.
+   */
+  applyMachineVerdict(id: Types.ObjectId, update: Partial<IListing>) {
+    return runUnscoped('machine review: ghi phán quyết vào tin còn pending', () =>
+      Listing.findOneAndUpdate({ _id: id, status: LISTING_STATUS.PENDING }, update, {
+        new: true,
+        runValidators: true,
+      }).exec(),
+    )
+  },
+
   softDelete(id: string) {
     return Listing.findByIdAndUpdate(id, { deletedAt: new Date() }, { new: true })
   },

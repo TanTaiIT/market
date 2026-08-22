@@ -11,6 +11,12 @@ import {
 } from '../../common/constants'
 import { tenantPlugin } from '../../common/tenant/tenantPlugin'
 import { AUTO_APPROVAL_REASONS, type AutoApprovalReason } from './listing.quota'
+import {
+  MACHINE_HOLDS,
+  MACHINE_VERDICTS,
+  type MachineHold,
+  type MachineVerdictKind,
+} from '../moderation/moderation.machine'
 
 /**
  * Địa chỉ hành chính thuần, không có toạ độ — xem lý do bỏ geo ở `listing.schema.ts`.
@@ -89,6 +95,16 @@ export interface IListing {
     trustLevel: number
     reason: AutoApprovalReason
   }
+  /**
+   * Vết của người duyệt MÁY (job quét hàng đợi) — khác `autoApproval` (quyết định lúc đăng).
+   * `null` nghĩa là "chưa chấm / cần chấm lại": sửa nội dung sẽ set lại null để job quét lại,
+   * và query của job là `{ machineReview: null }` — match cả field vắng lẫn null tường minh.
+   */
+  machineReview?: {
+    at: Date
+    verdict: MachineVerdictKind
+    holds?: MachineHold[]
+  } | null
   /** Vết của lượt duyệt gần nhất. Rỗng với tin chưa ai chạm tới. */
   moderation?: {
     reason?: string
@@ -204,6 +220,18 @@ const listingSchema = new Schema<IListingDocument>(
       default: undefined,
     },
 
+    machineReview: {
+      type: new Schema(
+        {
+          at: { type: Date, required: true },
+          verdict: { type: String, enum: [...MACHINE_VERDICTS], required: true },
+          holds: { type: [String], enum: [...MACHINE_HOLDS], default: undefined },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
+
     templateRef: {
       type: new Schema(
         {
@@ -251,6 +279,8 @@ const listingSchema = new Schema<IListingDocument>(
         // thấp là chuyện của hệ thống, không phải của trang tin. Muốn hiện cho CHÍNH chủ tin
         // thì mở bằng một endpoint riêng, đừng nới cái DTO mà ai cũng đọc được.
         delete r.autoApproval
+        // Cùng lý do với autoApproval: hồ sơ kiểm duyệt nội bộ, không thuộc về trang tin.
+        delete r.machineReview
         return r
       },
     },
@@ -312,6 +342,17 @@ listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, createdAt: -1 }
  * 1000 tin để trả về 20.
  */
 listingSchema.index({ seller: 1, createdAt: -1 })
+
+/*
+ * Hai index cho người duyệt MÁY — cùng ngoại lệ rule 13(c) với "tin của tôi" ở trên: job quét
+ * chạy trong `runUnscoped` (xem `moderation.machine.service.ts`), cố tình xuyên cả hai trục
+ * nên mọi prefix `organizationId`/`visibility` đều vô dụng với nó.
+ * - hàng đợi cần chấm: `{ status: pending, machineReview: null }`, xử theo thứ tự đăng;
+ * - mẫu giá của danh mục: tin ACTIVE mới nhất cùng `category`, lấy xuyên trục vì "giá phổ
+ *   biến của mặt hàng" không phân biệt tin org hay tin công khai.
+ */
+listingSchema.index({ status: 1, machineReview: 1, createdAt: 1 })
+listingSchema.index({ category: 1, status: 1, createdAt: -1 })
 
 // Index cho `attrs`, land CÙNG lượt với `?attrs=` trong `buildFilter` — đúng như ghi chú cũ ở
 // đây hẹn. Đủ HAI bản, cùng lý do với hai họ index ở trên: trục org bắt đầu bằng

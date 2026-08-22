@@ -3196,6 +3196,44 @@
           "email"
         ],
         "additionalProperties": false
+      },
+      "BannedPhrase": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "phrase": {
+            "type": "string"
+          },
+          "addedBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "phrase",
+          "addedBy",
+          "createdAt"
+        ]
+      },
+      "CreateBannedPhrase": {
+        "type": "object",
+        "properties": {
+          "phrase": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "example": "pháo nổ"
+          }
+        },
+        "required": [
+          "phrase"
+        ],
+        "additionalProperties": false
       }
     },
     "parameters": {}
@@ -4641,6 +4679,7 @@
           "Listing"
         ],
         "summary": "Sửa tin của chính mình",
+        "description": "Đổi tiêu đề, mô tả, giá, ảnh hay danh mục của một tin ĐANG HIỂN THỊ sẽ đưa tin về `pending` để duyệt lại — trừ khi người bán đủ bậc uy tín tự đăng. Đọc `status` trong response để biết tin còn trên bảng hay không.",
         "security": [
           {
             "bearerAuth": []
@@ -10472,6 +10511,244 @@
           },
           "400": {
             "description": "Tên tỉnh không nằm trong danh sách 34 đơn vị",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/banned-phrases": {
+      "get": {
+        "operationId": "bannedPhraseList",
+        "tags": [
+          "BannedPhrase"
+        ],
+        "summary": "Danh sách cụm từ cấm (master)",
+        "description": "Từ điển cụm cấm của cổng nội dung — tin chứa cụm nào trong đây bị từ chối ngay lúc đăng, bị chặn lúc sửa, và máy quét từ chối nếu đã nằm sẵn trong hàng đợi. Master-only kể cả đọc: công bố danh sách là chỉ đường lách luật.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách cụm cấm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BannedPhrase"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "bannedPhraseCreate",
+        "tags": [
+          "BannedPhrase"
+        ],
+        "summary": "Thêm cụm từ cấm (master)",
+        "description": "Cụm được chuẩn hoá lowercase + trim trước khi lưu. Hiệu lực ngay với tin đăng/sửa mới; tin đang chờ duyệt sẵn trong hàng đợi bị máy quét bắt ở lượt kế tiếp. Nên dùng CỤM (≥2 từ) thay vì từ đơn — từ đơn dễ chém oan (\"súng\" bắt cả \"súng phun nước đồ chơi\").",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBannedPhrase"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã thêm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BannedPhrase"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Cụm này đã có trong danh sách",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/banned-phrases/{id}": {
+      "delete": {
+        "operationId": "bannedPhraseRemove",
+        "tags": [
+          "BannedPhrase"
+        ],
+        "summary": "Gỡ cụm từ cấm (master)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã gỡ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BannedPhrase"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy cụm cấm",
             "content": {
               "application/json": {
                 "schema": {

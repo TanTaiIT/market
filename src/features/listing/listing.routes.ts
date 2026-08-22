@@ -155,6 +155,8 @@ registry.registerPath({
   operationId: 'listingUpdate',
   tags: ['Listing'],
   summary: 'Sửa tin của chính mình',
+  description:
+    'Đổi tiêu đề, mô tả, giá, ảnh hay danh mục của một tin ĐANG HIỂN THỊ sẽ đưa tin về `pending` để duyệt lại — trừ khi người bán đủ bậc uy tín tự đăng. Đọc `status` trong response để biết tin còn trên bảng hay không.',
   ...protectedRoute,
   request: {
     params: listingParamsSchema,

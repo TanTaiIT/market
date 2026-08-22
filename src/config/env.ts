@@ -41,6 +41,9 @@ const envSchema = z.object({
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
 
+  // Nhịp quét của người duyệt máy (cú pháp human-interval của Agenda: '2 minutes', '30 seconds').
+  MACHINE_REVIEW_EVERY: z.string().default('2 minutes'),
+
   // Domain gốc để tách subdomain -> Organization.slug (vd 'app.com' => hungvuong.app.com).
   // Bỏ trống ở dev/test: khi đó org hoạt động đến từ header `X-Org-Slug`, hoặc suy ra khi
   // người dùng chỉ thuộc đúng một org.

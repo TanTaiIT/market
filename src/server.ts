@@ -1,12 +1,14 @@
 import http from 'http'
 import { createApp } from './app'
 import { connectDB, disconnectDB } from './config/database'
+import { startAgenda, stopAgenda } from './config/agenda'
 import { initSockets, closeSockets } from './sockets'
 import { env } from './config/env'
 import { logger } from './config/logger'
 
 async function bootstrap() {
   await connectDB()
+  await startAgenda()
 
   const app = createApp()
   const httpServer = http.createServer(app)
@@ -40,6 +42,7 @@ async function bootstrap() {
     try {
       await closeHttp()
       await closeSockets()
+      await stopAgenda()
       await disconnectDB()
       logger.info('Graceful shutdown complete')
       clearTimeout(forceTimer)

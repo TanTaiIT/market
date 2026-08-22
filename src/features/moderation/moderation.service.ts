@@ -124,7 +124,7 @@ const trustNote = (trust: TrustState | null) => (trust ? ` · uy tín bậc ${tr
  * `hidden` cố tình không báo: ẩn là thao tác tạm của quản trị (chờ xác minh, gỡ theo báo cáo),
  * không phải phán quyết về tin — báo cả ba trạng thái sẽ biến hộp thư thành nhật ký quản trị.
  */
-async function notifyPoster(
+export async function notifyPoster(
   listing: IListingDocument,
   status: ListingStatus,
   reason?: string,

@@ -19,6 +19,7 @@ import notificationRoutes from './notification/notification.routes'
 import moderationRoutes from './moderation/moderation.routes'
 import reportRoutes from './report/report.routes'
 import locationRoutes from './location/location.routes'
+import bannedPhraseRoutes from './banned-phrase/banned-phrase.routes'
 
 const router = Router()
 
@@ -40,6 +41,8 @@ router.use('/notifications', notificationRoutes)
 router.use('/reports', reportRoutes)
 // Từ điển hành chính, không thuộc tenant nào — cùng nhóm "dùng chung" với /categories.
 router.use('/locations', locationRoutes)
+// Từ điển cụm cấm của cổng nội dung — master-only kể cả đọc (xem banned-phrase.routes.ts).
+router.use('/banned-phrases', bannedPhraseRoutes)
 
 // --- Bàn quản trị của một org (manager | staff, xét bằng role_grants) ---
 router.use('/moderation', moderationRoutes)

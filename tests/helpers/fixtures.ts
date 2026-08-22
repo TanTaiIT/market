@@ -163,6 +163,14 @@ export function orgAuth(token: string, orgSlug: string) {
   return { Authorization: `Bearer ${token}`, 'X-Org-Slug': orgSlug }
 }
 
+/** Nạp từ điển cụm cấm mặc định — cổng nội dung đọc DB, không đọc mảng hardcode nữa. */
+export async function seedBannedPhrases(addedBy: string) {
+  const { BannedPhrase } = await import('../../src/features/banned-phrase/banned-phrase.model')
+  const { DEFAULT_BANNED_PHRASES } =
+    await import('../../src/features/moderation/moderation.machine')
+  await BannedPhrase.insertMany(DEFAULT_BANNED_PHRASES.map((phrase) => ({ phrase, addedBy })))
+}
+
 export async function createCategory(name = 'Đồ dùng', slug = 'do-dung') {
   const { Category } = await import('../../src/features/category/category.model')
   const category = await Category.create({ name, slug })
