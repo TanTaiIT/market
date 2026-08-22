@@ -952,6 +952,7 @@
       },
       "PostingFee": {
         "type": "object",
+        "nullable": true,
         "properties": {
           "amount": {
             "type": "number",
@@ -967,6 +968,48 @@
         "required": [
           "amount",
           "currency"
+        ]
+      },
+      "ListingProduct": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "rank_to_top",
+              "featured",
+              "extend_expiry"
+            ]
+          },
+          "durationDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "cooldownHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "price": {
+            "$ref": "#/components/schemas/PostingFee"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "effect",
+          "durationDays",
+          "cooldownHours",
+          "price",
+          "enabled"
         ]
       },
       "QuotaStatus": {
@@ -1411,6 +1454,15 @@
           },
           "expiresAt": {
             "type": "string",
+            "format": "date-time"
+          },
+          "rankAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "featuredUntil": {
+            "type": "string",
+            "nullable": true,
             "format": "date-time"
           },
           "createdAt": {
@@ -4979,6 +5031,50 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/QuotaStatus"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listings/products": {
+      "get": {
+        "operationId": "listingProducts",
+        "tags": [
+          "Listing"
+        ],
+        "summary": "Catalog gói tin (đẩy tin, tin nổi bật…)",
+        "description": "Danh sách gói trả bằng Xu áp lên một tin. `enabled: false` + `price: null` = chưa mở bán — FE dựng UI trước, ngày mở bán chỉ là dữ liệu đổi. Đường mua sẽ là `POST /listings/{id}/products/{code}` khi ví Xu vận hành.",
+        "responses": {
+          "200": {
+            "description": "Catalog gói tin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ListingProduct"
+                      }
                     }
                   },
                   "required": [

@@ -3,7 +3,7 @@ import { listingRepository } from './listing.repository'
 import { CreateListingInput, UpdateListingInput, ListingQuery, NearbyQuery } from './listing.schema'
 import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
-import { PostingFee, postingFee } from './listing.pricing'
+import { LISTING_PRODUCTS, PostingFee, postingFee } from './listing.pricing'
 import {
   QUOTA,
   QuotaVerdict,
@@ -407,6 +407,11 @@ export const listingService = {
     }
 
     return listing
+  },
+
+  /** Catalog gói tin — hiện toàn bộ `enabled: false`, mở bán ở giai đoạn ví Xu. */
+  productCatalog() {
+    return LISTING_PRODUCTS
   },
 
   /** Báo giá một lượt đăng — controller đọc để đính vào response, luật nằm ở `listing.pricing.ts`. */

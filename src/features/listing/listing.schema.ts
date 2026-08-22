@@ -227,6 +227,8 @@ export const listingResponseSchema = z
     viewCount: z.number(),
     favoriteCount: z.number(),
     expiresAt: z.string().datetime().optional(),
+    rankAt: z.string().datetime().optional(),
+    featuredUntil: z.string().datetime().nullable().optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -239,6 +241,19 @@ export type ListingQuery = z.infer<typeof listingQuerySchema>
 export type NearbyQuery = z.infer<typeof nearbyQuerySchema>
 
 registry.register('CreateListing', createListingSchema)
+export const listingProductSchema = z
+  .object({
+    code: z.string(),
+    name: z.string(),
+    effect: z.enum(['rank_to_top', 'featured', 'extend_expiry']),
+    durationDays: z.number().nullable(),
+    cooldownHours: z.number().nullable(),
+    price: postingFeeSchema.nullable(),
+    enabled: z.boolean(),
+  })
+  .openapi('ListingProduct')
+
+registry.register('ListingProduct', listingProductSchema)
 registry.register('PostingFee', postingFeeSchema)
 registry.register('QuotaStatus', quotaStatusSchema)
 registry.register('PostingStats', postingStatsSchema)

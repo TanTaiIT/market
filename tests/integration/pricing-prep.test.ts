@@ -105,3 +105,73 @@ describe('Chuẩn bị hệ Xu — số liệu định giá cho master', () => {
       .expect(400)
   })
 })
+
+describe('Chuẩn bị gói tin — catalog công khai', () => {
+  it('ai cũng xem được catalog, mọi gói đang enabled: false', async () => {
+    const res = await request(app).get('/api/v1/listings/products').expect(200)
+
+    expect(res.body.data).toHaveLength(4)
+    expect(res.body.data.map((p: { code: string }) => p.code)).toEqual(
+      expect.arrayContaining(['bump', 'featured_3d', 'featured_7d', 'extend_30d']),
+    )
+    for (const product of res.body.data) {
+      expect(product.enabled).toBe(false)
+      expect(product.price).toBeNull()
+    }
+  })
+})
+
+async function readRank(id: string) {
+  const { Listing } = await import('../../src/features/listing/listing.model')
+  const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
+  return runUnscoped('test đọc rankAt', () =>
+    Listing.findById(id).select('rankAt createdAt').lean().exec(),
+  )
+}
+
+describe('Chuẩn bị gói tin — khoá sắp xếp rankAt', () => {
+  it('tin mới sinh ra với rankAt = thời điểm tạo — bảng tin xếp y như trước', async () => {
+    const created = await postListing('Tin đo khoá sắp xếp').expect(201)
+    const doc = await readRank(created.body.data._id)
+
+    expect(doc?.rankAt).toBeTruthy()
+    const drift = Math.abs(new Date(doc!.rankAt).getTime() - new Date(doc!.createdAt).getTime())
+    expect(drift).toBeLessThan(5000)
+  }, 60_000)
+
+  it('đẩy rankAt của tin cũ lên là tin nhảy về đầu bảng — createdAt không đổi', async () => {
+    const { publishListing, setTrustLevel } = await import('../helpers/fixtures')
+    // Các test trước đã tích 3 tin chờ — bậc 1 nới hạn lên 5 để hai tin dưới không vướng quota.
+    await setTrustLevel(seller.id, 1)
+    const older = (await postListing('Tin cũ sẽ được đẩy').expect(201)).body.data._id
+    const newer = (await postListing('Tin mới hơn').expect(201)).body.data._id
+    await publishListing(older)
+    await publishListing(newer)
+
+    // Chưa đẩy: tin mới đứng trước (rankAt = lúc tạo).
+    const before = await request(app)
+      .get('/api/v1/listings')
+      .set(orgAuth(seller.token, ORG_SLUG))
+      .expect(200)
+    const idsBefore = before.body.data.map((l: { _id: string }) => l._id)
+    expect(idsBefore.indexOf(newer)).toBeLessThan(idsBefore.indexOf(older))
+
+    // Giả lập gói "đẩy tin" — đúng thao tác mà đường mua sẽ làm ở giai đoạn ví.
+    const { Listing } = await import('../../src/features/listing/listing.model')
+    const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
+    await runUnscoped('test giả lập bump', () =>
+      Listing.updateOne({ _id: older }, { rankAt: new Date(Date.now() + 1000) }).exec(),
+    )
+
+    const after = await request(app)
+      .get('/api/v1/listings')
+      .set(orgAuth(seller.token, ORG_SLUG))
+      .expect(200)
+    const idsAfter = after.body.data.map((l: { _id: string }) => l._id)
+    expect(idsAfter.indexOf(older)).toBeLessThan(idsAfter.indexOf(newer))
+
+    // Lịch sử không bị viết lại.
+    const doc = await readRank(older)
+    expect(new Date(doc!.rankAt).getTime()).toBeGreaterThan(new Date(doc!.createdAt).getTime())
+  }, 60_000)
+})

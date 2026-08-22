@@ -65,3 +65,38 @@ Bất biến:
 - [ ] Giai đoạn 1 + 2 đã chạy ổn (ví + nạp), có người nạp thật
 - [ ] Điều khoản sử dụng có mục Xu (một chiều, không hoàn tiền mặt, luật hoàn Xu §3)
 - [ ] Test canary trong `listingPricing.test.ts` được sửa CÓ Ý THỨC cùng lượt đổi giá
+
+## 6. Gói tin — sản phẩm mua bằng Xu áp lên một tin
+
+**Ghi chú chiến lược**: gói tin là doanh thu KHÔNG phạt người dùng cơ bản — đăng tin có thể
+miễn phí mãi, ai muốn nổi hơn thì trả. Lộ trình vì thế có phương án đảo: **ví → nạp → gói
+tin** trước, phí đăng để ngỏ vô thời hạn. Ngày bật gói tin không ai giận; ngày bật phí đăng
+luôn có người bỏ đi.
+
+Catalog là SoT tại `listing.pricing.ts` (`LISTING_PRODUCTS`), lộ qua `GET /listings/products`
+từ hôm nay với `enabled: false` + `price: null` — FE dựng UI trước, mở bán chỉ là dữ liệu đổi.
+
+| Gói | Hiệu ứng | Cơ chế đã chuẩn bị |
+| --- | --- | --- |
+| `bump` — Đẩy tin | `rankAt = now` → tin lên đầu bảng | `rankAt` là khoá sắp xếp MỚI của mọi bảng tin (= `createdAt` lúc tạo). Không sửa `createdAt` — đó là lịch sử |
+| `featured_3d/7d` — Tin nổi bật | `featuredUntil = now + N ngày`, FE suy badge từ `> now` | Field đã có trong model + DTO |
+| `extend_30d` — Gia hạn | `expiresAt += 30 ngày` | TTL 30 ngày sẵn có |
+
+Chính sách đã quyết:
+
+| Tình huống | Quyết định |
+| --- | --- |
+| Điều kiện mua | Tin `ACTIVE` + của chính mình — gói tin là HIỂN THỊ, không phải đường tắt qua duyệt |
+| Chống spam đẩy | Cooldown 24h/tin (khai trong catalog) — chặn cả nhà giàu chiếm bảng |
+| Tin nổi bật bị sửa → về `PENDING` (chốt tái duyệt) | Đồng hồ chạy tiếp — sửa là lựa chọn của người bán; UI cảnh báo trước |
+| Tin nổi bật bị gỡ vì vi phạm | Không hoàn Xu — nhất quán §3 |
+| Tin hết hạn khi đang nổi bật | Hết là hết; muốn thì mua gia hạn, không tự trừ tiền |
+| Đẩy tin có chen hàng DUYỆT không | KHÔNG — index hàng đợi (unitId, machineReview) giữ `createdAt`, FIFO theo lúc đăng thật |
+| Sổ cái | Thêm type `product_purchase` (refs: `listingId` + mã gói) vào enum §2 |
+
+Đường mua (xây ở giai đoạn ví): `POST /listings/{id}/products/{code}` — trừ Xu trong
+transaction cùng lượt áp hiệu ứng; badge hạ tự nhiên theo `featuredUntil` (không cần cron).
+
+**Vận hành khi deploy bản chuẩn bị**: chạy `npm run migrate:rank-at` NGAY sau deploy —
+backfill `rankAt = createdAt` cho tin cũ + đồng bộ họ index. Chưa chạy thì tin cũ chìm xuống
+đáy bảng (BSON xếp field vắng mặt nhỏ hơn mọi Date).

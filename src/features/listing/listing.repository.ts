@@ -138,7 +138,7 @@ export const listingRepository = {
     const filter = buildFilter(params)
 
     const [items, total] = await Promise.all([
-      Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Listing.find(filter).sort({ rankAt: -1 }).skip(skip).limit(limit),
       Listing.countDocuments(filter),
     ])
 
@@ -164,7 +164,7 @@ export const listingRepository = {
     if (exclude) base._id = { $ne: new Types.ObjectId(exclude) }
 
     if (!ward) {
-      return Listing.find(base).sort({ createdAt: -1 }).skip(skip).limit(limit)
+      return Listing.find(base).sort({ rankAt: -1 }).skip(skip).limit(limit)
     }
 
     // Hai truy vấn `find` chứ không phải một `aggregate` xếp hạng: pipeline aggregate được
@@ -173,7 +173,7 @@ export const listingRepository = {
     const inWard = { ...base, 'location.ward': ward }
     const outWard = { ...base, 'location.ward': { $ne: ward } }
 
-    const head = await Listing.find(inWard).sort({ createdAt: -1 }).skip(skip).limit(limit)
+    const head = await Listing.find(inWard).sort({ rankAt: -1 }).skip(skip).limit(limit)
     if (head.length >= limit) return head
 
     // Tổng số tin cùng xã là mốc để cắt offset giữa hai tập, nhưng CHỈ cần khi đã sang trang:
@@ -181,7 +181,7 @@ export const listingRepository = {
     const wardTotal = skip > 0 ? await Listing.countDocuments(inWard) : 0
 
     const tail = await Listing.find(outWard)
-      .sort({ createdAt: -1 })
+      .sort({ rankAt: -1 })
       .skip(Math.max(0, skip - wardTotal))
       .limit(limit - head.length)
 

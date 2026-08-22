@@ -46,6 +46,11 @@ export const listingController = {
     success(res, { message: 'Quota', data })
   }),
 
+  // GET /listings/products
+  products: catchAsync(async (_req, res) => {
+    success(res, { message: 'Listing products', data: listingService.productCatalog() })
+  }),
+
   // GET /listings/posting-stats
   postingStats: catchAsync(async (req, res) => {
     // validate() đã ghi query parse xong (kèm default) ngược vào req.query — chỉ việc đọc.
