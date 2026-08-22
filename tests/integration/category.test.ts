@@ -48,7 +48,7 @@ beforeAll(async () => {
   orgHeaders = orgAuth(owner.token, org.slug)
   // File test này đăng nhiều tin liên tiếp để thử ràng buộc danh mục; quota mặc định (3 tin
   // chờ) sẽ chặn ngang giữa chừng và che mất thứ đang thực sự được kiểm.
-  await setTrustLevel(owner.id, org.id, 1)
+  await setTrustLevel(owner.id, 1)
 }, 120_000)
 
 afterAll(async () => {

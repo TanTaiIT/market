@@ -18,7 +18,6 @@ declare global {
         id: string
         role: MembershipRole
         unitId: string | null
-        trustLevel: number
       }
       /** Quyền hạn hệ thống, nạp một lần mỗi request để không truy vấn lại ở từng tầng. */
       grants?: Grant[]

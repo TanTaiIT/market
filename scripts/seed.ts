@@ -9,7 +9,7 @@ import { OrgUnit } from '../src/features/org-unit/org-unit.model'
 import { Membership } from '../src/features/membership/membership.model'
 import { RoleGrant } from '../src/features/role-grant/role-grant.model'
 import { JoinRequest } from '../src/features/join-request/join-request.model'
-import { PublicTrust } from '../src/features/trust/trust.model'
+import { UserTrust } from '../src/features/trust/trust.model'
 import { Notification } from '../src/features/notification/notification.model'
 import { Category } from '../src/features/category/category.model'
 import {
@@ -177,7 +177,11 @@ async function seed() {
       Membership.deleteMany({}),
       RoleGrant.deleteMany({}),
       JoinRequest.deleteMany({}),
-      PublicTrust.deleteMany({}),
+      UserTrust.deleteMany({}),
+      // Collection của bản uy tín CŨ (hai trục). Không còn model nào trỏ tới nó, nhưng
+      // `migrate:trust` vẫn đọc thẳng qua driver — bỏ sót ở đây thì seed xong chạy migrate là
+      // bậc cũ sống lại. Docblock trên đầu file hứa "xoá sạch", phải xoá thật.
+      mongoose.connection.db!.collection('publictrusts').deleteMany({}),
       Notification.deleteMany({}),
       /*
        * Xoá cả BA cùng nhau, không chỉ `Category`.

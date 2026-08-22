@@ -7,6 +7,7 @@ import { listingRepository } from '../listing/listing.repository'
 import { IListingDocument } from '../listing/listing.model'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { trustRepository } from '../trust/trust.repository'
+import type { TrustState } from '../trust/trust.policy'
 import { categoryService } from '../category/category.service'
 import { reportRepository } from '../report/report.repository'
 import { userRepository } from '../user/user.repository'
@@ -19,7 +20,6 @@ import {
   ListingStatus,
   MODERATION_QUEUE,
   ModerationQueue,
-  POST_VISIBILITY,
   VN_PROVINCE_NAMES,
 } from '../../common/constants'
 import { Grant } from '../../common/authz/policy'
@@ -88,32 +88,32 @@ export async function recordAudit(
   return log
 }
 
-/** Bao nhiêu bài sạch thì lên một bậc — §8.3: "đã có 5 bài duyệt sạch". */
-const CLEAN_APPROVALS_PER_LEVEL = 5
-
 /**
- * Uy tín đi theo TRỤC của chính tin đó, không cộng dồn sang trục kia (§8.3): tin nội bộ nâng
- * `memberships.trustLevel` của org đó, tin công khai nâng `PublicTrust` của đúng danh mục.
- * Cộng chung là biến 5 bài sạch trong một nhóm nhỏ thành quyền tự đăng ra toàn tỉnh.
+ * Một lượt duyệt → một lần ghi uy tín, không phân biệt tin nội bộ hay công khai. Luật thăng
+ * giáng nằm ở `trust.policy.ts`, chỗ này chỉ quyết định "có tính không".
+ *
+ * Chỉ ACTIVE và REJECTED mới tính: ẩn tin (`hidden`) là thao tác vận hành, có thể vì lý do
+ * ngoài lỗi người đăng, nên nó không được phép bào mòn uy tín của ai.
  */
-async function applyTrustEffect(listing: IListingDocument, status: ListingStatus): Promise<void> {
+async function applyTrustEffect(
+  listing: IListingDocument,
+  status: ListingStatus,
+): Promise<TrustState | null> {
   const approved = status === LISTING_STATUS.ACTIVE
   const rejected = status === LISTING_STATUS.REJECTED
-  if (!approved && !rejected) return
+  if (!approved && !rejected) return null
 
-  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
-    await (approved
-      ? trustRepository.recordApproval(listing.seller, listing.category, CLEAN_APPROVALS_PER_LEVEL)
-      : trustRepository.recordRejection(listing.seller, listing.category))
-    return
-  }
-
-  if (!listing.organizationId) return
-  await membershipRepository.adjustTrust(listing.seller, listing.organizationId, {
-    approved,
-    promoteEvery: CLEAN_APPROVALS_PER_LEVEL,
-  })
+  return trustRepository.record(listing.seller, approved)
 }
+
+/**
+ * Đuôi " · uy tín bậc N" cho dòng nhật ký.
+ *
+ * Bậc uy tín đổi âm thầm ở tầng dưới, và nó là thứ quyết định tin sau của người này có tự lên
+ * bảng hay không. Không hiện ra đây thì quản trị chỉ thấy "đã từ chối" mà không biết hậu quả
+ * thật của cú bấm vừa rồi. Rỗng khi lượt này không đụng tới uy tín (ẩn/hiện lại tin).
+ */
+const trustNote = (trust: TrustState | null) => (trust ? ` · uy tín bậc ${trust.level}` : '')
 
 /**
  * Báo cho NGƯỜI ĐĂNG kết quả duyệt tin của họ.
@@ -221,6 +221,10 @@ export const moderationService = {
       actor.grants,
     )
 
+    // Ghi uy tín TRƯỚC khi log: dòng nhật ký phải nói được hậu quả, mà hậu quả chỉ biết sau
+    // khi đã ghi. Thứ tự ngược lại thì bậc trong log luôn là bậc cũ.
+    const trust = await applyTrustEffect(listing, input.status)
+
     const action = ACTION_BY_STATUS[input.status]
     await recordAudit(
       { ...actor, name },
@@ -228,8 +232,8 @@ export const moderationService = {
         action,
         summary:
           input.status === LISTING_STATUS.REJECTED
-            ? `Từ chối "${listing.title}" · ${input.reason}`
-            : `${input.status === LISTING_STATUS.ACTIVE ? 'Ghim' : 'Ẩn'} "${listing.title}"`,
+            ? `Từ chối "${listing.title}" · ${input.reason}${trustNote(trust)}`
+            : `${input.status === LISTING_STATUS.ACTIVE ? 'Ghim' : 'Ẩn'} "${listing.title}"${trustNote(trust)}`,
         targetType: 'listing',
         targetId: listing._id,
         fromStatus: previousStatus,
@@ -239,7 +243,6 @@ export const moderationService = {
     )
 
     await notifyPoster(listing, input.status, input.reason)
-    await applyTrustEffect(listing, input.status)
     return listing
   },
 
@@ -359,11 +362,16 @@ export const moderationService = {
     const name = await actorName(actor)
     const listing = await listingService.removeByModerator(id, actor.grants)
 
+    // Gỡ tin tính như một lần bị từ chối. Nặng hơn thì đúng hơn — tin này đã LỌT qua hệ thống
+    // và đã tới tay người mua, khác hẳn tin bị chặn từ hàng đợi — nhưng thang bậc hiện tại chỉ
+    // có một nấc giáng. Phân mức độ vi phạm là việc của hệ điểm mới, không phải chỗ này.
+    const trust = await trustRepository.record(listing!.seller, false)
+
     await recordAudit(
       { ...actor, name },
       {
         action: AUDIT_ACTION.LISTING_REMOVE,
-        summary: `Gỡ "${listing!.title}" khỏi bảng`,
+        summary: `Gỡ "${listing!.title}" khỏi bảng${trustNote(trust)}`,
         targetType: 'listing',
         targetId: listing!._id,
       },

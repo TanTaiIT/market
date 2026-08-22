@@ -10,6 +10,7 @@ import {
   VnProvinceName,
 } from '../../common/constants'
 import { tenantPlugin } from '../../common/tenant/tenantPlugin'
+import { AUTO_APPROVAL_REASONS, type AutoApprovalReason } from './listing.quota'
 
 /**
  * Địa chỉ hành chính thuần, không có toạ độ — xem lý do bỏ geo ở `listing.schema.ts`.
@@ -77,6 +78,16 @@ export interface IListing {
     id: Types.ObjectId
     version: number
     isFallback: boolean
+  }
+  /**
+   * Vết của quyết định TỰ ĐĂNG lúc tin được tạo — chụp lại bậc uy tín tại thời điểm đó.
+   *
+   * Không ghi vào `AuditLog`: bảng đó gắn `tenantPlugin` và `recordAudit` bỏ qua khi không có
+   * org (`subjectOrgId: null`), nên toàn bộ tin trục danh mục sẽ không có vết nào.
+   */
+  autoApproval?: {
+    trustLevel: number
+    reason: AutoApprovalReason
   }
   /** Vết của lượt duyệt gần nhất. Rỗng với tin chưa ai chạm tới. */
   moderation?: {
@@ -182,6 +193,17 @@ const listingSchema = new Schema<IListingDocument>(
       default: [],
     },
 
+    autoApproval: {
+      type: new Schema(
+        {
+          trustLevel: { type: Number, required: true, min: 0 },
+          reason: { type: String, enum: [...AUTO_APPROVAL_REASONS], required: true },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
+
     templateRef: {
       type: new Schema(
         {
@@ -225,6 +247,10 @@ const listingSchema = new Schema<IListingDocument>(
         // cạnh. Gửi kèm là trả gấp đôi dữ liệu thuộc tính trên mỗi tin, nhân với 50 tin một
         // trang, cho một field không client nào đọc.
         delete r.attrs
+        // `autoApproval` là hồ sơ kiểm duyệt nội bộ: nói cho người mua biết người bán này bậc
+        // thấp là chuyện của hệ thống, không phải của trang tin. Muốn hiện cho CHÍNH chủ tin
+        // thì mở bằng một endpoint riêng, đừng nới cái DTO mà ai cũng đọc được.
+        delete r.autoApproval
         return r
       },
     },

@@ -2,6 +2,7 @@ import { membershipRepository } from './membership.repository'
 import { MembershipQuery } from './membership.schema'
 import { toMemberDto } from './membership.types'
 import { userRepository } from '../user/user.repository'
+import { trustRepository } from '../trust/trust.repository'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 
@@ -24,11 +25,17 @@ export const membershipService = {
       pagination,
     )
 
-    const users = await userRepository.findByIds(items.map((m) => m.userId))
+    const userIds = items.map((m) => m.userId)
+    const [users, trustLevels] = await Promise.all([
+      userRepository.findByIds(userIds),
+      trustRepository.levelsOf(userIds),
+    ])
     const byId = new Map(users.map((u) => [u._id.toString(), u]))
 
     return {
-      items: items.map((m) => toMemberDto(m, byId.get(m.userId.toString()))),
+      items: items.map((m) =>
+        toMemberDto(m, byId.get(m.userId.toString()), trustLevels.get(m.userId.toString()) ?? 0),
+      ),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },

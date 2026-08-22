@@ -9,10 +9,17 @@ import { IUserDocument } from '../user/user.model'
  * quyền. Ngược hẳn với `Listing.posterName`, nơi snapshot mới đúng vì tin là bản ghi của một
  * thời điểm.
  *
+ * `trustLevel` là bậc TOÀN CỤC của tài khoản (`UserTrust`), không phải bậc trong org này —
+ * uy tín đã gộp làm một, xem `trust.model.ts`.
+ *
  * Chỉ `name` + `avatar` của User: danh bạ để NHẬN RA người và gán quyền, không phải bản sao hồ
  * sơ — email/phone không có việc gì ở đây, cùng tinh thần với ranh giới của `PublicProfileDto`.
  */
-export function toMemberDto(doc: IMembershipDocument, user: IUserDocument | undefined) {
+export function toMemberDto(
+  doc: IMembershipDocument,
+  user: IUserDocument | undefined,
+  trustLevel: number,
+) {
   return {
     userId: doc.userId.toString(),
     // Membership sống lâu hơn tài khoản: user xoá mềm rơi khỏi `find` nên chỗ này phải có chữ.
@@ -21,7 +28,7 @@ export function toMemberDto(doc: IMembershipDocument, user: IUserDocument | unde
     role: doc.role,
     unitId: doc.unitId ? doc.unitId.toString() : null,
     joinedVia: doc.joinedVia,
-    trustLevel: doc.trustLevel,
+    trustLevel,
     joinedAt: doc.joinedAt.toISOString(),
   }
 }

@@ -137,8 +137,6 @@ export const joinRequestService = {
         role: MEMBERSHIP_ROLES.MEMBER,
         unitId: unitId ? new Types.ObjectId(unitId) : null,
         joinedVia: JOINED_VIA.REQUEST,
-        // Mức tin cậy đáy: verify email không chứng minh người này thuộc tổ chức của bạn (§7.2b).
-        trustLevel: 0,
       })
     }
 

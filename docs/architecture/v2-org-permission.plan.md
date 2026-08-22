@@ -189,7 +189,9 @@ Gate sau Phase 6: `typecheck` sạch · `oxlint` sạch · `prettier` sạch · 
 
 ### Phase 5 — Quota + trust *(phụ thuộc 4)*
 
-- 3 bucket (§8.2), trust level tách theo trục, reject counter **xuyên trục** 7 ngày (§8.4).
+- 3 bucket (§8.2), reject counter **xuyên trục** 7 ngày (§8.4).
+- ~~trust level tách theo trục~~ — **đã gộp làm một bậc cho mỗi tài khoản**. §8.3 không còn
+  hiệu lực: lý do gộp và cái giá phải canh nằm ở `src/features/trust/trust.model.ts`.
 - Hiện trạng quota trong response để người dùng không đổ lỗi cho hệ thống.
 
 ### Phase 6 — Màn quản trị *(phụ thuộc 4, 5)*

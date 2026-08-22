@@ -104,7 +104,6 @@ export const resolveTenant = catchAsync(async (req, _res, next) => {
       id: membership._id.toString(),
       role: membership.role,
       unitId: membership.unitId?.toString() ?? null,
-      trustLevel: membership.trustLevel,
     }
     return runWithTenant(withOrg(), next)
   }

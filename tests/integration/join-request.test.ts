@@ -129,8 +129,6 @@ describe('Duyệt đơn', () => {
     const membership = await Membership.findOne({ userId: user.id, organizationId: orgId }).exec()
     expect(membership).not.toBeNull()
     expect(membership!.unitId?.toString()).toBe(unitId)
-    // Vào bằng đường request = mức tin cậy đáy: verify email không chứng minh danh tính.
-    expect(membership!.trustLevel).toBe(0)
     expect(membership!.joinedVia).toBe('request')
   })
 

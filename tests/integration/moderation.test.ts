@@ -278,3 +278,181 @@ describe('Report — gửi và xử lý', () => {
     expect(res.status).toBe(404)
   })
 })
+
+async function trustOf(userId: string) {
+  const { trustRepository } = await import('../../src/features/trust/trust.repository')
+  return trustRepository.levelOf(userId)
+}
+
+async function raiseTo(userId: string, level: number) {
+  const { setTrustLevel } = await import('../helpers/fixtures')
+  await setTrustLevel(userId, level)
+}
+
+/**
+ * Hai đường làm hại NẶNG nhất từng không trừ uy tín gì cả: tin bị gỡ sau khi đã lên bảng, và
+ * tin bị ẩn vì một báo cáo đã được xác minh. Cả hai đều là "đã lọt qua hệ thống rồi mới bị
+ * phát hiện" — nếu chúng miễn phí thì bậc uy tín chỉ còn đo được khâu tiền kiểm.
+ */
+describe('Uy tín — hai đường hậu kiểm', () => {
+  /** Người tố giác phải là thành viên CÙNG org thì mới đọc được tin nội bộ để mà báo cáo. */
+  const buyer = { token: '', id: '', slug: '' }
+
+  beforeAll(async () => {
+    Object.assign(buyer, await joinOrg(owner.slug, 'Người mua', 'buyer@mod-trust.local'))
+  }, 60_000)
+
+  it('gỡ tin đã đăng làm tụt bậc người đăng', async () => {
+    await raiseTo(member.id, 2)
+    const id = await createListing(member, 'Tin sẽ bị gỡ khỏi bảng')
+
+    await request(app).delete(`/api/v1/moderation/listings/${id}`).set(as(owner)).expect(200)
+
+    expect(await trustOf(member.id)).toBe(1)
+  })
+
+  it('báo cáo được xác minh (ẩn tin) cũng làm tụt bậc', async () => {
+    await raiseTo(member.id, 2)
+    const id = await createListing(member, 'Tin bị tố giác và xác minh đúng')
+
+    const report = await request(app)
+      .post('/api/v1/reports')
+      .set(as(buyer))
+      .send({
+        targetType: 'listing',
+        targetId: id,
+        kind: 'scam',
+        quote: 'Người bán nhận cọc xong chặn liên lạc',
+      })
+      .expect(201)
+
+    await request(app)
+      .patch(`/api/v1/reports/${report.body.data.id}`)
+      .set(as(owner))
+      .send({ action: 'hide_target' })
+      .expect(200)
+
+    expect(await trustOf(member.id)).toBe(1)
+  })
+
+  it('đóng báo cáo bằng `ignore` thì KHÔNG trừ ai — bị tố oan không phải là lỗi', async () => {
+    await raiseTo(member.id, 2)
+    const id = await createListing(member, 'Tin bị tố oan')
+
+    const report = await request(app)
+      .post('/api/v1/reports')
+      .set(as(buyer))
+      .send({ targetType: 'listing', targetId: id, kind: 'wrong_info', quote: 'Tôi thấy sai sai' })
+      .expect(201)
+
+    await request(app)
+      .patch(`/api/v1/reports/${report.body.data.id}`)
+      .set(as(owner))
+      .send({ action: 'ignore' })
+      .expect(200)
+
+    expect(await trustOf(member.id)).toBe(2)
+  })
+})
+
+async function readDecision(id: string) {
+  const { Listing } = await import('../../src/features/listing/listing.model')
+  const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
+  return runUnscoped('test đọc autoApproval', () =>
+    Listing.findById(id).select('autoApproval status').lean().exec(),
+  )
+}
+
+/** Vết quyết định tự đăng: có trong DB để điều tra, KHÔNG có trong response cho người xem. */
+describe('Vết quyết định tự đăng', () => {
+  it('tin bị giữ lại ghi đúng chốt đã chặn nó', async () => {
+    const { setTrustLevel } = await import('../helpers/fixtures')
+    await setTrustLevel(member.id, 0)
+    const id = await createListing(member, 'Tin của người bậc 0')
+
+    const doc = await readDecision(id)
+    expect(doc?.status).toBe('pending')
+    expect(doc?.autoApproval).toMatchObject({ trustLevel: 0, reason: 'trust_too_low' })
+  })
+
+  it('tin tự đăng ghi lại bậc uy tín tại thời điểm đăng', async () => {
+    const { setTrustLevel } = await import('../helpers/fixtures')
+    await setTrustLevel(member.id, 2)
+    const created = await request(app)
+      .post('/api/v1/listings')
+      .set(as(member))
+      .send({
+        title: 'Tin tự đăng của người bậc 2',
+        description: 'Mô tả đủ dài cho zod schema đi qua',
+        price: 150000,
+        categoryId,
+        images: ['https://example.com/a.jpg'],
+        location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
+      })
+      .expect(201)
+
+    // Không rò ra ngoài: hồ sơ kiểm duyệt không thuộc về trang tin.
+    expect(created.body.data.autoApproval).toBeUndefined()
+
+    const doc = await readDecision(created.body.data._id)
+    expect(doc?.status).toBe('active')
+    expect(doc?.autoApproval).toMatchObject({ trustLevel: 2, reason: 'approved' })
+  })
+})
+
+/**
+ * Đường THĂNG bậc, đi qua nguyên tầng HTTP.
+ *
+ * Các test khác chỉ ép bậc bằng fixture rồi kiểm nó tụt. Không có ca nào chứng minh bậc thật
+ * sự lên được — mà đó mới là đường quyết định ai được tự đăng tin.
+ */
+describe('Uy tín — thăng bậc qua API', () => {
+  it('5 tin được người duyệt thông qua thì lên bậc 1', async () => {
+    const climber = await joinOrg(owner.slug, 'Người leo bậc', 'climber@mod-trust.local')
+    expect(await trustOf(climber.id)).toBe(0)
+
+    for (let i = 0; i < 5; i += 1) {
+      const id = await createListing(climber, `Tin sạch số ${i + 1}`)
+      await request(app)
+        .patch(`/api/v1/moderation/listings/${id}`)
+        .set(as(owner))
+        .send({ status: 'active' })
+        .expect(200)
+    }
+
+    expect(await trustOf(climber.id)).toBe(1)
+  }, 60_000)
+
+  it('từ chối tin của người bậc 0 KHÔNG đẻ ra bản ghi uy tín rỗng', async () => {
+    const rookie = await joinOrg(owner.slug, 'Người mới', 'rookie@mod-trust.local')
+    const id = await createListing(rookie, 'Tin đầu tiên bị từ chối')
+
+    await request(app)
+      .patch(`/api/v1/moderation/listings/${id}`)
+      .set(as(owner))
+      .send({ status: 'rejected', reason: 'Ảnh không rõ sản phẩm' })
+      .expect(200)
+
+    const { UserTrust } = await import('../../src/features/trust/trust.model')
+    expect(await UserTrust.findOne({ userId: rookie.id }).lean().exec()).toBeNull()
+    expect(await trustOf(rookie.id)).toBe(0)
+  }, 60_000)
+})
+
+describe('Nhật ký hoạt động mang theo hậu quả uy tín', () => {
+  it('dòng log của lượt từ chối nói rõ bậc còn lại', async () => {
+    await raiseTo(member.id, 2)
+    const id = await createListing(member, 'Tin bị từ chối có ghi bậc')
+
+    await request(app)
+      .patch(`/api/v1/moderation/listings/${id}`)
+      .set(as(owner))
+      .send({ status: 'rejected', reason: 'Ảnh không rõ sản phẩm' })
+      .expect(200)
+
+    const feed = await request(app).get('/api/v1/moderation/activity').set(as(owner)).expect(200)
+
+    expect(feed.body.data[0].summary).toMatch(/Tin bị từ chối có ghi bậc/)
+    expect(feed.body.data[0].summary).toMatch(/uy tín bậc 1$/)
+  }, 60_000)
+})

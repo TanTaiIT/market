@@ -8,7 +8,7 @@ import { OrgUnit } from '../src/features/org-unit/org-unit.model'
 import { Membership } from '../src/features/membership/membership.model'
 import { RoleGrant } from '../src/features/role-grant/role-grant.model'
 import { JoinRequest } from '../src/features/join-request/join-request.model'
-import { PublicTrust } from '../src/features/trust/trust.model'
+import { UserTrust } from '../src/features/trust/trust.model'
 import { Notification } from '../src/features/notification/notification.model'
 import { Category } from '../src/features/category/category.model'
 import {
@@ -341,7 +341,7 @@ async function migrate() {
       RoleGrant,
       JoinRequest,
       Listing,
-      PublicTrust,
+      UserTrust,
       Notification,
       // Ba model của cụm category-template. Thiếu chúng ở đây thì index mới (`attrs`, unique
       // `slug`/`key`, unique bản template theo danh mục) không được tạo lúc migrate — và ở

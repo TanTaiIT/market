@@ -119,9 +119,14 @@ export async function grantRole(input: {
  * Nâng bậc uy tín để test KHÔNG về nghiệp vụ quota không bị quota chặn ngang. Bậc 1 = 5 tin
  * chờ duyệt, vẫn dưới ngưỡng tự đăng nên tin mới vẫn ở 'pending' như test mong đợi.
  */
-export async function setTrustLevel(userId: string, organizationId: string, level: number) {
-  const { Membership } = await import('../../src/features/membership/membership.model')
-  await Membership.updateOne({ userId, organizationId }, { trustLevel: level }).exec()
+export async function setTrustLevel(userId: string, level: number) {
+  const { UserTrust } = await import('../../src/features/trust/trust.model')
+  const { CLEAN_APPROVALS_PER_LEVEL } = await import('../../src/features/trust/trust.policy')
+  await UserTrust.updateOne(
+    { userId },
+    { level, cleanApprovals: level * CLEAN_APPROVALS_PER_LEVEL },
+    { upsert: true },
+  ).exec()
 }
 
 /** Header chuẩn của một request có org: token + org hoạt động. */
