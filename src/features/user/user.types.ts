@@ -28,6 +28,21 @@ export function toPublicProfileDto(user: IUserDocument): PublicProfileDto {
  * `isEmailVerified` dẫn xuất từ `emailVerifiedAt` — giống hệt `toAuthResponseDto`, để "user
  * hiện tại" chỉ có MỘT hình dạng dù đến từ lúc đăng nhập hay lúc mở lại app.
  */
+/** Dòng bảng người dùng của master — xem `adminUserSchema` về việc vì sao có email. */
+export function toAdminUserDto(user: IUserDocument, trustLevel: number) {
+  return {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    avatar: user.avatar,
+    isActive: user.isActive,
+    isEmailVerified: Boolean(user.emailVerifiedAt),
+    trustLevel,
+    lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
+    createdAt: user.createdAt.toISOString(),
+  }
+}
+
 export function toMeProfileDto(user: IUserDocument): MeProfileDto {
   return {
     ...toPublicProfileDto(user),

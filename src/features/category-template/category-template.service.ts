@@ -1,4 +1,15 @@
+import { Types } from 'mongoose'
 import { categoryTemplateRepository } from './category-template.repository'
+import { IFieldDefinitionDocument } from './category-template.model'
+import {
+  CreateFieldDefinitionInput,
+  TemplateFieldInput,
+  TemplateFieldsInput,
+} from './category-template.schema'
+import { toFieldDefinitionDto } from './category-template.types'
+import { categoryRepository } from '../category/category.repository'
+import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
+import { TEMPLATE_STATUS } from '../../common/constants'
 import { ICategoryTemplateDocument } from './category-template.model'
 import { toTemplateDto, ResolvedTemplate } from './category-template.types'
 import { validateAttributes, ValidatedAttributes } from './category-template.validate'
@@ -35,11 +46,181 @@ async function resolve(
   return toTemplateDto(template, defs)
 }
 
+// ── ĐƯỜNG GHI (master) ──────────────────────────────────────────────────────
+
+/**
+ * Trần số field mở lọc trong một template.
+ *
+ * Mỗi field `filterable` là một phần tử thêm vào `Listing.attrs` của MỌI tin thuộc danh mục
+ * đó, và một nhánh nữa mà index `attrs.k/attrs.v` phải quét. Đây từng là một dòng ghi chú
+ * trong seed rồi bị bỏ qua — 11 field phải hạ xuống bằng tay sau đó. Thành luật thì nó không
+ * trôi lại được.
+ */
+const MAX_FILTERABLE_FIELDS = 8
+
+/**
+ * Ghép `fields` với từ điển, tạo định nghĩa mới nếu master khai `define`.
+ *
+ * Trả về map `key -> IFieldDefinition` để bước kiểm sau tính được `filterable` hiệu lực.
+ */
+async function resolveDefinitions(fields: TemplateFieldInput[]) {
+  const keys = fields.map((field) => field.key)
+  const existing = await categoryTemplateRepository.findDefinitionsByKeys(keys)
+  const byKey = new Map(existing.map((def) => [def.key, def]))
+
+  for (const field of fields) {
+    const known = byKey.get(field.key)
+
+    if (known && field.define && field.define.type !== known.type) {
+      throw new BadRequestError(
+        `Field "${field.key}" đã tồn tại trong từ điển với kiểu "${known.type}" — ` +
+          'một khoá không được mang hai kiểu, đổi key hoặc bỏ phần định nghĩa',
+      )
+    }
+    if (known) continue
+
+    if (!field.define) {
+      throw new BadRequestError(
+        `Field "${field.key}" chưa có trong từ điển — khai "define" để tạo mới`,
+      )
+    }
+
+    byKey.set(
+      field.key,
+      await categoryTemplateRepository.createDefinition({ key: field.key, ...field.define }),
+    )
+  }
+
+  return byKey
+}
+
+/** Bốn chốt hình dạng, chạy trước mọi lượt ghi. */
+function assertTemplateShape(
+  fields: TemplateFieldInput[],
+  definitions: Map<string, IFieldDefinitionDocument>,
+) {
+  const keys = new Set<string>()
+  const orders = new Set<number>()
+  for (const field of fields) {
+    if (keys.has(field.key)) throw new BadRequestError(`Field "${field.key}" khai hai lần`)
+    if (orders.has(field.order)) {
+      throw new BadRequestError(
+        `Hai field cùng order ${field.order} — thứ tự hiện form sẽ tuỳ hứng`,
+      )
+    }
+    keys.add(field.key)
+    orders.add(field.order)
+  }
+
+  for (const field of fields) {
+    // `showIf` trỏ ra ngoài template là một field không bao giờ hiện: điều kiện của nó đọc một
+    // khoá mà form này không có, nên luôn sai.
+    if (field.showIf && !keys.has(field.showIf.key)) {
+      throw new BadRequestError(
+        `Field "${field.key}" phụ thuộc "${field.showIf.key}" nhưng khoá đó không có trong template`,
+      )
+    }
+  }
+
+  const filterable = fields.filter(
+    (field) => field.filterable ?? definitions.get(field.key)?.filterable ?? false,
+  ).length
+  if (filterable > MAX_FILTERABLE_FIELDS) {
+    throw new BadRequestError(
+      `${filterable} field mở lọc, tối đa ${MAX_FILTERABLE_FIELDS} — mỗi field lọc là một nhánh ` +
+        'index phải quét trên mọi tin của danh mục này',
+    )
+  }
+}
+
+const toTemplateFields = (fields: TemplateFieldInput[]) =>
+  fields.map((field) => ({
+    key: field.key,
+    order: field.order,
+    required: field.required,
+    filterable: field.filterable,
+    group: field.group,
+    showIf: field.showIf,
+    override: field.override,
+  }))
+
 export const categoryTemplateService = {
   /**
    * Template đang phục vụ cho một danh mục. Chưa có bản riêng thì rơi về bản chung — đó là lý
    * do fallback tồn tại (đặc tả §4.7): mọi danh mục đều đăng tin được, kể cả danh mục vừa tạo.
    */
+  /** Từ điển field dùng chung — màn dựng template đọc nó để master chọn. */
+  async listFieldDefinitions() {
+    const rows = await categoryTemplateRepository.listDefinitions()
+    return rows.map(toFieldDefinitionDto)
+  },
+
+  async createFieldDefinition(input: CreateFieldDefinitionInput) {
+    const [existing] = await categoryTemplateRepository.findDefinitionsByKeys([input.key])
+    if (existing) throw new ConflictError(`Field "${input.key}" đã có trong từ điển`)
+    return toFieldDefinitionDto(await categoryTemplateRepository.createDefinition(input))
+  },
+
+  /**
+   * Tạo bản nháp version kế tiếp cho một danh mục.
+   *
+   * Không sửa bản đã publish, kể cả khi nó vừa được tạo một phút trước: tin đăng ghim
+   * `templateRef.version`, và form sửa tin dựng lại đúng bộ field lúc tin ra đời. Mutate bản
+   * cũ nghĩa là tin cũ đột nhiên mang field chưa từng tồn tại với chúng.
+   */
+  async createDraft(categoryId: string, input: TemplateFieldsInput) {
+    const category = await categoryRepository.findById(categoryId)
+    if (!category) throw new NotFoundError('Category not found')
+
+    const definitions = await resolveDefinitions(input.fields)
+    assertTemplateShape(input.fields, definitions)
+
+    const latest = await categoryTemplateRepository.findLatestByCategory(categoryId)
+    const doc = await categoryTemplateRepository.createTemplate({
+      categoryId: new Types.ObjectId(categoryId),
+      isFallback: false,
+      version: (latest?.version ?? 0) + 1,
+      status: TEMPLATE_STATUS.DRAFT,
+      fieldKeys: toTemplateFields(input.fields),
+    })
+    return this.getForCategory(categoryId, doc.version)
+  },
+
+  async updateDraft(categoryId: string, version: number, input: TemplateFieldsInput) {
+    const doc = await categoryTemplateRepository.findByCategoryAndVersion(categoryId, version)
+    if (!doc) throw new NotFoundError('Template not found')
+    if (doc.status !== TEMPLATE_STATUS.DRAFT) {
+      throw new BadRequestError(
+        'Bản đã phát hành không sửa được — tạo bản nháp mới, tin cũ vẫn đọc bản này',
+      )
+    }
+
+    const definitions = await resolveDefinitions(input.fields)
+    assertTemplateShape(input.fields, definitions)
+
+    doc.fieldKeys = toTemplateFields(input.fields)
+    await doc.save()
+    return this.getForCategory(categoryId, version)
+  },
+
+  async publish(categoryId: string, version: number) {
+    const doc = await categoryTemplateRepository.findByCategoryAndVersion(categoryId, version)
+    if (!doc) throw new NotFoundError('Template not found')
+    if (doc.status === TEMPLATE_STATUS.PUBLISHED) {
+      throw new BadRequestError('Bản này đã phát hành rồi')
+    }
+
+    // Kiểm lại lúc phát hành, không chỉ lúc ghi: từ điển có thể đã xoá mềm một field kể từ khi
+    // bản nháp được tạo, và lúc đó form sẽ hiện một ô không có định nghĩa nào phía sau.
+    const definitions = await resolveDefinitions(doc.fieldKeys as TemplateFieldInput[])
+    assertTemplateShape(doc.fieldKeys as TemplateFieldInput[], definitions)
+
+    doc.status = TEMPLATE_STATUS.PUBLISHED
+    doc.publishedAt = new Date()
+    await doc.save()
+    return this.getForCategory(categoryId, version)
+  },
+
   async getForCategory(categoryId: string, version?: number): Promise<ResolvedTemplate> {
     /*
      * `version` = "dựng lại đúng bộ field mà tin này được tạo ra với nó" (form sửa tin).

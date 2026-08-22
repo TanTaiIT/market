@@ -126,7 +126,7 @@ export interface ITemplateField {
   >
 }
 
-interface ICategoryTemplate {
+export interface ICategoryTemplate {
   /** `null` KHI VÀ CHỈ KHI `isFallback` — bản chung không thuộc danh mục nào. */
   categoryId: Types.ObjectId | null
   isFallback: boolean

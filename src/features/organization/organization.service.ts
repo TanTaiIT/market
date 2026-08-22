@@ -24,6 +24,7 @@ import {
 } from '../../common/utils/orgSlug'
 import { generateJoinCode, normalizeJoinCode } from '../../common/utils/joinCode'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
+import { notificationService } from '../notification/notification.service'
 import { logger } from '../../config/logger'
 
 /** Mã lỗi unique index của MongoDB. */
@@ -179,6 +180,14 @@ export const organizationService = {
       await org.save()
       clearOrganizationCache()
     }
+
+    // Người được trao không có mặt lúc master bấm nút, và không màn hình nào tự bật lên báo họ.
+    await notificationService.notifyUser({
+      organizationId: org._id,
+      userId: user._id,
+      title: 'Bạn được giao phụ trách một tổ chức',
+      body: `Bạn giờ là quản trị của "${org.name}".`,
+    })
 
     logger.info('organization admin granted', {
       actorId,

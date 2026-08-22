@@ -1,6 +1,5 @@
 import { FilterQuery, Types } from 'mongoose'
 import { Notification, INotification, INotificationDocument } from './notification.model'
-import { runUnscoped } from '../../common/tenant/tenantContext'
 import { PaginationParams } from '../../common/utils/pagination'
 
 /**
@@ -8,6 +7,8 @@ import { PaginationParams } from '../../common/utils/pagination'
  * `recipientId` kèm thêm thông báo ĐÍCH DANH của người đó — vắng nó thì chỉ lấy tin phát chung.
  */
 export type NotificationAudience = {
+  /** Org của request — chỉ ràng nhánh PHÁT CHUNG. Thông báo đích danh đi theo người, không theo org. */
+  organizationId: Types.ObjectId | null
   all?: boolean
   units?: Types.ObjectId[]
   recipientId?: Types.ObjectId
@@ -18,14 +19,17 @@ export type NotificationAudience = {
  * quản trị (`scope=managed`) đọc luôn thông báo riêng của từng người trong tổ chức.
  */
 function broadcastFilter(audience: NotificationAudience): FilterQuery<INotificationDocument> {
-  if (audience.all) return { userId: null }
+  // `organizationId` phải khai TƯỜNG MINH từ đây trở đi: model đã ra khỏi `tenantPlugin` nên
+  // không còn ai chèn filter hộ, mà thông báo phát chung thì vẫn của riêng một tổ chức.
+  const org = { organizationId: audience.organizationId }
+  if (audience.all) return { ...org, userId: null }
 
   // `$in: []` khớp 0 document, nên chỉ thêm nhánh nhóm khi danh sách không rỗng — thêm vô điều
   // kiện sẽ biến "không thuộc nhóm nào" thành "không thấy gì cả".
   if (audience.units?.length) {
-    return { userId: null, $or: [{ unitId: null }, { unitId: { $in: audience.units } }] }
+    return { ...org, userId: null, $or: [{ unitId: null }, { unitId: { $in: audience.units } }] }
   }
-  return { userId: null, unitId: null }
+  return { ...org, userId: null, unitId: null }
 }
 
 export const notificationRepository = {
@@ -42,18 +46,18 @@ export const notificationRepository = {
    * và người đăng không bao giờ thấy.
    */
   createForUser(input: {
-    organizationId: Types.ObjectId
+    organizationId: Types.ObjectId | null
     userId: Types.ObjectId
     title: string
     body: string
   }) {
-    return runUnscoped('system notification lands in the SUBJECT org, not the actor org', () =>
-      Notification.create({ ...input, unitId: null }),
-    )
+    return Notification.create({ ...input, unitId: null })
   },
 
   async paginate(audience: NotificationAudience, { skip, limit }: PaginationParams) {
     const broadcast = broadcastFilter(audience)
+    // Nhánh đích danh KHÔNG kèm `organizationId`: đó là điểm của cả thay đổi này — hộp thư của
+    // một người là một hộp thư, không phải một cái cho mỗi tổ chức họ tham gia.
     const filter: FilterQuery<INotificationDocument> = audience.recipientId
       ? { $or: [{ userId: audience.recipientId }, broadcast] }
       : broadcast

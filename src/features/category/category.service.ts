@@ -1,4 +1,5 @@
 import { categoryRepository } from './category.repository'
+import { categoryTemplateService } from '../category-template/category-template.service'
 import { ICategoryDocument } from './category.model'
 import { CategoryQuery, CreateCategoryInput, UpdateCategoryInput } from './category.schema'
 import { toCategoryDto } from './category.types'
@@ -50,9 +51,29 @@ export const categoryService = {
       slug,
       icon: input.icon,
       order: input.order,
+      requireManualReview: input.requireManualReview,
     })
 
-    logger.info('platform-admin category-create', { adminId: actorId, slug, name: input.name })
+    /*
+     * Template đi kèm: tạo bản nháp rồi phát hành ngay trong cùng lượt gọi.
+     *
+     * Danh mục đã ghi trước đó và KHÔNG rollback nếu template hỏng — cố ý. Template sai chỉ là
+     * một form thiếu field, sửa bằng `POST /categories/:id/template`; còn xoá ngược danh mục
+     * vừa tạo thì phải xoá cả slug đã chiếm, mà slug là khoá tra cứu ổn định của từ điển chung.
+     * Lỗi validate của template vẫn ném lên như thường, master thấy ngay và dựng lại bản nháp.
+     */
+    if (input.template) {
+      const categoryId = category._id.toString()
+      const draft = await categoryTemplateService.createDraft(categoryId, input.template)
+      await categoryTemplateService.publish(categoryId, draft.version)
+    }
+
+    logger.info('platform-admin category-create', {
+      adminId: actorId,
+      slug,
+      name: input.name,
+      withTemplate: Boolean(input.template),
+    })
     return toCategoryDto(category)
   },
 

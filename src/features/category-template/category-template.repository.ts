@@ -1,5 +1,10 @@
 import { TEMPLATE_STATUS } from '../../common/constants'
-import { CategoryTemplate, FieldDefinition } from './category-template.model'
+import {
+  CategoryTemplate,
+  FieldDefinition,
+  ICategoryTemplate,
+  IFieldDefinition,
+} from './category-template.model'
 
 /**
  * Hai collection nằm ngoài mô hình tenant (convention §1.3) nên repository này KHÔNG nhận
@@ -48,5 +53,27 @@ export const categoryTemplateRepository = {
   /** Từ điển field cho một danh sách key — nguồn `label`/`options`/`min`/`max` của `toTemplateDto`. */
   findDefinitionsByKeys(keys: string[]) {
     return FieldDefinition.find({ key: { $in: keys } }).exec()
+  },
+
+  listDefinitions() {
+    return FieldDefinition.find().sort({ key: 1 }).exec()
+  },
+
+  createDefinition(data: Partial<IFieldDefinition>) {
+    return FieldDefinition.create(data)
+  },
+
+  /**
+   * Version cao nhất của một danh mục, KHÔNG lọc trạng thái.
+   *
+   * Bản nháp cũng chiếm số: đánh version mới dựa trên bản `published` cao nhất sẽ đụng unique
+   * index `(categoryId, version)` ngay khi đang có một bản nháp treo ở đúng số đó.
+   */
+  findLatestByCategory(categoryId: string) {
+    return CategoryTemplate.findOne({ categoryId }).sort({ version: -1 }).exec()
+  },
+
+  createTemplate(data: Partial<ICategoryTemplate>) {
+    return CategoryTemplate.create(data)
   },
 }
