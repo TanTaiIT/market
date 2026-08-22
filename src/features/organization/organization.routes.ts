@@ -5,17 +5,26 @@ import {
   organizationLookupSchema,
   organizationLookupQuerySchema,
   organizationParamsSchema,
+  organizationCardSchema,
   organizationSummarySchema,
   myOrganizationSchema,
   createOrganizationSchema,
+  grantOrgAdminSchema,
+  joinCodeParamsSchema,
   setOrgStatusSchema,
+  updateOrganizationSchema,
   changeOrgSlugSchema,
   slugAvailabilityQuerySchema,
   slugAvailabilitySchema,
 } from './organization.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { lookupLimiter } from '../../middlewares/rateLimiter.middleware'
-import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
+import {
+  authenticate,
+  requireMaster,
+  requireOrg,
+  requireOrgAdmin,
+} from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
@@ -37,8 +46,36 @@ router.get(
   organizationController.slugAvailability,
 )
 
+// Người cầm mã xem thẻ nhóm trước khi bấm xin vào. Công khai như `lookup`, và dùng chung
+// rate-limit với nó: dò mã bừa cũng là một kiểu quét.
+router.get(
+  '/by-code/:code',
+  lookupLimiter,
+  validate({ params: joinCodeParamsSchema }),
+  organizationController.byCode,
+)
+
 // Cần đăng nhập nhưng KHÔNG cần org scope: chính nó là thứ trả lời "tôi được chọn org nào".
 router.get('/mine', authenticate, organizationController.mine)
+
+// Hồ sơ nhóm — đường DUY NHẤT trong feature này mà admin org gọi được, phần còn lại của master.
+// Không có id trên path: org đến từ scope, đúng khuôn `org-unit` và `role-grant`. Phải khai
+// TRƯỚC các route `/:organizationId` — Express khớp theo thứ tự.
+router.post(
+  '/current/join-code',
+  authenticate,
+  requireOrg,
+  requireOrgAdmin,
+  organizationController.rotateJoinCode,
+)
+router.patch(
+  '/current',
+  authenticate,
+  requireOrg,
+  requireOrgAdmin,
+  validate({ body: updateOrganizationSchema }),
+  organizationController.update,
+)
 
 // ── Vận hành hệ thống (master) ──────────────────────────────────────────────
 // Chỉ master tạo được org (quyết định Q2): không có luồng tự phục vụ, nên cũng không có đường
@@ -49,6 +86,14 @@ router.post(
   requireMaster,
   validate({ body: createOrganizationSchema }),
   organizationController.create,
+)
+// Trao quyền phụ trách. Đứng riêng với `POST /` vì hai việc có nhịp khác nhau — xem service.
+router.post(
+  '/:organizationId/admin',
+  authenticate,
+  requireMaster,
+  validate({ params: organizationParamsSchema, body: grantOrgAdminSchema }),
+  organizationController.grantAdmin,
 )
 router.patch(
   '/:organizationId/status',
@@ -87,6 +132,60 @@ registry.registerPath({
 })
 
 registry.registerPath({
+  method: 'patch',
+  path: '/organizations/current',
+  operationId: 'organizationUpdate',
+  tags: ['Organization'],
+  summary: 'Sửa hồ sơ tổ chức đang hoạt động (admin của chính tổ chức đó)',
+  description:
+    'Tổ chức lấy từ header `X-Org-Slug` / subdomain, không nhận id trên đường dẫn. Ảnh phải là ' +
+    'đường dẫn `res.cloudinary.com` do client upload thẳng lên; gửi `null` để gỡ ảnh, bỏ trống ' +
+    'để giữ nguyên. Đổi `slug` vẫn là việc của master.',
+  ...protectedRoute,
+  request: { body: { content: { 'application/json': { schema: updateOrganizationSchema } } } },
+  responses: {
+    200: jsonResponse('Đã cập nhật', orgResponse),
+    400: errorResponse('Dữ liệu không hợp lệ, hoặc ảnh không phải đường dẫn Cloudinary'),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền quản lý tổ chức'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/organizations/current/join-code',
+  operationId: 'organizationRotateJoinCode',
+  tags: ['Organization'],
+  summary: 'Xoay mã nhóm (admin của chính tổ chức đó)',
+  description:
+    'Mã cũ chết ngay lập tức. Đây là đường cắt khi mã lọt ra ngoài — đổi slug thì làm hỏng mọi ' +
+    'link đã phát, còn mã thì sinh ra để đổi được.',
+  ...protectedRoute,
+  responses: {
+    200: jsonResponse('Mã mới', orgResponse),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền quản lý tổ chức'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/organizations/by-code/{code}',
+  operationId: 'organizationByCode',
+  tags: ['Organization'],
+  summary: 'Xem thẻ nhóm bằng mã (công khai)',
+  description:
+    'Đủ để người cầm mã nhận ra đúng nhóm trước khi bấm xin vào. Không trả `id`, `slug` hay ' +
+    'chính cái mã — endpoint công khai nên chỉ đưa thứ cần để nhận diện.',
+  request: { params: joinCodeParamsSchema },
+  responses: {
+    200: jsonResponse('Thẻ nhóm', envelope(organizationCardSchema)),
+    404: errorResponse('Không tìm thấy nhóm nào với mã này'),
+    429: errorResponse('Quá nhiều request'),
+  },
+})
+
+registry.registerPath({
   method: 'post',
   path: '/organizations',
   operationId: 'createOrganization',
@@ -102,6 +201,29 @@ registry.registerPath({
     403: notMaster,
     404: errorResponse('Không tìm thấy tài khoản của người chủ'),
     409: errorResponse('Slug đã tồn tại hoặc bị cấm'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/organizations/{organizationId}/admin',
+  operationId: 'organizationGrantAdmin',
+  tags: ['Organization'],
+  summary: 'Trao quyền phụ trách tổ chức cho một tài khoản',
+  description:
+    'Ghi cùng lúc hai thứ: thân phận `admin` trong danh bạ và quyền quản trị thật. Org đang ở ' +
+    '`pending_admin` sẽ chuyển sang `active` ngay lần trao đầu tiên. Gọi lại với cùng một ' +
+    'người là thao tác vô hại.',
+  ...protectedRoute,
+  request: {
+    params: organizationParamsSchema,
+    body: { content: { 'application/json': { schema: grantOrgAdminSchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã trao quyền', orgResponse),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: notMaster,
+    404: errorResponse('Không tìm thấy tổ chức, hoặc email chưa có tài khoản'),
   },
 })
 

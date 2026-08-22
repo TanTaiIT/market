@@ -17,9 +17,12 @@ export const memberResponseSchema = z
     avatar: z.string(),
     role: z.nativeEnum(MEMBERSHIP_ROLES),
     unitId: objectId.nullable(),
-    joinedVia: z.nativeEnum(JOINED_VIA),
-    trustLevel: z.number(),
-    joinedAt: z.string().datetime(),
+    // Ba field dưới CHỈ có khi người gọi là quản trị org. Khai `optional` thay vì dựng hai
+    // schema: một union ở đây biến mọi call-site của SDK thành một lượt thu hẹp kiểu, cho một
+    // khác biệt mà chính client đã biết trước khi gọi.
+    joinedVia: z.nativeEnum(JOINED_VIA).optional(),
+    trustLevel: z.number().optional(),
+    joinedAt: z.string().datetime().optional(),
   })
   .openapi('Member')
 

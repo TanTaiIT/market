@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   QUOTA,
   QuotaInput,
+  autoApprovalReason,
   checkQuota,
   isAutoApprove,
   pendingLimitFor,
@@ -66,5 +67,47 @@ describe('Tự đăng khi đủ uy tín', () => {
 
   it('có tin vừa bị từ chối thì mất quyền tự đăng, dù uy tín đủ', () => {
     expect(isAutoApprove(QUOTA.AUTO_APPROVE_TRUST_LEVEL, 1)).toBe(false)
+  })
+})
+
+describe('autoApprovalReason', () => {
+  const noBlock = {
+    autoApproved: false,
+    trustLevel: 0,
+    recentRejections: 0,
+    categoryRequiresReview: false,
+    isOutsider: false,
+  }
+
+  it('tin tự đăng thì lý do là chính nó, không dò tiếp', () => {
+    // Kể cả khi các cờ khác trông như đang chặn: kết quả thật mới là nguồn sự thật.
+    expect(autoApprovalReason({ ...noBlock, autoApproved: true, trustLevel: 0 })).toBe('approved')
+  })
+
+  it('người ngoài luôn bị giữ, bất kể uy tín', () => {
+    expect(autoApprovalReason({ ...noBlock, trustLevel: 9, isOutsider: true })).toBe(
+      'outsider_post',
+    )
+  })
+
+  it('có tin bị từ chối gần đây thì đó là lý do, trước cả cờ danh mục', () => {
+    expect(
+      autoApprovalReason({
+        ...noBlock,
+        trustLevel: 9,
+        recentRejections: 1,
+        categoryRequiresReview: true,
+      }),
+    ).toBe('recent_rejection')
+  })
+
+  it('danh mục bắt duyệt tay phủ quyết uy tín cao', () => {
+    expect(autoApprovalReason({ ...noBlock, trustLevel: 9, categoryRequiresReview: true })).toBe(
+      'category_manual_review',
+    )
+  })
+
+  it('không vướng gì khác thì là do bậc chưa đủ', () => {
+    expect(autoApprovalReason({ ...noBlock, trustLevel: 1 })).toBe('trust_too_low')
   })
 })

@@ -7,6 +7,7 @@ import organizationRoutes from './organization/organization.routes'
 import orgUnitRoutes from './org-unit/org-unit.routes'
 import joinRequestRoutes from './join-request/join-request.routes'
 import membershipRoutes from './membership/membership.routes'
+import inviteRoutes from './invite/invite.routes'
 import roleGrantRoutes from './role-grant/role-grant.routes'
 import categoryRoutes from './category/category.routes'
 import chatRoutes from './chat/chat.routes'
@@ -29,6 +30,7 @@ router.use('/organizations', organizationRoutes)
 router.use('/org-units', orgUnitRoutes)
 router.use('/join-requests', joinRequestRoutes)
 router.use('/memberships', membershipRoutes)
+router.use('/invites', inviteRoutes)
 router.use('/role-grants', roleGrantRoutes)
 router.use('/categories', categoryRoutes)
 router.use('/chats', chatRoutes)

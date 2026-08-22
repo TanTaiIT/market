@@ -7,6 +7,7 @@ import {
   TestUser,
   createOrg,
   createTestApp,
+  joinCodeOf,
   makeMaster,
   orgAuth,
   registerUser,
@@ -24,12 +25,15 @@ const SLUG = 'join-org'
 
 const asOwner = () => orgAuth(owner.token, SLUG)
 
+/** Mã nhóm của org test, nạp một lần trong `beforeAll` — `sendRequest` không async được. */
+let code = ''
+
 /** Không `async`: trả thẳng đối tượng của supertest để call site còn nối `.expect()` được. */
 function sendRequest(user: TestUser, body: Record<string, unknown> = {}) {
   return request(app)
     .post('/api/v1/join-requests')
     .set('Authorization', `Bearer ${user.token}`)
-    .send({ orgSlug: SLUG, claimedName: 'Nguyễn Văn A', ...body })
+    .send({ code, claimedName: 'Nguyễn Văn A', ...body })
 }
 
 beforeAll(async () => {
@@ -46,6 +50,7 @@ beforeAll(async () => {
       orgType: 'school',
     })
   ).id
+  code = await joinCodeOf(SLUG)
 
   const unit = await request(app).post('/api/v1/org-units').set(asOwner()).send({ name: '10A1' })
   expect(unit.status).toBe(201)
@@ -129,8 +134,6 @@ describe('Duyệt đơn', () => {
     const membership = await Membership.findOne({ userId: user.id, organizationId: orgId }).exec()
     expect(membership).not.toBeNull()
     expect(membership!.unitId?.toString()).toBe(unitId)
-    // Vào bằng đường request = mức tin cậy đáy: verify email không chứng minh danh tính.
-    expect(membership!.trustLevel).toBe(0)
     expect(membership!.joinedVia).toBe('request')
   })
 
@@ -239,7 +242,7 @@ describe('Trần số đơn đang chờ', () => {
       await request(app)
         .post('/api/v1/join-requests')
         .set('Authorization', `Bearer ${user.token}`)
-        .send({ orgSlug: slug, claimedName: 'Spam' })
+        .send({ code: await joinCodeOf(slug), claimedName: 'Spam' })
         .expect(201)
     }
 

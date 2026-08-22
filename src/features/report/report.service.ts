@@ -3,6 +3,8 @@ import { reportRepository } from './report.repository'
 import { CreateReportInput, ReportQuery, ResolveReportInput } from './report.schema'
 import { IReportDocument } from './report.model'
 import { listingService } from '../listing/listing.service'
+import { trustRepository } from '../trust/trust.repository'
+import type { TrustState } from '../trust/trust.policy'
 import { userRepository } from '../user/user.repository'
 import { recordAudit } from '../moderation/moderation.service'
 import { AUDIT_ACTION, LISTING_STATUS, REPORT_STATUS, REPORT_TARGET } from '../../common/constants'
@@ -110,11 +112,13 @@ export const reportService = {
     const moderator = await userRepository.findById(actor.id)
     const byName = moderator?.name ?? 'Quản trị'
     const hideTarget = input.action === 'hide_target' && report.targetType === REPORT_TARGET.LISTING
+    /** Bậc uy tín sau khi trừ — chỉ có khi báo cáo được xác minh. Dùng cho dòng nhật ký. */
+    let trust: TrustState | null = null
 
     if (hideTarget) {
       // `grants` là bắt buộc: `setModerationStatus` tự chốt phạm vi duyệt theo TRỤC của tin,
       // nên báo cáo về một tin trục danh mục sẽ bị 403 ở đây thay vì để quyền org ẩn nó.
-      await listingService.setModerationStatus(
+      const hidden = await listingService.setModerationStatus(
         report.targetId.toString(),
         {
           status: LISTING_STATUS.HIDDEN,
@@ -124,6 +128,19 @@ export const reportService = {
         },
         actor.grants,
       )
+
+      /*
+       * Uy tín trừ ở ĐÂY chứ không ở `applyTrustEffect`.
+       *
+       * `applyTrustEffect` cố tình bỏ qua trạng thái `hidden`: ẩn tin là thao tác vận hành,
+       * có thể vì lý do ngoài lỗi người đăng. Nhưng ẩn vì một báo cáo ĐÃ ĐƯỢC XÁC MINH thì
+       * khác hẳn — đó là kết luận "người này làm sai", và là loại vi phạm nguy hiểm nhất:
+       * tin đã lọt qua kiểm duyệt, đã tới tay người mua, rồi mới bị chính họ tố giác.
+       *
+       * Không sợ trừ hai lần: `resolveAllForTarget` đóng mọi báo cáo còn mở của cùng một tin
+       * trong một lượt, và lượt gọi thứ hai bị chặn ngay ở `status !== OPEN` phía trên.
+       */
+      trust = await trustRepository.record(hidden.seller, false)
     }
 
     await reportRepository.resolveAllForTarget(report.targetId, {
@@ -141,7 +158,7 @@ export const reportService = {
       {
         action: hideTarget ? AUDIT_ACTION.REPORT_RESOLVE : AUDIT_ACTION.REPORT_DISMISS,
         summary: hideTarget
-          ? `Gỡ "${report.targetTitle}" sau báo cáo`
+          ? `Gỡ "${report.targetTitle}" sau báo cáo · uy tín bậc ${trust?.level ?? 0}`
           : `Bỏ qua báo cáo về "${report.targetTitle}"`,
         targetType: 'report',
         targetId: report._id,

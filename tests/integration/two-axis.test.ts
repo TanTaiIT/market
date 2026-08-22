@@ -13,6 +13,7 @@ import {
   listingPayload,
   makeMaster,
   orgAuth,
+  publishListing,
   registerUser,
   startTestDb,
 } from '../helpers/fixtures'
@@ -283,8 +284,6 @@ describe('Duyệt tin — phạm vi theo trục', () => {
   let outsiderPublic = ''
 
   beforeAll(async () => {
-    const { addMember, publishListing, registerUser } = await import('../helpers/fixtures')
-
     // Người mới hoàn toàn: `member`/`outsider` ở trên đã dùng hết quota tin chờ duyệt, đăng
     // thêm là 409 chứ không phải lỗi phân quyền — đúng thứ test này KHÔNG muốn đo.
     const poster = await registerUser(app, 'poster@two-axis.local', 'Người đăng')
@@ -358,7 +357,6 @@ describe('Duyệt tin — phạm vi theo trục', () => {
    * `setModerationStatus`) khoá bằng `tests/unit/policy.test.ts`.
    */
   it('không gửi được báo cáo cho tin trục danh mục', async () => {
-    const { addMember, registerUser } = await import('../helpers/fixtures')
     const reporter = await registerUser(app, 'reporter@two-axis.local', 'Người báo cáo')
     await addMember(reporter.id, orgId)
 
@@ -382,7 +380,6 @@ describe('Duyệt tin — phạm vi theo trục', () => {
   })
 
   it('có grant đúng ô (danh mục × tỉnh) thì ghim được tin công khai', async () => {
-    const { grantRole } = await import('../helpers/fixtures')
     await grantRole({
       userId: owner.id,
       role: 'manager',

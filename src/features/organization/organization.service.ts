@@ -1,7 +1,7 @@
 import { Types } from 'mongoose'
-import { organizationRepository } from './organization.repository'
+import { clearOrganizationCache, organizationRepository } from './organization.repository'
 import { toMyOrganizationDto, toOrganizationLookupDto } from './organization.types'
-import { CreateOrganizationInput } from './organization.schema'
+import { CreateOrganizationInput, UpdateOrganizationInput } from './organization.schema'
 import { userRepository } from '../user/user.repository'
 import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
@@ -12,11 +12,48 @@ import {
   ORG_TYPES,
   SCOPE_TYPES,
   SYSTEM_ROLES,
+  TENANT_STATUS,
   TenantStatus,
 } from '../../common/constants'
 import { ConflictError, NotFoundError } from '../../common/errors'
-import { isReservedSlug, suggestOrgSlugs, toOrgSlug } from '../../common/utils/orgSlug'
+import {
+  isReservedSlug,
+  orgNameTokens,
+  suggestOrgSlugs,
+  toOrgSlug,
+} from '../../common/utils/orgSlug'
+import { generateJoinCode, normalizeJoinCode } from '../../common/utils/joinCode'
+import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { logger } from '../../config/logger'
+
+/** Mã lỗi unique index của MongoDB. */
+const DUPLICATE_KEY = 11000
+
+/**
+ * Số lần sinh lại khi mã nhóm đụng nhau. 31^6 ≈ 887 triệu tổ hợp nên đụng là chuyện hiếm —
+ * nhưng "hiếm" không phải "không", và một lần đụng không xử lý là một org tạo hụt.
+ */
+const JOIN_CODE_ATTEMPTS = 5
+
+/**
+ * Sinh mã và ghi, để unique index làm trọng tài.
+ *
+ * Không "tra xem mã đã tồn tại chưa rồi mới ghi": giữa hai câu lệnh đó là đúng khe mà hai lượt
+ * tạo org song song lọt qua và cùng nhận một mã.
+ */
+async function withUniqueJoinCode<T>(write: (joinCode: string) => Promise<T>): Promise<T> {
+  for (let attempt = 0; attempt < JOIN_CODE_ATTEMPTS; attempt += 1) {
+    try {
+      return await write(generateJoinCode())
+    } catch (err) {
+      const duplicate = err as { code?: number; keyPattern?: Record<string, unknown> }
+      // CHỈ thử lại khi chính mã nhóm đụng. Slug cũng có unique index: nuốt nhầm nó thì 5 lượt
+      // sau đều đụng lại y hệt, rồi báo "không sinh được mã nhóm" cho một lỗi trùng slug.
+      if (duplicate.code !== DUPLICATE_KEY || !duplicate.keyPattern?.joinCode) throw err
+    }
+  }
+  throw new ConflictError('Không sinh được mã nhóm, thử lại giúp')
+}
 
 /** Trần dropdown: đủ để chọn, không đủ để dùng API này liệt kê danh sách khách hàng. */
 const LOOKUP_LIMIT = 10
@@ -59,47 +96,149 @@ export const organizationService = {
       )
     }
 
-    const owner = await userRepository.findByEmail(input.ownerEmail)
-    if (!owner) {
-      throw new NotFoundError(
-        `Chưa có tài khoản nào dùng email ${input.ownerEmail} — người chủ phải đăng ký trước`,
-      )
-    }
-
     const orgId = new Types.ObjectId()
     const orgType = input.orgType ?? ORG_TYPES.GENERIC
 
-    const [org] = await organizationRepository.create({
-      _id: orgId,
-      name: input.name,
-      slug,
-      orgType,
-      // Preset chọn một lần lúc tạo; từ đây trở đi code đọc `capabilities`, không đọc `orgType`
-      // — nếu không thì "tổng quát hoá" chỉ là thêm một cột.
-      capabilities: ORG_CAPABILITY_PRESETS[orgType],
-      provinceCode: input.provinceCode ?? null,
-      district: input.district ?? null,
-      ownerId: owner._id,
-      createdBy: new Types.ObjectId(actorId),
-    })
-
-    await membershipRepository.create({
-      userId: owner._id,
-      organizationId: orgId,
-      role: MEMBERSHIP_ROLES.OWNER,
-      joinedVia: JOINED_VIA.ROSTER,
-    })
-
-    await roleGrantRepository.create({
-      userId: owner._id,
-      role: SYSTEM_ROLES.MANAGER,
-      scopeType: SCOPE_TYPES.ORG,
-      orgId,
-      grantedBy: new Types.ObjectId(actorId),
-    })
+    const [org] = await withUniqueJoinCode((joinCode) =>
+      organizationRepository.create({
+        _id: orgId,
+        joinCode,
+        name: input.name,
+        slug,
+        orgType,
+        // Preset chọn một lần lúc tạo; từ đây trở đi code đọc `capabilities`, không đọc `orgType`
+        // — nếu không thì "tổng quát hoá" chỉ là thêm một cột.
+        capabilities: ORG_CAPABILITY_PRESETS[orgType],
+        provinceCode: input.provinceCode ?? null,
+        district: input.district ?? null,
+        createdBy: new Types.ObjectId(actorId),
+        // Sinh ra không có người phụ trách. `findActiveById` chỉ thấy org `active`, nên tới khi
+        // master trao quyền thì org này chưa tồn tại với phần còn lại của hệ thống.
+        status: TENANT_STATUS.PENDING_ADMIN,
+      }),
+    )
 
     logger.info('organization created', { actorId, orgId: orgId.toString(), slug })
     return org
+  },
+
+  /**
+   * Trao quyền phụ trách một org cho một tài khoản.
+   *
+   * Tách khỏi `create` vì hai việc này có nhịp khác nhau: master dựng org theo danh sách,
+   * còn người phụ trách thì tìm được lúc nào trao lúc đó. Gộp vào một lượt như bản cũ nghĩa là
+   * không tạo nổi org khi chưa biết ai sẽ trông nó.
+   *
+   * Hai thứ được ghi cùng nhau và không tách rời được về mặt nghiệp vụ: `Membership` là thân
+   * phận (hiện trong danh bạ), `RoleGrant` mới là quyền thật (mở bàn duyệt). Thiếu cái sau thì
+   * "admin" chỉ là một cái nhãn không mở được gì.
+   *
+   * Gọi lại với cùng một người là thao tác VÔ HẠI: cả hai bước đều tự nhận ra đã có.
+   */
+  async grantAdmin(organizationId: string, email: string, actorId: string) {
+    const org = await organizationRepository.findById(organizationId)
+    if (!org) throw new NotFoundError('Organization not found')
+
+    const user = await userRepository.findByEmail(email)
+    if (!user) {
+      throw new NotFoundError(
+        `Chưa có tài khoản nào dùng email ${email} — người phụ trách phải đăng ký trước`,
+      )
+    }
+
+    const existing = await membershipRepository.findActive(user._id, org._id)
+    if (existing) {
+      existing.role = MEMBERSHIP_ROLES.ADMIN
+      await existing.save()
+    } else {
+      await membershipRepository.create({
+        userId: user._id,
+        organizationId: org._id,
+        role: MEMBERSHIP_ROLES.ADMIN,
+        joinedVia: JOINED_VIA.ROSTER,
+      })
+    }
+
+    try {
+      await roleGrantRepository.create({
+        userId: user._id,
+        role: SYSTEM_ROLES.MANAGER,
+        scopeType: SCOPE_TYPES.ORG,
+        orgId: org._id,
+        grantedBy: new Types.ObjectId(actorId),
+      })
+    } catch (err) {
+      // Unique index chặn cấp trùng một quyền còn hiệu lực. Trao lại cho người đã có quyền là
+      // thao tác lặp, không phải lỗi — nuốt đúng mã đó, mọi lỗi khác vẫn nổi lên.
+      if ((err as { code?: number }).code !== DUPLICATE_KEY) throw err
+    }
+
+    // Org đầu tiên có người phụ trách thì mở cửa. Lần trao thứ hai trở đi không đụng gì.
+    if (org.status === TENANT_STATUS.PENDING_ADMIN) {
+      org.status = TENANT_STATUS.ACTIVE
+      await org.save()
+      clearOrganizationCache()
+    }
+
+    logger.info('organization admin granted', {
+      actorId,
+      orgId: org._id.toString(),
+      userId: user._id.toString(),
+    })
+    return org
+  },
+
+  /**
+   * Hồ sơ nhóm, do admin của chính org sửa.
+   *
+   * Org lấy từ TENANT SCOPE chứ không từ đường dẫn: `requireOrgAdmin` đã đối chiếu quyền trên
+   * đúng org đang hoạt động, nhận thêm một id ở path là mở ra cửa thứ hai để hai nguồn lệch nhau.
+   *
+   * `nameTokens` dựng lại khi đổi tên: nó là khoá tra của dropdown chọn org, quên cập nhật thì
+   * org đổi tên xong biến mất khỏi ô tìm kiếm mà không ai hiểu vì sao.
+   */
+  async update(input: UpdateOrganizationInput) {
+    const orgId = requireOwnOrgId('organization.update')
+    const org = await organizationRepository.findById(orgId.toString())
+    if (!org) throw new NotFoundError('Organization not found')
+
+    if (input.name !== undefined) {
+      org.name = input.name
+      org.nameTokens = orgNameTokens(input.name)
+    }
+    if (input.description !== undefined) org.description = input.description
+    if (input.avatarUrl !== undefined) org.avatarUrl = input.avatarUrl
+    if (input.coverUrl !== undefined) org.coverUrl = input.coverUrl
+    if (input.allowJoinRequests !== undefined) org.allowJoinRequests = input.allowJoinRequests
+
+    await org.save()
+    return org
+  },
+
+  /**
+   * Xoay mã nhóm. Mã cũ chết ngay lập tức — đó là toàn bộ lý do tính năng này tồn tại: mã lọt
+   * ra ngoài thì phải có đường cắt, mà cắt bằng cách đổi slug là làm hỏng mọi link đã phát.
+   */
+  async rotateJoinCode() {
+    const orgId = requireOwnOrgId('organization.rotateJoinCode')
+    const org = await organizationRepository.findById(orgId.toString())
+    if (!org) throw new NotFoundError('Organization not found')
+
+    return withUniqueJoinCode(async (joinCode) => {
+      org.joinCode = joinCode
+      return org.save()
+    })
+  },
+
+  /** Thẻ nhóm cho người cầm mã: đủ để họ nhận ra đúng nhóm trước khi bấm xin vào. */
+  async getByJoinCode(rawCode: string) {
+    // Chuẩn hoá y hệt đường xin gia nhập. Thiếu một chỗ là cùng một chuỗi dán vào cho ra hai
+    // kết quả khác nhau: xem thẻ thì 404, bấm xin vào thì được.
+    const org = await organizationRepository.findActiveByJoinCode(normalizeJoinCode(rawCode))
+    if (!org) throw new NotFoundError('Không tìm thấy nhóm nào với mã này')
+
+    const memberCount = await membershipRepository.countActiveByOrganization(org._id)
+    return { org, memberCount }
   },
 
   async getById(id: string) {

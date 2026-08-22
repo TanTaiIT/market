@@ -1,41 +1,44 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
 
 /**
- * Uy tín của một người trên TRỤC DANH MỤC, tách theo từng danh mục.
+ * Uy tín của một TÀI KHOẢN. Một người một bậc, dùng chung cho mọi luồng đăng tin.
  *
- * Tồn tại vì uy tín KHÔNG chuyển giữa các trục (§8.3): 5 bài sạch trong một nhóm nhỏ không
- * được biến thành quyền tự đăng ở danh mục công khai toàn tỉnh — rủi ro lệch quá xa. Uy tín ở
- * trục org nằm ở `memberships.trustLevel`; bảng này là bản đối xứng cho trục còn lại.
+ * **Đây là thay đổi so với v2 gốc.** Bản trước tách đôi: `memberships.trustLevel` cho tin nội
+ * bộ và `PublicTrust` theo từng danh mục cho tin công khai, với lý do "5 bài sạch trong một
+ * nhóm nhỏ không được biến thành quyền tự đăng ở danh mục công khai toàn tỉnh" (§8.3). Quyết
+ * định mới: gộp làm một, uy tín đi theo con người chứ không theo chỗ họ đăng.
  *
- * KHÔNG gắn `tenantPlugin`: trục danh mục không thuộc tổ chức nào.
+ * Đánh đổi phải biết và phải canh: người xây đủ 10 bài sạch ở một tổ chức nhỏ giờ tự đăng
+ * được thẳng ra trục công khai. Chốt chặn còn lại nằm ở `Category.requireManualReview` và
+ * `recentRejections` — hai thứ đó giờ gánh phần việc mà việc tách trục từng gánh.
+ *
+ * KHÔNG gắn `tenantPlugin`: uy tín thuộc tài khoản, mà tài khoản ở v2 là toàn cục. Gắn plugin
+ * thì cùng một người đổi org lại thấy một bậc khác — đúng thứ vừa quyết định là bỏ.
  */
-export interface IPublicTrust {
+export interface IUserTrust {
   userId: Types.ObjectId
-  categoryId: Types.ObjectId
+  /** Bậc uy tín hiện tại. Xem `trust.policy.ts` cho luật thăng/giáng. */
   level: number
-  /** Số bài được duyệt sạch liên tiếp — nguồn để thăng bậc. Reset khi bị từ chối. */
+  /** Số bài được duyệt sạch liên tiếp — nguồn để thăng bậc, reset khi bị từ chối. */
   cleanApprovals: number
   createdAt: Date
   updatedAt: Date
 }
 
-export interface IPublicTrustDocument extends IPublicTrust, Document {
+export interface IUserTrustDocument extends IUserTrust, Document {
   _id: Types.ObjectId
 }
 
-const publicTrustSchema = new Schema<IPublicTrustDocument>(
+const userTrustSchema = new Schema<IUserTrustDocument>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    categoryId: { type: Schema.Types.ObjectId, ref: 'Category', required: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     level: { type: Number, default: 0, min: 0 },
     cleanApprovals: { type: Number, default: 0, min: 0 },
   },
   { timestamps: true },
 )
 
-publicTrustSchema.index({ userId: 1, categoryId: 1 }, { unique: true })
-
-export const PublicTrust: Model<IPublicTrustDocument> = mongoose.model<IPublicTrustDocument>(
-  'PublicTrust',
-  publicTrustSchema,
+export const UserTrust: Model<IUserTrustDocument> = mongoose.model<IUserTrustDocument>(
+  'UserTrust',
+  userTrustSchema,
 )

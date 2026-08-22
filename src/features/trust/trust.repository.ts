@@ -1,49 +1,94 @@
 import { Types } from 'mongoose'
-import { PublicTrust, IPublicTrustDocument } from './trust.model'
+import { UserTrust } from './trust.model'
+import { TrustState, ZERO_TRUST, nextTrust } from './trust.policy'
+import { logger } from '../../config/logger'
 
 type Id = string | Types.ObjectId
 
+/** Số lần thử lại khi có lượt duyệt khác chen vào giữa đọc và ghi. */
+const CAS_RETRIES = 3
+
+/** Mã lỗi unique index của MongoDB. */
+const DUPLICATE_KEY = 11000
+
+/**
+ * Đọc trạng thái, KHÔNG hydrate document.
+ *
+ * `.lean()` + `.select()` vì đây nằm trên đường nóng: mỗi lượt `POST /listings` và mỗi lần mở
+ * màn quota đều gọi qua đây, mà thứ cần chỉ là hai con số.
+ */
+async function readState(userId: Id): Promise<TrustState | null> {
+  const doc = await UserTrust.findOne({ userId }).select('level cleanApprovals').lean().exec()
+  return doc ? { level: doc.level, cleanApprovals: doc.cleanApprovals } : null
+}
+
+const same = (a: TrustState, b: TrustState) =>
+  a.level === b.level && a.cleanApprovals === b.cleanApprovals
+
 export const trustRepository = {
-  find(userId: Id, categoryId: Id): Promise<IPublicTrustDocument | null> {
-    return PublicTrust.findOne({ userId, categoryId }).exec()
+  async levelOf(userId: Id): Promise<number> {
+    return (await readState(userId))?.level ?? 0
   },
 
-  async levelOf(userId: Id, categoryId: Id): Promise<number> {
-    const doc = await this.find(userId, categoryId)
-    return doc?.level ?? 0
-  },
-
-  /** Bài sạch cộng dồn; đủ ngưỡng thì thăng bậc. Upsert vì bậc 0 không cần bản ghi. */
-  recordApproval(userId: Id, categoryId: Id, promoteEvery: number) {
-    return PublicTrust.findOneAndUpdate(
-      { userId, categoryId },
-      { $inc: { cleanApprovals: 1 } },
-      { new: true, upsert: true },
-    )
+  /** Bậc của nhiều người một lượt — cho danh bạ thành viên, tránh N+1. */
+  async levelsOf(userIds: Types.ObjectId[]): Promise<Map<string, number>> {
+    if (userIds.length === 0) return new Map()
+    const rows = await UserTrust.find({ userId: { $in: userIds } })
+      .select('userId level')
+      .lean()
       .exec()
-      .then(async (doc) => {
-        const nextLevel = Math.floor(doc.cleanApprovals / promoteEvery)
-        if (nextLevel === doc.level) return doc
-        return PublicTrust.findOneAndUpdate(
-          { _id: doc._id },
-          { level: nextLevel },
-          { new: true },
-        ).exec()
-      })
+    return new Map(rows.map((row) => [row.userId.toString(), row.level]))
   },
 
-  /** Bị từ chối là mất chuỗi bài sạch và tụt một bậc — không xoá trắng lịch sử. */
-  recordRejection(userId: Id, categoryId: Id) {
-    return PublicTrust.findOneAndUpdate(
-      { userId, categoryId },
-      { $set: { cleanApprovals: 0 }, $inc: { level: -1 } },
-      { new: true, upsert: true },
-    )
-      .exec()
-      .then((doc) =>
-        doc.level < 0
-          ? PublicTrust.findOneAndUpdate({ _id: doc._id }, { level: 0 }, { new: true }).exec()
-          : doc,
-      )
+  /**
+   * Ghi một lượt duyệt. Luật nằm ở `nextTrust`, đây chỉ lo chuyện ghi cho đúng.
+   *
+   * Compare-and-set chứ không phải đọc-sửa-ghi: hai quản trị duyệt hai tin của cùng một người
+   * bán trong cùng một khoảnh khắc sẽ cùng đọc `cleanApprovals = 4` rồi cùng ghi `5` — mất đứt
+   * một lượt duyệt. Điều kiện lọc theo trạng thái ĐÃ ĐỌC khiến lượt thua không khớp document
+   * nào và phải đọc lại. Đây là lỗi bản cũ mắc ở cả hai trục.
+   *
+   * Hai round-trip (đọc rồi ghi) là cái giá đã cân nhắc: gộp thành một \`update\` bằng
+   * aggregation pipeline sẽ nhanh hơn một nhịp, nhưng phải viết lại luật thăng/giáng bằng ngôn
+   * ngữ query của Mongo — tức là dựng lại đúng bản sao thứ hai mà cả đợt refactor này vừa xoá.
+   */
+  async record(userId: Id, approved: boolean): Promise<TrustState> {
+    for (let attempt = 0; attempt < CAS_RETRIES; attempt += 1) {
+      const existing = await readState(userId)
+      const previous = existing ?? ZERO_TRUST
+      const next = nextTrust(previous, approved)
+
+      // Không đổi gì thì không ghi: từ chối tin của người đang ở bậc 0 là ca thường gặp nhất,
+      // và nó không có lý do gì để đẻ ra một bản ghi toàn số 0.
+      if (same(previous, next)) return next
+
+      // `existing` chứ không phải so `previous === ZERO_TRUST`: so định danh đối tượng chỉ
+      // đúng chừng nào `readState` còn trả đúng cái ZERO_TRUST đóng băng. Ngày nó trả một
+      // object 0 mới toanh, nhánh này lật sang CAS, filter không khớp gì, và lượt duyệt bị bỏ
+      // im lặng sau 3 lần thử.
+      if (!existing) {
+        try {
+          await UserTrust.create({ userId, ...next })
+          return next
+        } catch (err) {
+          // CHỈ nuốt lỗi trùng khoá (ai đó vừa tạo trước): mọi lỗi khác phải nổi lên, nếu
+          // không thì một lỗi kết nối cũng biến thành "uy tín im lặng không được ghi".
+          if ((err as { code?: number }).code !== DUPLICATE_KEY) throw err
+          continue
+        }
+      }
+
+      const updated = await UserTrust.findOneAndUpdate(
+        { userId, level: previous.level, cleanApprovals: previous.cleanApprovals },
+        { $set: next },
+        { new: true },
+      ).exec()
+      if (updated) return next
+    }
+
+    // Hết lượt thử. KHÔNG ném: một nhịp uy tín lệch không đáng để làm hỏng thao tác duyệt tin
+    // mà quản trị vừa bấm. Nhưng phải để lại vết — im lặng ở đây là mất dữ liệu không ai biết.
+    logger.warn('trust update dropped after CAS retries', { userId: String(userId), approved })
+    return (await readState(userId)) ?? ZERO_TRUST
   },
 }

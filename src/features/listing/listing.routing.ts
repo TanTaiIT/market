@@ -36,7 +36,7 @@ export interface RoutingInput {
   hasCategoryModerator: boolean
   /** Nhóm con của người đăng, `null` khi org phẳng hoặc chưa được gán. */
   unitId: string | null
-  /** Bậc uy tín ở trục tương ứng — đủ cao thì tin tự đăng, chỉ hậu kiểm (§8.3). */
+  /** Bậc uy tín của tài khoản — đủ cao thì tin tự đăng, chỉ hậu kiểm. Một bậc cho mọi trục. */
   autoApprove: boolean
 }
 

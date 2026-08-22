@@ -15,10 +15,11 @@ import { JoinRequest } from '../src/features/join-request/join-request.model'
 import { Conversation, Message } from '../src/features/chat/chat.model'
 import { Report } from '../src/features/report/report.model'
 import { Favorite } from '../src/features/favorite/favorite.model'
-import { PublicTrust } from '../src/features/trust/trust.model'
+import { UserTrust } from '../src/features/trust/trust.model'
 import { AuditLog } from '../src/features/moderation/moderation.model'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
 import { assertDisposableDb } from './assertDisposableDb'
+import { generateJoinCode } from '../src/common/utils/joinCode'
 import {
   AUDIT_ACTION,
   LISTING_STATUS,
@@ -401,7 +402,7 @@ function buildOrg(spec: (typeof ORG_SEEDS)[number], passwordHash: string) {
     memberships.push({
       userId: user._id,
       organizationId: orgId,
-      role: duty === 'owner' ? MEMBERSHIP_ROLES.OWNER : MEMBERSHIP_ROLES.MEMBER,
+      role: duty === 'owner' ? MEMBERSHIP_ROLES.ADMIN : MEMBERSHIP_ROLES.MEMBER,
       joinedVia: JOINED_VIA.ROSTER,
     })
     if (duty !== 'member') {
@@ -1084,19 +1085,14 @@ function buildFavorites(orgs: SeedOrg[], listings: ListingSeed[]): Record<string
 }
 
 /** Uy tín trên trục danh mục: đủ bậc thì tin của người đó tự đăng, không qua hàng đợi. */
-function buildTrust(
-  orgs: SeedOrg[],
-  categories: Map<CategorySlug, Types.ObjectId>,
-): Record<string, unknown>[] {
-  const catIds = [...categories.values()]
+/** Uy tín giờ là MỘT bản ghi cho mỗi người — không còn nhân theo danh mục. */
+function buildTrust(orgs: SeedOrg[]): Record<string, unknown>[] {
   return orgs.flatMap((org) =>
-    org.sellers.slice(0, 4).flatMap((user, i) =>
-      catIds.slice(0, 2).map((categoryId) => ({
-        userId: user._id,
-        categoryId,
-        level: (i % 3) + 1,
-      })),
-    ),
+    org.sellers.slice(0, 4).map((user, i) => ({
+      userId: user._id,
+      level: (i % 3) + 1,
+      cleanApprovals: ((i % 3) + 1) * 5,
+    })),
   )
 }
 
@@ -1128,7 +1124,11 @@ async function seedBulk() {
       Report.deleteMany({}),
       AuditLog.deleteMany({}),
       Favorite.deleteMany({}),
-      PublicTrust.deleteMany({}),
+      UserTrust.deleteMany({}),
+      // Collection của bản uy tín CŨ (hai trục). Không còn model nào trỏ tới nó, nhưng
+      // `migrate:trust` vẫn đọc thẳng qua driver — bỏ sót ở đây thì seed xong chạy migrate là
+      // bậc cũ sống lại. Docblock trên đầu file hứa "xoá sạch", phải xoá thật.
+      mongoose.connection.db!.collection('publictrusts').deleteMany({}),
     ])
 
     const categoryDocs = await Category.insertMany(CATEGORY_SEEDS.map((c) => ({ ...c })))
@@ -1146,7 +1146,7 @@ async function seedBulk() {
         _id: b.org.id,
         name: b.org.name,
         slug: b.org.slug,
-        ownerId: b.org.owner._id,
+        joinCode: generateJoinCode(),
       })),
     )
 
@@ -1221,7 +1221,7 @@ async function seedBulk() {
       reports: buildReports(orgs, docs),
       auditLogs: buildAuditLogs(orgs, docs),
       favorites: buildFavorites(orgs, docs),
-      trust: buildTrust(orgs, categories),
+      trust: buildTrust(orgs),
     }
 
     await JoinRequest.insertMany(aux.joinRequests)
@@ -1231,7 +1231,7 @@ async function seedBulk() {
     await Report.insertMany(aux.reports)
     await AuditLog.insertMany(aux.auditLogs)
     await Favorite.insertMany(aux.favorites)
-    await PublicTrust.insertMany(aux.trust)
+    await UserTrust.insertMany(aux.trust)
 
     report(docs, orgs, aux)
   })

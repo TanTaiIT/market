@@ -77,7 +77,7 @@ describe('GET /memberships', () => {
     const res = await members(owner.token, SLUG).expect(200)
     const chu = res.body.data.find((m: { name: string }) => m.name === 'Chủ tổ chức')
 
-    expect(chu).toMatchObject({ role: 'owner', unitId: null, trustLevel: 0 })
+    expect(chu).toMatchObject({ role: 'admin', unitId: null, trustLevel: 0 })
     expect(chu.userId).toBe(owner.id)
     expect(chu.joinedAt).toEqual(expect.any(String))
   })
@@ -106,9 +106,19 @@ describe('GET /memberships', () => {
     expect(names).not.toContain('Thành viên roster')
   })
 
-  it('thành viên thường không có grant → 403', async () => {
-    const res = await members(member.token, SLUG)
-    expect(res.status).toBe(403)
+  it('thành viên thường CŨNG xem được, nhưng bản rút gọn', async () => {
+    const res = await members(member.token, SLUG).expect(200)
+
+    // Nhóm thì phải thấy nhau. Ba field hồ sơ vận hành thì không — bậc uy tín là kết luận của
+    // bàn duyệt về một người, không phải thông tin để cả nhóm bình phẩm.
+    expect(Object.keys(res.body.data[0]).sort()).toEqual([
+      'avatar',
+      'name',
+      'role',
+      'unitId',
+      'userId',
+    ])
+    expect(res.body.data.map((m: { name: string }) => m.name)).toContain('Chủ tổ chức')
   })
 
   it('chưa đăng nhập → 401', async () => {

@@ -7,10 +7,31 @@ export function toOrganizationDto(org: IOrganizationDocument): OrganizationSumma
     id: org._id.toString(),
     name: org.name,
     slug: org.slug,
+    joinCode: org.joinCode,
+    avatarUrl: org.avatarUrl,
+    description: org.description,
     orgType: org.orgType,
     verificationTier: org.verificationTier,
     provinceCode: org.provinceCode,
     status: org.status,
+  }
+}
+
+/**
+ * Thẻ nhóm hiện cho người vừa nhập mã, TRƯỚC khi họ bấm xin vào.
+ *
+ * Không mang `id`, `slug` lẫn `joinCode`: endpoint này công khai, ai dò trúng một mã cũng đọc
+ * được — cho họ đúng thứ cần để nhận ra nhóm, không thêm gì để lần ra org bằng đường khác.
+ */
+export function toOrganizationCardDto(org: IOrganizationDocument, memberCount: number) {
+  return {
+    name: org.name,
+    avatarUrl: org.avatarUrl,
+    description: org.description,
+    provinceCode: org.provinceCode,
+    district: org.district,
+    memberCount,
+    allowJoinRequests: org.allowJoinRequests,
   }
 }
 
@@ -23,6 +44,7 @@ export function toMyOrganizationDto(row: {
     id: row.org._id.toString(),
     name: row.org.name,
     slug: row.org.slug,
+    avatarUrl: row.org.avatarUrl,
     provinceCode: row.org.provinceCode,
     role: row.membership.role,
     unitId: row.membership.unitId?.toString() ?? null,

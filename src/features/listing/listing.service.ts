@@ -3,7 +3,7 @@ import { listingRepository } from './listing.repository'
 import { CreateListingInput, UpdateListingInput, ListingQuery, NearbyQuery } from './listing.schema'
 import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
-import { QUOTA, QuotaVerdict, checkQuota, isAutoApprove } from './listing.quota'
+import { QUOTA, QuotaVerdict, autoApprovalReason, checkQuota, isAutoApprove } from './listing.quota'
 import { userRepository } from '../user/user.repository'
 import { categoryService } from '../category/category.service'
 import { categoryTemplateService } from '../category-template/category-template.service'
@@ -273,6 +273,19 @@ export const listingService = {
     })
     if (!quota.allowed) throw quotaError(quota)
 
+    // Chụp lại quyết định NGAY tại chỗ nó được đưa ra: bậc uy tín đổi liên tục, hỏi lại sau
+    // sự cố thì con số đã khác từ lâu.
+    const autoApproval = {
+      trustLevel: author.trustLevel,
+      reason: autoApprovalReason({
+        autoApproved: routed.status === LISTING_STATUS.ACTIVE,
+        trustLevel: author.trustLevel,
+        recentRejections,
+        categoryRequiresReview: category.requireManualReview,
+        isOutsider,
+      }),
+    }
+
     const doc = toListingDoc(
       input,
       author,
@@ -288,6 +301,7 @@ export const listingService = {
       provinceCode,
       validated,
     )
+    doc.autoApproval = autoApproval
 
     // Người ngoài ghi vào org mà họ KHÔNG thuộc về: request này không có scope org (đúng thiết
     // kế), nên đây là một lối đi xuyên tenant thật sự và phải khai bằng `runUnscoped` — tin

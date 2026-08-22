@@ -11,7 +11,8 @@ export { wardsOf, isWardOfProvince } from './vnWard'
  * (`role_grants`). Gộp hai thứ vào một cột thì không biểu diễn nổi trường hợp đó.
  */
 export const MEMBERSHIP_ROLES = {
-  OWNER: 'owner',
+  /** Người phụ trách org. Quyền THẬT nằm ở `role_grants`, đây chỉ là thân phận hiển thị. */
+  ADMIN: 'admin',
   MEMBER: 'member',
   ALUMNI: 'alumni',
 } as const
@@ -64,6 +65,14 @@ export const JOIN_REQUEST_LIMITS = {
 export const TENANT_STATUS = {
   ACTIVE: 'active',
   SUSPENDED: 'suspended',
+  /**
+   * Org đã tạo nhưng CHƯA có người phụ trách. Master tạo org trước, trao quyền sau.
+   *
+   * Không phải `ACTIVE` nên `findActiveById` không thấy nó — nghĩa là không ai vào được, đơn
+   * gia nhập không gửi được, tin không đăng được. Đúng ý: một org không có ai duyệt thì mọi
+   * thứ đổ vào đó chỉ để mục.
+   */
+  PENDING_ADMIN: 'pending_admin',
 } as const
 export type TenantStatus = (typeof TENANT_STATUS)[keyof typeof TENANT_STATUS]
 
@@ -282,3 +291,17 @@ export const PAGINATION = {
   DEFAULT_LIMIT: 20,
   MAX_LIMIT: 100,
 } as const
+
+export const INVITE_CHANNELS = { EMAIL: 'email', PHONE: 'phone' } as const
+export type InviteChannel = (typeof INVITE_CHANNELS)[keyof typeof INVITE_CHANNELS]
+
+export const INVITE_STATUS = {
+  PENDING: 'pending',
+  ACCEPTED: 'accepted',
+  REVOKED: 'revoked',
+  EXPIRED: 'expired',
+} as const
+export type InviteStatus = (typeof INVITE_STATUS)[keyof typeof INVITE_STATUS]
+
+/** Lời mời sống 14 ngày: đủ để người ta thấy tin nhắn, ngắn để một link rò rỉ không sống mãi. */
+export const INVITE_TTL_DAYS = 14

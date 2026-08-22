@@ -24,10 +24,6 @@ export interface IMembership {
   /** Nhóm con. `null` khi org phẳng hoặc chưa được gán — xem `join-request.service.approve`. */
   unitId: Types.ObjectId | null
   joinedVia: JoinedVia
-  /** Bậc uy tín TRONG org này. Uy tín không chuyển giữa các trục (§8.3). */
-  trustLevel: number
-  /** Số bài được duyệt sạch liên tiếp — nguồn để thăng bậc, reset khi bị từ chối. */
-  cleanApprovals: number
   joinedAt: Date
   archivedAt: Date | null
   createdAt: Date
@@ -54,8 +50,6 @@ const membershipSchema = new Schema<IMembershipDocument>(
     },
     unitId: { type: Schema.Types.ObjectId, ref: 'OrgUnit', default: null },
     joinedVia: { type: String, enum: Object.values(JOINED_VIA), default: JOINED_VIA.REQUEST },
-    trustLevel: { type: Number, default: 0, min: 0 },
-    cleanApprovals: { type: Number, default: 0, min: 0 },
     joinedAt: { type: Date, default: () => new Date() },
     archivedAt: { type: Date, default: null },
   },

@@ -28,7 +28,8 @@ năng, nó là rò rỉ dữ liệu giữa hai khách hàng khác nhau.
 
 1. **Mọi collection nghiệp vụ đều gắn `tenantPlugin`.** Không có collection nào "tạm thời
    chưa cần tenant". Ngoại lệ duy nhất đã được duyệt: `User`, `Membership`, `RoleGrant`,
-   `JoinRequest`, `Trust`, `Favorite`, `Organization`, `Category`, `FieldDefinition`,
+   `JoinRequest`, `Invite`, `UserTrust`, `Favorite`, `Organization`, `Category`,
+   `FieldDefinition`,
    `CategoryTemplate`
    — xem §1.3 để biết vì sao và bù bằng gì.
 2. **Không tự viết filter `organizationId` trong repository/service.** Scope đến từ
@@ -90,8 +91,9 @@ thì nới scope cho **mọi** truy vấn của collection.
 | `User` | Tài khoản là **toàn cục** ở v2 — không thuộc org nào | Quan hệ với org nằm ở `Membership`; `User` không có cột `organizationId` lẫn `role` |
 | `Membership` | Chính nó trả lời "request đang ở org nào" → phải đọc được TRƯỚC khi scope tồn tại | Mọi method của repository nhận `organizationId` tường minh, ép bằng kiểu |
 | `RoleGrant` | Nguồn của phân quyền, cũng phải đọc trước scope | Đọc qua `roleGrantService.grantsOf(userId)`, quyết định ở `authz/policy.ts` |
-| `JoinRequest` | Người gửi theo định nghĩa **chưa** thuộc org đích | Org đích đi trong body (`orgSlug`); hàng đợi lọc bằng `organizationId` tường minh |
-| `Trust` | Uy tín thuộc trục danh mục, không thuộc tổ chức nào | — |
+| `JoinRequest` | Người gửi theo định nghĩa **chưa** thuộc org đích | Org đích đi trong body (mã nhóm); hàng đợi lọc bằng `organizationId` tường minh |
+| `Invite` | Người được mời **chưa** thuộc org đích — lượt đọc lúc họ bấm link không có scope nào để plugin dựa vào. Cùng lý do với `JoinRequest` ngay trên | Mọi method của repository nhận `organizationId` tường minh; đường thu hồi so `organizationId` bằng tay trước khi ghi |
+| `UserTrust` | Uy tín thuộc **tài khoản**, mà tài khoản ở v2 là toàn cục. Trước đây tách đôi theo trục (`memberships.trustLevel` + `PublicTrust` theo danh mục); đã gộp làm một, xem `trust.model.ts` | Bậc chỉ đổi qua một đường duy nhất: người duyệt bấm `PATCH /moderation/listings/:id` |
 | `Favorite` | Tin đã lưu thuộc **tài khoản**, mà tài khoản ở v2 là toàn cục. Gắn plugin thì người chưa vào org nào — phần lớn người mua — không lưu nổi tin nào, và cùng một người đổi org lại thấy một danh sách khác | Bảng chỉ giữ `(userId, listingId)`. Nội dung tin vẫn đọc qua `Listing`, nơi plugin còn nguyên: lưu được id không có nghĩa là đọc được tin |
 | `Organization` | Chính nó *là* tenant | Chỉ truy cập qua repository của feature đó |
 | `Category` | Dùng chung toàn hệ thống (quyết định #7) | Không có dữ liệu riêng của khách hàng |

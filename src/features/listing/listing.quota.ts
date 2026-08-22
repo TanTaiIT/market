@@ -27,6 +27,43 @@ export const QUOTA = {
 
 export type QuotaReason = 'blocked_by_rejections' | 'quota_full'
 
+/**
+ * Vì sao một tin được tự đăng, hoặc bị giữ lại chờ người duyệt.
+ *
+ * Không có thứ này thì khi một tin xấu lọt lên bảng, không ai trả lời được "lúc đó người đăng
+ * bậc mấy" — bậc uy tín đã đổi từ lâu rồi. Điều tra sự cố thành đoán mò, và mọi lần chỉnh
+ * ngưỡng sau này cũng không có dữ liệu nào để đối chiếu.
+ */
+export const AUTO_APPROVAL_REASONS = [
+  'approved',
+  'outsider_post',
+  'recent_rejection',
+  'category_manual_review',
+  'trust_too_low',
+] as const
+
+export type AutoApprovalReason = (typeof AUTO_APPROVAL_REASONS)[number]
+
+/**
+ * Suy ra lý do từ KẾT QUẢ thật (`autoApproved`) chứ không tính lại quyết định: tính lại là
+ * dựng bản sao thứ hai của luật, và bản sao sẽ lệch với `routeListing` vào đúng ngày ai đó
+ * sửa một chỗ. Chỉ khi tin BỊ GIỮ mới cần dò xem chốt nào chặn, theo đúng thứ tự chặn thật.
+ */
+export function autoApprovalReason(input: {
+  autoApproved: boolean
+  trustLevel: number
+  recentRejections: number
+  categoryRequiresReview: boolean
+  isOutsider: boolean
+}): AutoApprovalReason {
+  if (input.autoApproved) return 'approved'
+  // Người ngoài không bao giờ tự đăng, bất kể uy tín — `routeListing` ép PENDING_UNVERIFIED.
+  if (input.isOutsider) return 'outsider_post'
+  if (input.recentRejections > 0) return 'recent_rejection'
+  if (input.categoryRequiresReview) return 'category_manual_review'
+  return 'trust_too_low'
+}
+
 export interface QuotaInput {
   trustLevel: number
   isOutsider: boolean
@@ -54,7 +91,7 @@ export function pendingLimitFor(
   return TRUST_PENDING_LIMITS[level]
 }
 
-/** Uy tín KHÔNG chuyển giữa các trục — caller phải truyền bậc của đúng trục đang xét (§8.3). */
+/** Một bậc uy tín dùng chung cho mọi luồng đăng — xem `trust.model.ts`. */
 export function isAutoApprove(trustLevel: number, recentRejections: number): boolean {
   if (recentRejections > 0) return false
   return trustLevel >= QUOTA.AUTO_APPROVE_TRUST_LEVEL

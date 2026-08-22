@@ -45,7 +45,7 @@ beforeAll(async () => {
     ownerEmail: owner.email,
   })
   orgHeaders = orgAuth(owner.token, org.slug)
-  await setTrustLevel(owner.id, org.id, 1)
+  await setTrustLevel(owner.id, 1)
 }, 120_000)
 
 afterAll(async () => {

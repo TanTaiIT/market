@@ -9,6 +9,7 @@ import {
   createOrg,
   createTestApp,
   grantRole,
+  joinCodeOf,
   makeMaster,
   orgAuth,
   registerUser,
@@ -304,7 +305,7 @@ describe('Thông báo đích danh', () => {
     await request(app)
       .post('/api/v1/join-requests')
       .set({ Authorization: `Bearer ${applicant.token}` })
-      .send({ orgSlug: SLUG, claimedName: 'Người xin vào' })
+      .send({ code: await joinCodeOf(SLUG), claimedName: 'Người xin vào' })
       .expect(201)
 
     const pending = await request(app).get('/api/v1/join-requests').set(asOwner()).expect(200)

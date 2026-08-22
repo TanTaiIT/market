@@ -1,15 +1,19 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { organizationSlugSchema } from '../organization/organization.schema'
 import { JOIN_REQUEST_STATUS } from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
-// Nhận `orgSlug` chứ không nhận `organizationId`: người dùng vừa chọn org trên dropdown và
-// slug là thứ họ nhìn thấy, id thì không. Slug cũng là thứ đã được xác nhận bằng tên đầy đủ.
+/*
+ * Nhận MÃ NHÓM chứ không nhận slug hay id.
+ *
+ * Slug là địa chỉ công khai: ai nhìn thấy tên tổ chức cũng gõ được đơn xin vào. Mã nhóm chỉ
+ * người được đưa mới có, và đổi được khi rò — hai tính chất mà slug không thể có, vì nó nằm
+ * trong mọi đường dẫn đã phát ra ngoài.
+ */
 export const createJoinRequestSchema = z
   .object({
-    orgSlug: organizationSlugSchema,
+    code: z.string().min(4).max(16),
     claimedName: z.string().min(1).max(100).openapi({ example: 'Nguyễn Văn A' }),
     claimedUnit: z.string().max(100).optional().openapi({ example: '10A1' }),
     note: z.string().max(500).optional(),

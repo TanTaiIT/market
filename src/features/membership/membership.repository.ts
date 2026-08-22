@@ -53,27 +53,4 @@ export const membershipRepository = {
       { status: MEMBERSHIP_STATUS.ARCHIVED, archivedAt: new Date() },
     ).exec()
   },
-
-  /**
-   * Thăng/giáng uy tín trong org. Đếm bài sạch cộng dồn thay vì cộng thẳng vào `trustLevel`:
-   * "5 bài sạch mới lên một bậc" phải đo được, và một lần bị từ chối phải xoá được chuỗi đó.
-   */
-  async adjustTrust(
-    userId: Id,
-    organizationId: Id,
-    opts: { approved: boolean; promoteEvery: number },
-  ) {
-    const membership = await Membership.findOne({ userId, organizationId }).exec()
-    if (!membership) return null
-
-    if (!opts.approved) {
-      membership.cleanApprovals = 0
-      membership.trustLevel = Math.max(0, membership.trustLevel - 1)
-      return membership.save()
-    }
-
-    membership.cleanApprovals += 1
-    membership.trustLevel = Math.floor(membership.cleanApprovals / opts.promoteEvery)
-    return membership.save()
-  },
 }

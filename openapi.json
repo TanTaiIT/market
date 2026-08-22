@@ -421,6 +421,16 @@
           "slug": {
             "type": "string"
           },
+          "joinCode": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string"
+          },
           "orgType": {
             "type": "string",
             "enum": [
@@ -450,6 +460,9 @@
           "id",
           "name",
           "slug",
+          "joinCode",
+          "avatarUrl",
+          "description",
           "orgType",
           "verificationTier",
           "provinceCode",
@@ -501,6 +514,10 @@
           "slug": {
             "type": "string"
           },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
           "provinceCode": {
             "type": "string",
             "nullable": true
@@ -517,9 +534,76 @@
           "id",
           "name",
           "slug",
+          "avatarUrl",
           "provinceCode",
           "role",
           "unitId"
+        ]
+      },
+      "UpdateOrganization": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "format": "uri"
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true,
+            "format": "uri"
+          },
+          "allowJoinRequests": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrganizationCard": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "district": {
+            "type": "string",
+            "nullable": true
+          },
+          "memberCount": {
+            "type": "number"
+          },
+          "allowJoinRequests": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "avatarUrl",
+          "description",
+          "provinceCode",
+          "district",
+          "memberCount",
+          "allowJoinRequests"
         ]
       },
       "SlugAvailability": {
@@ -576,10 +660,6 @@
               "generic"
             ]
           },
-          "ownerEmail": {
-            "type": "string",
-            "format": "email"
-          },
           "provinceCode": {
             "type": "string",
             "maxLength": 60
@@ -590,8 +670,7 @@
           }
         },
         "required": [
-          "name",
-          "ownerEmail"
+          "name"
         ],
         "additionalProperties": false
       },
@@ -1314,11 +1393,10 @@
       "CreateJoinRequest": {
         "type": "object",
         "properties": {
-          "orgSlug": {
+          "code": {
             "type": "string",
-            "minLength": 3,
-            "maxLength": 40,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+            "minLength": 4,
+            "maxLength": 16
           },
           "claimedName": {
             "type": "string",
@@ -1337,7 +1415,7 @@
           }
         },
         "required": [
-          "orgSlug",
+          "code",
           "claimedName"
         ],
         "additionalProperties": false
@@ -1519,7 +1597,7 @@
           "role": {
             "type": "string",
             "enum": [
-              "owner",
+              "admin",
               "member",
               "alumni"
             ]
@@ -1551,10 +1629,171 @@
           "name",
           "avatar",
           "role",
-          "unitId",
-          "joinedVia",
-          "trustLevel",
-          "joinedAt"
+          "unitId"
+        ]
+      },
+      "CreateInvite": {
+        "type": "object",
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": [
+              "email",
+              "phone"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 120
+          }
+        },
+        "required": [
+          "channel",
+          "value"
+        ],
+        "additionalProperties": false
+      },
+      "Invite": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "channel": {
+            "type": "string",
+            "enum": [
+              "email",
+              "phone"
+            ]
+          },
+          "value": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "link"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "revoked",
+              "expired"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "channel",
+          "value",
+          "kind",
+          "status",
+          "createdAt",
+          "expiresAt"
+        ]
+      },
+      "CreateInviteResult": {
+        "type": "object",
+        "properties": {
+          "invite": {
+            "$ref": "#/components/schemas/Invite"
+          },
+          "token": {
+            "type": "string"
+          },
+          "shareable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "invite",
+          "token",
+          "shareable"
+        ]
+      },
+      "MyInvite": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "organizationAvatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "organizationName",
+          "organizationAvatarUrl",
+          "createdAt",
+          "expiresAt"
+        ]
+      },
+      "InvitePreview": {
+        "type": "object",
+        "properties": {
+          "organizationName": {
+            "type": "string"
+          },
+          "organizationAvatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "memberCount": {
+            "type": "number"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "organizationName",
+          "organizationAvatarUrl",
+          "description",
+          "memberCount",
+          "expiresAt"
+        ]
+      },
+      "AcceptInviteResult": {
+        "type": "object",
+        "properties": {
+          "organizationSlug": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "organizationSlug"
         ]
       },
       "CreateRoleGrant": {
@@ -2591,6 +2830,19 @@
           "province",
           "wards"
         ]
+      },
+      "GrantOrganizationAdmin": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
       }
     },
     "parameters": {}
@@ -4409,6 +4661,230 @@
         }
       }
     },
+    "/organizations/current": {
+      "patch": {
+        "operationId": "organizationUpdate",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Sửa hồ sơ tổ chức đang hoạt động (admin của chính tổ chức đó)",
+        "description": "Tổ chức lấy từ header `X-Org-Slug` / subdomain, không nhận id trên đường dẫn. Ảnh phải là đường dẫn `res.cloudinary.com` do client upload thẳng lên; gửi `null` để gỡ ảnh, bỏ trống để giữ nguyên. Đổi `slug` vẫn là việc của master.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOrganization"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã cập nhật",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Organization"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ, hoặc ảnh không phải đường dẫn Cloudinary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền quản lý tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/current/join-code": {
+      "post": {
+        "operationId": "organizationRotateJoinCode",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Xoay mã nhóm (admin của chính tổ chức đó)",
+        "description": "Mã cũ chết ngay lập tức. Đây là đường cắt khi mã lọt ra ngoài — đổi slug thì làm hỏng mọi link đã phát, còn mã thì sinh ra để đổi được.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mã mới",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Organization"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền quản lý tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/by-code/{code}": {
+      "get": {
+        "operationId": "organizationByCode",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Xem thẻ nhóm bằng mã (công khai)",
+        "description": "Đủ để người cầm mã nhận ra đúng nhóm trước khi bấm xin vào. Không trả `id`, `slug` hay chính cái mã — endpoint công khai nên chỉ đưa thứ cần để nhận diện.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 16
+            },
+            "required": true,
+            "name": "code",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thẻ nhóm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/OrganizationCard"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy nhóm nào với mã này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organizations": {
       "post": {
         "operationId": "createOrganization",
@@ -4483,6 +4959,102 @@
           },
           "409": {
             "description": "Slug đã tồn tại hoặc bị cấm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organizationId}/admin": {
+      "post": {
+        "operationId": "organizationGrantAdmin",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Trao quyền phụ trách tổ chức cho một tài khoản",
+        "description": "Ghi cùng lúc hai thứ: thân phận `admin` trong danh bạ và quyền quản trị thật. Org đang ở `pending_admin` sẽ chuyển sang `active` ngay lần trao đầu tiên. Gọi lại với cùng một người là thao tác vô hại.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "organizationId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GrantOrganizationAdmin"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã trao quyền",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Organization"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy tổ chức, hoặc email chưa có tài khoản",
             "content": {
               "application/json": {
                 "schema": {
@@ -5696,6 +6268,480 @@
           },
           "403": {
             "description": "Cần quyền owner hoặc moderator của tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invites": {
+      "post": {
+        "operationId": "inviteCreate",
+        "tags": [
+          "Invite"
+        ],
+        "summary": "Mời một người vào tổ chức đang hoạt động",
+        "description": "Hệ thống KHÔNG gửi mail hay SMS. Tra ra đúng một tài khoản thì lời mời đến qua thông báo trong app (`kind: direct`); không tra ra ai thì trả về link để admin tự gửi (`kind: link`, `shareable: true`). `token` chỉ xuất hiện ở response này, DB chỉ giữ bản băm.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvite"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tạo lời mời",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CreateInviteResult"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền quản lý tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Đã là thành viên, hoặc đã có lời mời đang chờ cho địa chỉ này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "inviteList",
+        "tags": [
+          "Invite"
+        ],
+        "summary": "Đã mời ai, ai chưa trả lời",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách lời mời",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Invite"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền quản lý tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invites/{id}": {
+      "delete": {
+        "operationId": "inviteRevoke",
+        "tags": [
+          "Invite"
+        ],
+        "summary": "Thu hồi một lời mời còn chờ",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã thu hồi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Invite"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lời mời này đã được xử lý rồi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền quản lý tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy lời mời",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invites/mine": {
+      "get": {
+        "operationId": "inviteMine",
+        "tags": [
+          "Invite"
+        ],
+        "summary": "Lời mời đích danh gửi cho tôi",
+        "description": "Chỉ lời mời `direct` còn hiệu lực. Không có `value`: người nhận đã biết địa chỉ của chính mình, hiện ra chỉ tạo cửa lộ email/số của người khác khi admin gõ nhầm.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lời mời của tôi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MyInvite"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invites/token/{token}": {
+      "get": {
+        "operationId": "invitePreview",
+        "tags": [
+          "Invite"
+        ],
+        "summary": "Xem lời mời trước khi đăng nhập (công khai)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Thẻ lời mời",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/InvitePreview"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lời mời đã dùng, đã bị thu hồi, hoặc đã hết hạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Lời mời không tồn tại",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invites/token/{token}/accept": {
+      "post": {
+        "operationId": "inviteAccept",
+        "tags": [
+          "Invite"
+        ],
+        "summary": "Nhận lời mời và vào nhóm",
+        "description": "Vào THẲNG, không qua hàng đợi duyệt đơn: người trong tổ chức đã chủ động gọi tên bạn rồi. Lời mời `direct` chỉ đúng người được mời nhận được; lời mời `link` thì ai cầm link cũng vào.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "required": true,
+            "name": "token",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã vào nhóm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AcceptInviteResult"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Lời mời đã dùng, đã bị thu hồi, hoặc đã hết hạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Lời mời này dành cho người khác",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Lời mời không tồn tại",
             "content": {
               "application/json": {
                 "schema": {
