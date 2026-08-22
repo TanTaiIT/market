@@ -2,6 +2,7 @@
 import mongoose, { Types } from 'mongoose'
 import { faker } from '@faker-js/faker'
 import { env } from '../src/config/env'
+import { generateJoinCode } from '../src/common/utils/joinCode'
 import { User } from '../src/features/user/user.model'
 import { Listing } from '../src/features/listing/listing.model'
 import { Organization } from '../src/features/organization/organization.model'
@@ -56,6 +57,7 @@ async function createOrg(args: {
   })
 
   const org = await Organization.create({
+    joinCode: generateJoinCode(),
     name: args.name,
     slug: args.slug,
     orgType: args.orgType,
@@ -68,7 +70,7 @@ async function createOrg(args: {
   await Membership.create({
     userId: owner._id,
     organizationId: org._id,
-    role: MEMBERSHIP_ROLES.OWNER,
+    role: MEMBERSHIP_ROLES.ADMIN,
     joinedVia: JOINED_VIA.ROSTER,
   })
 

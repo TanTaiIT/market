@@ -17,7 +17,7 @@ export const membershipService = {
    * Một lượt đọc `users` cho cả trang thay vì `populate`: populate sang collection không có
    * plugin là lách cách ly (mt§2.3), còn đọc theo đúng danh sách id của org mình thì không.
    */
-  async list(query: MembershipQuery) {
+  async list(query: MembershipQuery, detailed: boolean) {
     const organizationId = requireOwnOrgId('membership.list')
     const pagination = parsePagination(query)
     const { items, total } = await membershipRepository.paginateByOrganization(
@@ -26,15 +26,21 @@ export const membershipService = {
     )
 
     const userIds = items.map((m) => m.userId)
+    // Không phải quản trị thì không đọc uy tín — một lượt truy vấn bỏ hẳn, không phải lọc bỏ
+    // sau khi đã lấy về.
     const [users, trustLevels] = await Promise.all([
       userRepository.findByIds(userIds),
-      trustRepository.levelsOf(userIds),
+      detailed ? trustRepository.levelsOf(userIds) : Promise.resolve(null),
     ])
     const byId = new Map(users.map((u) => [u._id.toString(), u]))
 
     return {
       items: items.map((m) =>
-        toMemberDto(m, byId.get(m.userId.toString()), trustLevels.get(m.userId.toString()) ?? 0),
+        toMemberDto(
+          m,
+          byId.get(m.userId.toString()),
+          trustLevels ? (trustLevels.get(m.userId.toString()) ?? 0) : undefined,
+        ),
       ),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }

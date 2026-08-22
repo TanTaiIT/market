@@ -8,11 +8,33 @@ export const organizationSlugSchema = z
   .max(40)
   .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Slug chỉ gồm a-z, 0-9 và dấu gạch ngang')
 
+/**
+ * Ảnh phải nằm trên Cloudinary.
+ *
+ * `z.string().url()` không đủ: avatar là danh tính của cả nhóm, nhận URL tuỳ ý là biến nó
+ * thành chỗ nhúng link lạ, và ảnh sẽ chết theo cái host của người dán. Chỉ chốt HOST, không
+ * chốt cloud name — đổi tài khoản Cloudinary không phải là lý do để sửa code.
+ */
+const cloudinaryUrl = z
+  .string()
+  .url()
+  .refine((value) => {
+    try {
+      return new URL(value).host === 'res.cloudinary.com'
+    } catch {
+      return false
+    }
+  }, 'Ảnh phải là đường dẫn Cloudinary (res.cloudinary.com)')
+
 export const organizationSummarySchema = z
   .object({
     id: z.string(),
     name: z.string(),
     slug: z.string(),
+    /** Mã để mời người vào nhóm. Chỉ trả cho người có quyền đọc org này, không nằm ở thẻ công khai. */
+    joinCode: z.string(),
+    avatarUrl: z.string().nullable(),
+    description: z.string(),
     orgType: z.nativeEnum(ORG_TYPES),
     verificationTier: z.nativeEnum(VERIFICATION_TIERS),
     provinceCode: z.string().nullable(),
@@ -60,11 +82,29 @@ export const myOrganizationSchema = z
     id: z.string(),
     name: z.string(),
     slug: z.string(),
+    avatarUrl: z.string().nullable(),
     provinceCode: z.string().nullable(),
     role: z.string(),
     unitId: z.string().nullable(),
   })
   .openapi('MyOrganization')
+
+/** Thẻ nhóm cho người cầm mã — cố tình KHÔNG có `id`, `slug` hay chính cái mã. */
+export const organizationCardSchema = z
+  .object({
+    name: z.string(),
+    avatarUrl: z.string().nullable(),
+    description: z.string(),
+    provinceCode: z.string().nullable(),
+    district: z.string().nullable(),
+    memberCount: z.number(),
+    allowJoinRequests: z.boolean(),
+  })
+  .openapi('OrganizationCard')
+
+export const joinCodeParamsSchema = z.object({
+  code: z.string().min(4).max(16),
+})
 
 export const organizationParamsSchema = z.object({
   organizationId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id'),
@@ -79,15 +119,48 @@ export const createOrganizationSchema = z
     name: z.string().min(1).max(150).openapi({ example: 'THPT Lý Thường Kiệt' }),
     slug: organizationSlugSchema.optional().openapi({ example: 'thpt-ly-thuong-kiet' }),
     orgType: z.nativeEnum(ORG_TYPES).optional(),
-    ownerEmail: z.string().email(),
     provinceCode: z.string().max(60).optional(),
     district: z.string().max(100).optional(),
   })
   .strict()
   .openapi('CreateOrganization')
 
+/**
+ * Trao quyền phụ trách. Nhận EMAIL chứ không phải id: master thao tác theo danh sách người
+ * thật, và bắt họ đi tra id trước là thêm một bước không giúp gì cho độ chính xác.
+ */
+export const grantOrgAdminSchema = z
+  .object({ email: z.string().email() })
+  .strict()
+  .openapi('GrantOrganizationAdmin')
+
+/**
+ * `pending_admin` KHÔNG nằm trong tập này: nó là trạng thái do hệ thống đặt lúc tạo org và tự
+ * gỡ khi có người phụ trách. Cho master set tay thì org đang chạy bị đẩy ngược về vô chủ, mà
+ * không có đường nào đưa nó trở lại ngoài việc trao quyền lần nữa.
+ */
+/**
+ * Hồ sơ nhóm, do ADMIN của chính org sửa — khác mọi endpoint org khác vốn chỉ master gọi được.
+ *
+ * `null` cho ảnh nghĩa là GỠ, khác hẳn bỏ trống (không đổi). Không có `null` thì không có cách
+ * nào xoá một cái avatar đã đặt.
+ *
+ * `slug` KHÔNG nằm ở đây: đổi slug là đổi mọi link chia sẻ đã phát ra ngoài, nên nó ở lại chỗ
+ * cũ của master.
+ */
+export const updateOrganizationSchema = z
+  .object({
+    name: z.string().min(1).max(150).optional(),
+    description: z.string().max(500).optional(),
+    avatarUrl: cloudinaryUrl.nullable().optional(),
+    coverUrl: cloudinaryUrl.nullable().optional(),
+    allowJoinRequests: z.boolean().optional(),
+  })
+  .strict()
+  .openapi('UpdateOrganization')
+
 export const setOrgStatusSchema = z
-  .object({ status: z.nativeEnum(TENANT_STATUS) })
+  .object({ status: z.enum([TENANT_STATUS.ACTIVE, TENANT_STATUS.SUSPENDED]) })
   .strict()
   .openapi('SetOrganizationStatus')
 
@@ -97,12 +170,16 @@ export const changeOrgSlugSchema = z
   .openapi('ChangeOrganizationSlug')
 
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>
+export type GrantOrgAdminInput = z.infer<typeof grantOrgAdminSchema>
+export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
 export type OrganizationSummaryDto = z.infer<typeof organizationSummarySchema>
 export type OrganizationLookupDto = z.infer<typeof organizationLookupSchema>
 
 registry.register('Organization', organizationSummarySchema)
 registry.register('OrganizationLookup', organizationLookupSchema)
 registry.register('MyOrganization', myOrganizationSchema)
+registry.register('UpdateOrganization', updateOrganizationSchema)
+registry.register('OrganizationCard', organizationCardSchema)
 registry.register('SlugAvailability', slugAvailabilitySchema)
 registry.register('CreateOrganization', createOrganizationSchema)
 registry.register('SetOrganizationStatus', setOrgStatusSchema)

@@ -26,6 +26,15 @@ export const userRepository = {
     return User.find({ _id: { $in: ids } }).exec()
   },
 
+  /**
+   * Tra theo số điện thoại. Trả về MẢNG chứ không phải một document: `phone` không unique và
+   * không index (`user.model.ts` nói rõ), nên hai tài khoản trùng số là hợp lệ. Caller phải tự
+   * quyết định làm gì khi ra nhiều hơn một — đoán bừa là mời nhầm người.
+   */
+  findByPhone(phone: string) {
+    return User.find({ phone }).limit(5).exec()
+  },
+
   findByEmail(email: string, opts: { withPassword?: boolean } = {}) {
     const query = User.findOne({ email: email.toLowerCase() })
     if (opts.withPassword) query.select('+password')

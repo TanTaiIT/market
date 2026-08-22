@@ -143,7 +143,7 @@ async function backfillMemberships() {
       await Membership.create({
         userId: user._id,
         organizationId: orgId,
-        role: isOwner ? MEMBERSHIP_ROLES.OWNER : MEMBERSHIP_ROLES.MEMBER,
+        role: isOwner ? MEMBERSHIP_ROLES.ADMIN : MEMBERSHIP_ROLES.MEMBER,
         // Dữ liệu cũ do org nạp vào, không phải người dùng tự xin — `roster` mô tả đúng hơn
         // `request`, và mức tin cậy đi kèm cũng đúng hơn.
         joinedVia: JOINED_VIA.ROSTER,

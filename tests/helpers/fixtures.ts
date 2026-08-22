@@ -20,9 +20,27 @@ export interface TestUser {
   email: string
 }
 
+/**
+ * Dựng replica set, có thử lại.
+ *
+ * `mongodb-memory-server` tự chọn cổng trống, và với ~25 file test chạy tuần tự thì cổng của
+ * instance vừa tắt còn nằm trong TIME_WAIT — lượt sau ném "getFreePort" rồi cả file bị bỏ qua.
+ * Đây không phải lỗi ngẫu nhiên đáng bỏ mặc: nó khiến `npm test` đỏ mà không có bug nào.
+ */
+async function createReplSet(): Promise<MongoMemoryReplSet> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await MongoMemoryReplSet.create({ replSet: { count: 1 } })
+    } catch (error) {
+      if (attempt >= 4) throw error
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)))
+    }
+  }
+}
+
 export async function startTestDb(): Promise<MongoMemoryReplSet> {
   // Transaction không còn cần cho đăng ký, nhưng replica set giữ nguyên để test sát production.
-  const mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } })
+  const mongod = await createReplSet()
   const uri = mongod.getUri()
   process.env.MONGO_URI = uri
   process.env.JWT_SECRET = 'test_secret'
@@ -76,12 +94,23 @@ export async function createOrg(
     provinceCode?: string
   },
 ) {
+  const { ownerEmail, ...body } = input
   const res = await request(app)
     .post('/api/v1/organizations')
     .set('Authorization', `Bearer ${masterToken}`)
-    .send(input)
+    .send(body)
     .expect(201)
-  return res.body.data as { id: string; slug: string; name: string }
+
+  // Org sinh ra ở `pending_admin` — chưa ai vào được. Trao quyền ngay để fixture trả về một
+  // org dùng được, đúng như bản cũ làm trong một lượt.
+  const org = res.body.data as { id: string; slug: string; name: string }
+  await request(app)
+    .post(`/api/v1/organizations/${org.id}/admin`)
+    .set('Authorization', `Bearer ${masterToken}`)
+    .send({ email: ownerEmail })
+    .expect(200)
+
+  return org
 }
 
 /** Thêm thành viên thẳng vào DB: đường mời/roster là việc của vòng sau (§7.4). */
@@ -158,4 +187,17 @@ export function listingPayload(title: string, categoryId: string) {
     images: ['https://example.com/a.jpg'],
     location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
   }
+}
+
+/**
+ * Mã nhóm của một org, tra theo slug.
+ *
+ * Đơn gia nhập đi bằng MÃ chứ không còn bằng slug, mà mã thì sinh ngẫu nhiên lúc tạo org nên
+ * test không đoán trước được — phải hỏi DB.
+ */
+export async function joinCodeOf(slug: string): Promise<string> {
+  const { Organization } = await import('../../src/features/organization/organization.model')
+  const org = await Organization.findOne({ slug }).select('joinCode').lean().exec()
+  if (!org) throw new Error(`Không có org nào slug "${slug}"`)
+  return org.joinCode
 }

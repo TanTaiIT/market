@@ -1,9 +1,37 @@
 import { organizationService } from './organization.service'
-import { toOrganizationDto } from './organization.types'
+import { toOrganizationCardDto, toOrganizationDto } from './organization.types'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
 
 export const organizationController = {
+  // POST /organizations/:organizationId/admin
+  grantAdmin: catchAsync(async (req, res) => {
+    const org = await organizationService.grantAdmin(
+      req.params.organizationId,
+      req.body.email,
+      req.user!.id,
+    )
+    success(res, { message: 'Organization admin granted', data: toOrganizationDto(org) })
+  }),
+
+  // PATCH /organizations/current
+  update: catchAsync(async (req, res) => {
+    const org = await organizationService.update(req.body)
+    success(res, { message: 'Organization updated', data: toOrganizationDto(org) })
+  }),
+
+  // POST /organizations/current/join-code
+  rotateJoinCode: catchAsync(async (req, res) => {
+    const org = await organizationService.rotateJoinCode()
+    success(res, { message: 'Join code rotated', data: toOrganizationDto(org) })
+  }),
+
+  // GET /organizations/by-code/:code
+  byCode: catchAsync(async (req, res) => {
+    const { org, memberCount } = await organizationService.getByJoinCode(req.params.code)
+    success(res, { message: 'Organization', data: toOrganizationCardDto(org, memberCount) })
+  }),
+
   // GET /organizations/mine
   mine: catchAsync(async (req, res) => {
     const data = await organizationService.listMine(req.user!.id)

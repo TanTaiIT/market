@@ -24,10 +24,23 @@ export interface IOrganization {
   /** Tên tỉnh trong danh sách đóng 34 đơn vị. `null` = org tổng quát không gắn địa bàn. */
   provinceCode: string | null
   district: string | null
+  /**
+   * Hồ sơ nhóm — thứ người ngoài nhìn thấy khi mở link chia sẻ.
+   *
+   * Ảnh là URL Cloudinary do CLIENT upload thẳng lên (unsigned preset), BE chỉ nhận đường dẫn.
+   * Cùng đường mà ảnh tin đăng đang đi: không có file nào chạy qua server này.
+   */
+  /**
+   * Mã để xin gia nhập. Đổi được — rò mã thì xoay mã, không phải đổi slug (slug nằm trong mọi
+   * link đã phát ra ngoài). Xem `common/utils/joinCode.ts`.
+   */
+  joinCode: string
+  avatarUrl: string | null
+  coverUrl: string | null
+  description: string
   allowJoinRequests: boolean
   /** Mặc định TẮT: org nào không muốn nhận tin từ người ngoài thì slug đơn giản không hiện ra. */
   allowOutsiderPosts: boolean
-  ownerId: Types.ObjectId
   /** Ai tạo org này. Chỉ master tạo được org (quyết định Q2), nên đây luôn là một master. */
   createdBy: Types.ObjectId | null
   status: TenantStatus
@@ -69,10 +82,14 @@ const organizationSchema = new Schema<IOrganizationDocument>(
     provinceCode: { type: String, default: null, trim: true },
     district: { type: String, default: null, trim: true, maxlength: 100 },
 
+    joinCode: { type: String, required: true, uppercase: true, trim: true },
+    avatarUrl: { type: String, default: null },
+    coverUrl: { type: String, default: null },
+    description: { type: String, default: '', trim: true, maxlength: 500 },
+
     allowJoinRequests: { type: Boolean, default: true },
     allowOutsiderPosts: { type: Boolean, default: false },
 
-    ownerId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
 
     status: { type: String, enum: Object.values(TENANT_STATUS), default: TENANT_STATUS.ACTIVE },
@@ -106,13 +123,14 @@ organizationSchema.index({ slugNormalized: 1 }, { unique: true })
  * Dropdown chọn org, nhánh tra theo TÊN. Multikey nên mỗi từ có bounds riêng: gõ "hung" là một
  * lượt tra tiền tố, không phải quét cả bảng.
  *
- * Thay cho hai index đã bỏ, cả hai đều chưa từng được query nào chạm tới:
- * `{ ownerId: 1 }` — `ownerId` chỉ được GHI lúc tạo org, không lọc, không authz (quyền đến từ
- *   `role_grants`), thậm chí không có trong DTO.
+ * Thay cho index đã bỏ, chưa từng được query nào chạm tới:
  * `{ provinceCode: 1, status: 1 }` — ghi chú cũ nói "dropdown lọc theo địa bàn", nhưng `search()`
  *   không hề lọc `provinceCode`; tham số cùng tên trên query string chỉ dùng để gợi ý slug.
  */
 organizationSchema.index({ nameTokens: 1 })
+// Đường tra của ô "tìm nhóm" và của mọi đơn xin gia nhập. Unique để hai org không bao giờ
+// chung một mã — chính index này là trọng tài khi hai lượt sinh mã đụng nhau.
+organizationSchema.index({ joinCode: 1 }, { unique: true })
 
 export const Organization: Model<IOrganizationDocument> = mongoose.model<IOrganizationDocument>(
   'Organization',

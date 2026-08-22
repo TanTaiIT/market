@@ -19,6 +19,7 @@ import { UserTrust } from '../src/features/trust/trust.model'
 import { AuditLog } from '../src/features/moderation/moderation.model'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
 import { assertDisposableDb } from './assertDisposableDb'
+import { generateJoinCode } from '../src/common/utils/joinCode'
 import {
   AUDIT_ACTION,
   LISTING_STATUS,
@@ -401,7 +402,7 @@ function buildOrg(spec: (typeof ORG_SEEDS)[number], passwordHash: string) {
     memberships.push({
       userId: user._id,
       organizationId: orgId,
-      role: duty === 'owner' ? MEMBERSHIP_ROLES.OWNER : MEMBERSHIP_ROLES.MEMBER,
+      role: duty === 'owner' ? MEMBERSHIP_ROLES.ADMIN : MEMBERSHIP_ROLES.MEMBER,
       joinedVia: JOINED_VIA.ROSTER,
     })
     if (duty !== 'member') {
@@ -1145,7 +1146,7 @@ async function seedBulk() {
         _id: b.org.id,
         name: b.org.name,
         slug: b.org.slug,
-        ownerId: b.org.owner._id,
+        joinCode: generateJoinCode(),
       })),
     )
 

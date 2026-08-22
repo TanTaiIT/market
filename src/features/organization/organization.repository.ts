@@ -40,6 +40,11 @@ const ALIVE = { status: TENANT_STATUS.ACTIVE, deletedAt: null }
 const SUMMARY_FIELDS = '_id slug status'
 
 export const organizationRepository = {
+  /** Tra theo mã nhóm. Chỉ org đang hoạt động — org bị khoá thì mã cũng ngừng dùng được. */
+  findActiveByJoinCode(joinCode: string) {
+    return Organization.findOne({ joinCode, ...ALIVE }).exec()
+  },
+
   findActiveById(id: string | Types.ObjectId): Promise<OrgSummary | null> {
     return memo(`id:${id.toString()}`, () =>
       Organization.findOne({ _id: id, ...ALIVE })

@@ -25,7 +25,8 @@
     "migrate:v2": "cross-env NODE_ENV=development tsx scripts/migrate-v2.ts",
     "explain:indexes": "cross-env NODE_ENV=development tsx scripts/explain-indexes.ts",
     "prepare": "husky",
-    "migrate:trust": "cross-env NODE_ENV=development tsx scripts/migrate-trust-merge.ts"
+    "migrate:trust": "cross-env NODE_ENV=development tsx scripts/migrate-trust-merge.ts",
+    "migrate:org-admin": "cross-env NODE_ENV=development tsx scripts/migrate-org-admin.ts"
   },
   "keywords": [
     "marketplace",

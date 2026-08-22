@@ -4,6 +4,7 @@ import { IJoinRequestDocument } from './join-request.model'
 import { toJoinRequestDto, toMyJoinRequestDto } from './join-request.types'
 import { CreateJoinRequestInput } from './join-request.schema'
 import { organizationRepository } from '../organization/organization.repository'
+import { normalizeJoinCode } from '../../common/utils/joinCode'
 import { membershipRepository } from '../membership/membership.repository'
 import { orgUnitRepository } from '../org-unit/org-unit.repository'
 import { notificationService } from '../notification/notification.service'
@@ -27,11 +28,11 @@ export const joinRequestService = {
    * org đến từ slug người dùng đã xác nhận trên dropdown.
    */
   async create(actorId: string, input: CreateJoinRequestInput) {
-    const org = await organizationRepository.findActiveBySlug(input.orgSlug)
-    if (!org) throw new NotFoundError('Tổ chức không tồn tại hoặc đã bị khoá')
+    const full = await organizationRepository.findActiveByJoinCode(normalizeJoinCode(input.code))
+    if (!full) throw new NotFoundError('Không tìm thấy nhóm nào với mã này')
+    const org = { _id: full._id }
 
-    const full = await organizationRepository.findById(org._id)
-    if (!full?.allowJoinRequests) {
+    if (!full.allowJoinRequests) {
       throw new ForbiddenError('Tổ chức này đang không nhận đơn tham gia')
     }
 
