@@ -1,6 +1,7 @@
 import { Types } from 'mongoose'
 import { Conversation, Message, IConversation, IMessage } from './chat.model'
 import { PaginationParams } from '../../common/utils/pagination'
+import { runUnscoped } from '../../common/tenant/tenantContext'
 
 /**
  * Không có `organizationId` viết tay ở đâu trong file này — `tenantPlugin` chèn ở tầng dưới
@@ -61,5 +62,18 @@ export const chatRepository = {
       { $set: { 'participants.$.lastReadAt': new Date() } },
       { new: true },
     ).exec()
+  },
+
+  /**
+   * Avatar snapshot của người tham gia mọi hội thoại — cho job dọn ảnh mồ côi
+   * (`upload.cleanup.service.ts`). Snapshot chụp lúc mở hội thoại (§2.3 cấm populate), nên nó
+   * có thể là chủ CUỐI CÙNG của một ảnh mà user đã đổi từ lâu — thiếu nguồn này là job giật
+   * ảnh ngay trong khung chat.
+   */
+  async allConversationAvatars(): Promise<string[]> {
+    const rows = await runUnscoped('image cleanup: gom avatar snapshot của mọi hội thoại', () =>
+      Conversation.find().select('participants.avatar').lean().exec(),
+    )
+    return rows.flatMap((r) => r.participants.map((p) => p.avatar)).filter(Boolean)
   },
 }

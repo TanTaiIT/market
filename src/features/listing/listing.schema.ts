@@ -89,6 +89,14 @@ export const createListingSchema = z
   .strict()
   .openapi('CreateListing')
 
+/** Phí của một lượt đăng — sống trong hợp đồng API từ giai đoạn miễn phí (listing.pricing.ts). */
+export const postingFeeSchema = z
+  .object({
+    amount: z.number().openapi({ example: 0 }),
+    currency: z.literal('xu'),
+  })
+  .openapi('PostingFee')
+
 export const quotaStatusSchema = z
   .object({
     allowed: z.boolean(),
@@ -96,10 +104,27 @@ export const quotaStatusSchema = z
     pending: z.number(),
     remaining: z.number(),
     reason: z.enum(['blocked_by_rejections', 'quota_full']).optional(),
+    fee: postingFeeSchema,
   })
   .openapi('QuotaStatus')
 
 export const updateListingSchema = createListingSchema.partial().strict().openapi('UpdateListing')
+
+export const postingStatsQuerySchema = z.object({
+  /** Cửa sổ đo — 30 ngày là một chu kỳ đăng của người bán thường. */
+  days: z.coerce.number().int().min(7).max(365).default(30),
+})
+
+export const postingStatsSchema = z
+  .object({
+    totalPosts: z.number(),
+    distinctPosters: z.number(),
+    byCategory: z.array(z.object({ _id: z.string(), count: z.number() })),
+    posterHistogram: z.array(
+      z.object({ _id: z.union([z.number(), z.string()]), users: z.number() }),
+    ),
+  })
+  .openapi('PostingStats')
 
 /**
  * Một ràng buộc trên thuộc tính động. Ba dạng, phủ đủ mọi `FIELD_TYPE`:
@@ -202,6 +227,8 @@ export const listingResponseSchema = z
     viewCount: z.number(),
     favoriteCount: z.number(),
     expiresAt: z.string().datetime().optional(),
+    rankAt: z.string().datetime().optional(),
+    featuredUntil: z.string().datetime().nullable().optional(),
     createdAt: z.string().datetime(),
     updatedAt: z.string().datetime(),
   })
@@ -214,6 +241,8 @@ export type ListingQuery = z.infer<typeof listingQuerySchema>
 export type NearbyQuery = z.infer<typeof nearbyQuerySchema>
 
 registry.register('CreateListing', createListingSchema)
+registry.register('PostingFee', postingFeeSchema)
 registry.register('QuotaStatus', quotaStatusSchema)
+registry.register('PostingStats', postingStatsSchema)
 registry.register('UpdateListing', updateListingSchema)
 registry.register('Listing', listingResponseSchema)

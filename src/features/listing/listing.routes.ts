@@ -9,9 +9,13 @@ import {
   nearbyQuerySchema,
   listingParamsSchema,
   listingResponseSchema,
+  postingStatsQuerySchema,
+  postingStatsSchema,
+  postingFeeSchema,
 } from './listing.schema'
+import { listingProductResponseSchema } from '../listing-product/listing-product.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate } from '../../middlewares/auth.middleware'
+import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
   registry,
@@ -33,6 +37,19 @@ router.get('/nearby', validate({ query: nearbyQuerySchema }), listingController.
 router.get('/mine', authenticate, validate({ query: listingQuerySchema }), listingController.mine)
 // Trạng thái quota — client hiện "còn N slot" thay vì để người dùng đoán vì sao bị chặn (§8.4).
 router.get('/quota', authenticate, listingController.quota)
+
+// Catalog gói tin CÔNG KHAI — chỉ gói đang mở bán (master quản catalog ở /listing-products).
+router.get('/products', listingController.products)
+
+// Dữ liệu định giá cho hệ Xu — master-only, và phải đứng TRƯỚC '/:id' kẻo Express nuốt
+// 'posting-stats' làm một cái id.
+router.get(
+  '/posting-stats',
+  authenticate,
+  requireMaster,
+  validate({ query: postingStatsQuerySchema }),
+  listingController.postingStats,
+)
 
 router.get('/:id', validate({ params: listingParamsSchema }), listingController.getById)
 
@@ -60,6 +77,8 @@ router.delete(
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
 const listingResponse = envelope(listingResponseSchema)
+// Riêng create: meta mang biên lai phí của HÀNH ĐỘNG — spec phải nói đúng thứ runtime trả.
+const listingCreatedResponse = envelope(listingResponseSchema, z.object({ fee: postingFeeSchema }))
 const listSummary = 'Chỉ trả tin ở trạng thái public — không lộ draft/pending/rejected/hidden.'
 
 registry.registerPath({
@@ -142,7 +161,7 @@ registry.registerPath({
   ...protectedRoute,
   request: { body: { content: { 'application/json': { schema: createListingSchema } } } },
   responses: {
-    201: jsonResponse('Đã tạo tin', listingResponse),
+    201: jsonResponse('Đã tạo tin', listingCreatedResponse),
     400: errorResponse('Dữ liệu không hợp lệ'),
     401: errorResponse('Thiếu hoặc sai access token'),
     429: errorResponse('Quá nhiều request'),
@@ -155,6 +174,8 @@ registry.registerPath({
   operationId: 'listingUpdate',
   tags: ['Listing'],
   summary: 'Sửa tin của chính mình',
+  description:
+    'Đổi tiêu đề, mô tả, giá, ảnh hay danh mục của một tin ĐANG HIỂN THỊ sẽ đưa tin về `pending` để duyệt lại — trừ khi người bán đủ bậc uy tín tự đăng. Đọc `status` trong response để biết tin còn trên bảng hay không.',
   ...protectedRoute,
   request: {
     params: listingParamsSchema,
@@ -195,6 +216,40 @@ registry.registerPath({
     'duyệt bận cả tuần, người dùng chỉ thấy mình bị chặn mà không hiểu vì sao.',
   ...protectedRoute,
   responses: { 200: jsonResponse('Trạng thái quota', envelope(quotaStatusSchema)) },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/listings/products',
+  operationId: 'listingProducts',
+  tags: ['Listing'],
+  summary: 'Catalog gói tin (đẩy tin, tin nổi bật…)',
+  description:
+    'Những gói trả bằng Xu ĐANG MỞ BÁN — bản nháp/ngừng bán không xuất hiện ở đây. Master ' +
+    'quản catalog qua /listing-products. Đường mua sẽ là `POST /listings/{id}/products/{code}` ' +
+    'khi ví Xu vận hành.',
+  responses: {
+    200: jsonResponse('Catalog gói tin', envelope(z.array(listingProductResponseSchema))),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/listings/posting-stats',
+  operationId: 'listingPostingStats',
+  tags: ['Listing'],
+  summary: 'Số liệu đăng tin toàn nền tảng (master)',
+  description:
+    'Dữ liệu định giá cho hệ Xu, tích luỹ từ giai đoạn miễn phí: tổng lượt đăng, số người ' +
+    'đăng, phân bố theo danh mục, và biểu đồ ai-đăng-bao-nhiêu — nhóm 4+ tin/cửa sổ là nhóm ' +
+    'sẽ trả phí. Đếm mọi tin được TẠO (kể cả bị từ chối): thứ cần đo là nhu cầu.',
+  ...protectedRoute,
+  request: { query: postingStatsQuerySchema },
+  responses: {
+    200: jsonResponse('Số liệu đăng tin', envelope(postingStatsSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền master'),
+  },
 })
 
 export default router

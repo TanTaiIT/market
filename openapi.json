@@ -950,6 +950,25 @@
         ],
         "additionalProperties": false
       },
+      "PostingFee": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "example": 0
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "xu"
+            ]
+          }
+        },
+        "required": [
+          "amount",
+          "currency"
+        ]
+      },
       "QuotaStatus": {
         "type": "object",
         "properties": {
@@ -971,13 +990,77 @@
               "blocked_by_rejections",
               "quota_full"
             ]
+          },
+          "fee": {
+            "$ref": "#/components/schemas/PostingFee"
           }
         },
         "required": [
           "allowed",
           "limit",
           "pending",
-          "remaining"
+          "remaining",
+          "fee"
+        ]
+      },
+      "PostingStats": {
+        "type": "object",
+        "properties": {
+          "totalPosts": {
+            "type": "number"
+          },
+          "distinctPosters": {
+            "type": "number"
+          },
+          "byCategory": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "_id": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "_id",
+                "count"
+              ]
+            }
+          },
+          "posterHistogram": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "_id": {
+                  "anyOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "users": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "_id",
+                "users"
+              ]
+            }
+          }
+        },
+        "required": [
+          "totalPosts",
+          "distinctPosters",
+          "byCategory",
+          "posterHistogram"
         ]
       },
       "UpdateListing": {
@@ -1328,6 +1411,15 @@
           },
           "expiresAt": {
             "type": "string",
+            "format": "date-time"
+          },
+          "rankAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "featuredUntil": {
+            "type": "string",
+            "nullable": true,
             "format": "date-time"
           },
           "createdAt": {
@@ -3184,6 +3276,81 @@
           "wards"
         ]
       },
+      "ListingProduct": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "rank_to_top",
+              "featured",
+              "extend_expiry"
+            ]
+          },
+          "durationDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "cooldownHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "price": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "amount": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string",
+                "enum": [
+                  "xu"
+                ]
+              }
+            },
+            "required": [
+              "amount",
+              "currency"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "order": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "_id",
+          "code",
+          "name",
+          "description",
+          "effect",
+          "durationDays",
+          "cooldownHours",
+          "price",
+          "enabled",
+          "order",
+          "createdAt"
+        ]
+      },
       "GrantOrganizationAdmin": {
         "type": "object",
         "properties": {
@@ -3194,6 +3361,270 @@
         },
         "required": [
           "email"
+        ],
+        "additionalProperties": false
+      },
+      "BannedPhrase": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "phrase": {
+            "type": "string"
+          },
+          "addedBy": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "_id",
+          "phrase",
+          "addedBy",
+          "createdAt"
+        ]
+      },
+      "CreateBannedPhrase": {
+        "type": "object",
+        "properties": {
+          "phrase": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "example": "pháo nổ"
+          }
+        },
+        "required": [
+          "phrase"
+        ],
+        "additionalProperties": false
+      },
+      "CreateListingProduct": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]{2,40}$",
+            "example": "featured_7d_sale"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "example": "Tin nổi bật 7 ngày — ưu đãi"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "rank_to_top",
+              "featured",
+              "extend_expiry"
+            ]
+          },
+          "durationDays": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 365
+          },
+          "cooldownHours": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 720
+          },
+          "price": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "amount": {
+                "type": "integer",
+                "minimum": 0,
+                "example": 5
+              }
+            },
+            "required": [
+              "amount"
+            ],
+            "additionalProperties": false
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "effect"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateListingProduct": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "example": "Tin nổi bật 7 ngày — ưu đãi"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "rank_to_top",
+              "featured",
+              "extend_expiry"
+            ]
+          },
+          "durationDays": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 365
+          },
+          "cooldownHours": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 720
+          },
+          "price": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "amount": {
+                "type": "integer",
+                "minimum": 0,
+                "example": 5
+              }
+            },
+            "required": [
+              "amount"
+            ],
+            "additionalProperties": false
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          }
+        },
+        "additionalProperties": false
+      },
+      "Wallet": {
+        "type": "object",
+        "properties": {
+          "balance": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "xu"
+            ]
+          }
+        },
+        "required": [
+          "balance",
+          "currency"
+        ]
+      },
+      "XuTransaction": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "topup",
+              "post_fee",
+              "product_purchase",
+              "refund",
+              "promo_grant",
+              "admin_adjust"
+            ]
+          },
+          "balanceAfter": {
+            "type": "number"
+          },
+          "note": {
+            "type": "string"
+          },
+          "refs": {
+            "type": "object",
+            "properties": {
+              "listingId": {
+                "type": "string"
+              },
+              "paymentId": {
+                "type": "string"
+              },
+              "productCode": {
+                "type": "string"
+              }
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "_id",
+          "amount",
+          "type",
+          "balanceAfter",
+          "note",
+          "createdAt"
+        ]
+      },
+      "AdjustWallet": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "example": 100
+          },
+          "note": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "example": "Tặng Xu khai trương"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "amount",
+          "note",
+          "idempotencyKey"
         ],
         "additionalProperties": false
       }
@@ -4147,12 +4578,24 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/Listing"
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "fee": {
+                          "$ref": "#/components/schemas/PostingFee"
+                        }
+                      },
+                      "required": [
+                        "fee"
+                      ]
                     }
                   },
                   "required": [
                     "success",
                     "message",
-                    "data"
+                    "data",
+                    "meta"
                   ]
                 }
               }
@@ -4641,6 +5084,7 @@
           "Listing"
         ],
         "summary": "Sửa tin của chính mình",
+        "description": "Đổi tiêu đề, mô tả, giá, ảnh hay danh mục của một tin ĐANG HIỂN THỊ sẽ đưa tin về `pending` để duyệt lại — trừ khi người bán đủ bậc uy tín tự đăng. Đọc `status` trong response để biết tin còn trên bảng hay không.",
         "security": [
           {
             "bearerAuth": []
@@ -4852,6 +5296,129 @@
                     "message",
                     "data"
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listings/products": {
+      "get": {
+        "operationId": "listingProducts",
+        "tags": [
+          "Listing"
+        ],
+        "summary": "Catalog gói tin (đẩy tin, tin nổi bật…)",
+        "description": "Những gói trả bằng Xu ĐANG MỞ BÁN — bản nháp/ngừng bán không xuất hiện ở đây. Master quản catalog qua /listing-products. Đường mua sẽ là `POST /listings/{id}/products/{code}` khi ví Xu vận hành.",
+        "responses": {
+          "200": {
+            "description": "Catalog gói tin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ListingProduct"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listings/posting-stats": {
+      "get": {
+        "operationId": "listingPostingStats",
+        "tags": [
+          "Listing"
+        ],
+        "summary": "Số liệu đăng tin toàn nền tảng (master)",
+        "description": "Dữ liệu định giá cho hệ Xu, tích luỹ từ giai đoạn miễn phí: tổng lượt đăng, số người đăng, phân bố theo danh mục, và biểu đồ ai-đăng-bao-nhiêu — nhóm 4+ tin/cửa sổ là nhóm sẽ trả phí. Đếm mọi tin được TẠO (kể cả bị từ chối): thứ cần đo là nhu cầu.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 7,
+              "maximum": 365,
+              "default": 30
+            },
+            "required": false,
+            "name": "days",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Số liệu đăng tin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PostingStats"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -10472,6 +11039,850 @@
           },
           "400": {
             "description": "Tên tỉnh không nằm trong danh sách 34 đơn vị",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/banned-phrases": {
+      "get": {
+        "operationId": "bannedPhraseList",
+        "tags": [
+          "BannedPhrase"
+        ],
+        "summary": "Danh sách cụm từ cấm (master)",
+        "description": "Từ điển cụm cấm của cổng nội dung — tin chứa cụm nào trong đây bị từ chối ngay lúc đăng, bị chặn lúc sửa, và máy quét từ chối nếu đã nằm sẵn trong hàng đợi. Master-only kể cả đọc: công bố danh sách là chỉ đường lách luật.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách cụm cấm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/BannedPhrase"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "bannedPhraseCreate",
+        "tags": [
+          "BannedPhrase"
+        ],
+        "summary": "Thêm cụm từ cấm (master)",
+        "description": "Cụm được chuẩn hoá lowercase + trim trước khi lưu. Hiệu lực ngay với tin đăng/sửa mới; tin đang chờ duyệt sẵn trong hàng đợi bị máy quét bắt ở lượt kế tiếp. Nên dùng CỤM (≥2 từ) thay vì từ đơn — từ đơn dễ chém oan (\"súng\" bắt cả \"súng phun nước đồ chơi\").",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBannedPhrase"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã thêm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BannedPhrase"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Cụm này đã có trong danh sách",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/banned-phrases/{id}": {
+      "delete": {
+        "operationId": "bannedPhraseRemove",
+        "tags": [
+          "BannedPhrase"
+        ],
+        "summary": "Gỡ cụm từ cấm (master)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã gỡ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BannedPhrase"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy cụm cấm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listing-products": {
+      "get": {
+        "operationId": "listingProductAdminList",
+        "tags": [
+          "ListingProduct"
+        ],
+        "summary": "Mọi gói tin, kể cả nháp (master)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog đầy đủ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ListingProduct"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "listingProductCreate",
+        "tags": [
+          "ListingProduct"
+        ],
+        "summary": "Xuất bản gói tin mới (master)",
+        "description": "Tạo gói ở trạng thái nháp (`enabled: false`) rồi bật khi sẵn sàng, hoặc tạo bật ngay — nhưng mở bán bắt buộc có giá. `code` là định danh bất biến (sổ cái tham chiếu bằng nó); mốc ưu đãi mới = một gói mới với code riêng, ví dụ `featured_7d_sale`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateListingProduct"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tạo gói",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ListingProduct"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Vi phạm luật gói (mở bán thiếu giá, đẩy tin kèm thời hạn…)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Đã có gói mang code này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listing-products/{id}": {
+      "patch": {
+        "operationId": "listingProductUpdate",
+        "tags": [
+          "ListingProduct"
+        ],
+        "summary": "Sửa / bật / ngừng bán một gói (master)",
+        "description": "PATCH từng phần — luật xuyên field kiểm trên bản ghép với dữ liệu đang lưu. `code` không sửa được: gói đổi bản chất thì tạo gói mới, ngừng bán gói cũ.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateListingProduct"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã cập nhật",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ListingProduct"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Vi phạm luật gói",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy gói",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "listingProductRemove",
+        "tags": [
+          "ListingProduct"
+        ],
+        "summary": "Xoá một gói chưa từng bán (master)",
+        "description": "Gói đã bán một thời gian thì NGỪNG BÁN (`enabled: false`) thay vì xoá.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã xoá",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ListingProduct"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy gói",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet": {
+      "get": {
+        "operationId": "walletGet",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Số dư Xu của tôi",
+        "description": "Ví chưa từng phát sinh giao dịch trả về `0` — không phải 404.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Số dư",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Wallet"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/transactions": {
+      "get": {
+        "operationId": "walletHistory",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Lịch sử biến động ví",
+        "description": "Sổ cái của chính chủ, mới nhất trước. `balanceAfter` là số dư ngay sau dòng đó — dùng nó để đối chiếu thay vì cộng dồn ở client.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lịch sử ví",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/XuTransaction"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/{userId}/adjust": {
+      "post": {
+        "operationId": "walletAdjust",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Cộng / trừ Xu tay (master)",
+        "description": "Tặng Xu, bồi thường, thu hồi Xu cấp nhầm. `amount` âm là trừ. `note` bắt buộc — dòng sổ do người tạo ra mà không nói vì sao thì tháng sau không ai giải thích được cho khách. `idempotencyKey` do client sinh mỗi lần mở form: bấm nhầm hai lần chỉ ra một dòng sổ.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustWallet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã ghi sổ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/XuTransaction"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Số Xu phải là số nguyên khác 0",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Trừ quá số dư đang có",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
             "content": {
               "application/json": {
                 "schema": {

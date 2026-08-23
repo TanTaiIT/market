@@ -11,6 +11,12 @@ import {
 } from '../../common/constants'
 import { tenantPlugin } from '../../common/tenant/tenantPlugin'
 import { AUTO_APPROVAL_REASONS, type AutoApprovalReason } from './listing.quota'
+import {
+  MACHINE_HOLDS,
+  MACHINE_VERDICTS,
+  type MachineHold,
+  type MachineVerdictKind,
+} from '../moderation/moderation.machine'
 
 /**
  * Địa chỉ hành chính thuần, không có toạ độ — xem lý do bỏ geo ở `listing.schema.ts`.
@@ -53,6 +59,14 @@ export interface IListing {
   /** Vắng khi người đăng không chọn khu vực — tin đó không lên bộ lọc tỉnh lẫn `/listings/nearby`. */
   location?: IListingLocation
   status: ListingStatus
+  /**
+   * Khoá SẮP XẾP của bảng tin — không phải `createdAt`, vì gói "đẩy tin" cần kéo tin lên
+   * đầu bảng mà không được sửa lịch sử. Bằng `createdAt` lúc tạo; đẩy tin = set lại `now`.
+   * Chuẩn bị cho gói tin trả bằng Xu (xu-wallet.decision.md §6) — đổ trước ngày bán.
+   */
+  rankAt: Date
+  /** Hạn của gói "tin nổi bật" — `null` = tin thường. FE tự suy badge từ `> now`. */
+  featuredUntil: Date | null
   viewCount: number
   favoriteCount: number
   /**
@@ -89,6 +103,16 @@ export interface IListing {
     trustLevel: number
     reason: AutoApprovalReason
   }
+  /**
+   * Vết của người duyệt MÁY (job quét hàng đợi) — khác `autoApproval` (quyết định lúc đăng).
+   * `null` nghĩa là "chưa chấm / cần chấm lại": sửa nội dung sẽ set lại null để job quét lại,
+   * và query của job là `{ machineReview: null }` — match cả field vắng lẫn null tường minh.
+   */
+  machineReview?: {
+    at: Date
+    verdict: MachineVerdictKind
+    holds?: MachineHold[]
+  } | null
   /** Vết của lượt duyệt gần nhất. Rỗng với tin chưa ai chạm tới. */
   moderation?: {
     reason?: string
@@ -177,6 +201,11 @@ const listingSchema = new Schema<IListingDocument>(
       default: LISTING_STATUS.PENDING,
     },
 
+    // Tin cũ chưa có field này cho tới khi chạy `npm run migrate:rank-at` — thiếu nó thì
+    // chúng chìm xuống đáy bảng (BSON xếp missing nhỏ hơn mọi Date).
+    rankAt: { type: Date, default: Date.now },
+    featuredUntil: { type: Date, default: null },
+
     viewCount: { type: Number, default: 0 },
     favoriteCount: { type: Number, default: 0 },
 
@@ -198,6 +227,18 @@ const listingSchema = new Schema<IListingDocument>(
         {
           trustLevel: { type: Number, required: true, min: 0 },
           reason: { type: String, enum: [...AUTO_APPROVAL_REASONS], required: true },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
+
+    machineReview: {
+      type: new Schema(
+        {
+          at: { type: Date, required: true },
+          verdict: { type: String, enum: [...MACHINE_VERDICTS], required: true },
+          holds: { type: [String], enum: [...MACHINE_HOLDS], default: undefined },
         },
         { _id: false },
       ),
@@ -251,6 +292,8 @@ const listingSchema = new Schema<IListingDocument>(
         // thấp là chuyện của hệ thống, không phải của trang tin. Muốn hiện cho CHÍNH chủ tin
         // thì mở bằng một endpoint riêng, đừng nới cái DTO mà ai cũng đọc được.
         delete r.autoApproval
+        // Cùng lý do với autoApproval: hồ sơ kiểm duyệt nội bộ, không thuộc về trang tin.
+        delete r.machineReview
         return r
       },
     },
@@ -264,9 +307,16 @@ listingSchema.plugin(tenantPlugin, { dualAxis: true })
 // HAI họ index vì có hai trục truy vấn, và query của trục này không dùng được index của trục
 // kia: trục org luôn bắt đầu bằng `organizationId`, trục danh mục luôn bắt đầu bằng
 // `visibility` (org của nó là null nên prefix organizationId vô dụng).
-listingSchema.index({ organizationId: 1, status: 1, createdAt: -1 })
-listingSchema.index({ organizationId: 1, category: 1, status: 1, createdAt: -1 })
-listingSchema.index({ organizationId: 1, seller: 1, status: 1, createdAt: -1 })
+/*
+ * Index BẢNG TIN kết thúc bằng `rankAt` (khoá sắp xếp, phục vụ gói "đẩy tin"), còn index
+ * HÀNG ĐỢI (unitId, machineReview) giữ `createdAt` — hàng đợi duyệt là FIFO theo thời điểm
+ * đăng thật, đẩy tin không được phép chen hàng duyệt. Hệ quả chấp nhận được: các màn duyệt
+ * pending lọc qua prefix của index rankAt rồi sort trong bộ nhớ — tập pending bị quota chặn
+ * trần nên luôn nhỏ.
+ */
+listingSchema.index({ organizationId: 1, status: 1, rankAt: -1 })
+listingSchema.index({ organizationId: 1, category: 1, status: 1, rankAt: -1 })
+listingSchema.index({ organizationId: 1, seller: 1, status: 1, rankAt: -1 })
 // Hàng đợi duyệt của staff nhóm con.
 listingSchema.index({ organizationId: 1, unitId: 1, status: 1, createdAt: -1 })
 
@@ -285,8 +335,8 @@ listingSchema.index({ organizationId: 1, unitId: 1, status: 1, createdAt: -1 })
  * Chú ý `location.province` (TÊN tỉnh, người dùng chọn để lọc) khác `provinceCode` (snapshot
  * định tuyến hàng đợi duyệt) — hai field khác nhau, index của cái này không đỡ cái kia.
  */
-listingSchema.index({ organizationId: 1, 'location.province': 1, status: 1, createdAt: -1 })
-listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, createdAt: -1 })
+listingSchema.index({ organizationId: 1, 'location.province': 1, status: 1, rankAt: -1 })
+listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, rankAt: -1 })
 
 /*
  * KHÔNG có index cho khoảng giá. Bản cũ có `{organizationId, price, status}` và nó vừa sai thứ
@@ -298,9 +348,9 @@ listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, createdA
 
 // Trục danh mục: bảng tin công khai (visibility + status) và hàng đợi của manager danh mục
 // (visibility + category + tỉnh).
-listingSchema.index({ visibility: 1, status: 1, createdAt: -1 })
-listingSchema.index({ visibility: 1, category: 1, provinceCode: 1, status: 1, createdAt: -1 })
-listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, createdAt: -1 })
+listingSchema.index({ visibility: 1, status: 1, rankAt: -1 })
+listingSchema.index({ visibility: 1, category: 1, provinceCode: 1, status: 1, rankAt: -1 })
+listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, rankAt: -1 })
 
 /*
  * "Tin của tôi" — NGOẠI LỆ của rule 13 (index trên collection có tenant phải mở đầu bằng
@@ -312,6 +362,17 @@ listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, createdAt: -1 }
  * 1000 tin để trả về 20.
  */
 listingSchema.index({ seller: 1, createdAt: -1 })
+
+/*
+ * Hai index cho người duyệt MÁY — cùng ngoại lệ rule 13(c) với "tin của tôi" ở trên: job quét
+ * chạy trong `runUnscoped` (xem `moderation.machine.service.ts`), cố tình xuyên cả hai trục
+ * nên mọi prefix `organizationId`/`visibility` đều vô dụng với nó.
+ * - hàng đợi cần chấm: `{ status: pending, machineReview: null }`, xử theo thứ tự đăng;
+ * - mẫu giá của danh mục: tin ACTIVE mới nhất cùng `category`, lấy xuyên trục vì "giá phổ
+ *   biến của mặt hàng" không phân biệt tin org hay tin công khai.
+ */
+listingSchema.index({ status: 1, machineReview: 1, createdAt: 1 })
+listingSchema.index({ category: 1, status: 1, createdAt: -1 })
 
 // Index cho `attrs`, land CÙNG lượt với `?attrs=` trong `buildFilter` — đúng như ghi chú cũ ở
 // đây hẹn. Đủ HAI bản, cùng lý do với hai họ index ở trên: trục org bắt đầu bằng

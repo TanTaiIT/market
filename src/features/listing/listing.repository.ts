@@ -138,7 +138,7 @@ export const listingRepository = {
     const filter = buildFilter(params)
 
     const [items, total] = await Promise.all([
-      Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Listing.find(filter).sort({ rankAt: -1 }).skip(skip).limit(limit),
       Listing.countDocuments(filter),
     ])
 
@@ -164,7 +164,7 @@ export const listingRepository = {
     if (exclude) base._id = { $ne: new Types.ObjectId(exclude) }
 
     if (!ward) {
-      return Listing.find(base).sort({ createdAt: -1 }).skip(skip).limit(limit)
+      return Listing.find(base).sort({ rankAt: -1 }).skip(skip).limit(limit)
     }
 
     // Hai truy vấn `find` chứ không phải một `aggregate` xếp hạng: pipeline aggregate được
@@ -173,7 +173,7 @@ export const listingRepository = {
     const inWard = { ...base, 'location.ward': ward }
     const outWard = { ...base, 'location.ward': { $ne: ward } }
 
-    const head = await Listing.find(inWard).sort({ createdAt: -1 }).skip(skip).limit(limit)
+    const head = await Listing.find(inWard).sort({ rankAt: -1 }).skip(skip).limit(limit)
     if (head.length >= limit) return head
 
     // Tổng số tin cùng xã là mốc để cắt offset giữa hai tập, nhưng CHỈ cần khi đã sang trang:
@@ -181,7 +181,7 @@ export const listingRepository = {
     const wardTotal = skip > 0 ? await Listing.countDocuments(inWard) : 0
 
     const tail = await Listing.find(outWard)
-      .sort({ createdAt: -1 })
+      .sort({ rankAt: -1 })
       .skip(Math.max(0, skip - wardTotal))
       .limit(limit - head.length)
 
@@ -249,6 +249,69 @@ export const listingRepository = {
         },
         { status: LISTING_STATUS.HIDDEN, moderation },
       ).exec(),
+    )
+  },
+
+  // ── MACHINE REVIEW (job) ────────────────────────────────────────────────────
+  // Cả cụm chạy ngoài request nên tự khai `runUnscoped` tại đây — mỗi đường một lý do grep được.
+  // Chỉ nhận `PENDING`: `PENDING_UNVERIFIED` là tin người ngoài, máy không có quyền đụng
+  // (routing đã chốt "người ngoài không bao giờ tự đăng", máy duyệt hộ là lách đúng chốt đó).
+
+  findMachineQueue(limit: number) {
+    return runUnscoped('machine review: đọc hàng đợi pending chưa chấm', () =>
+      Listing.find({ status: LISTING_STATUS.PENDING, machineReview: null })
+        .sort({ createdAt: 1 })
+        .limit(limit)
+        .exec(),
+    )
+  },
+
+  /** Mẫu giá tin ACTIVE mới nhất của danh mục — xuyên trục, vì giá phổ biến không phân biệt org. */
+  async sampleActivePrices(categoryId: Types.ObjectId, limit: number): Promise<number[]> {
+    const rows = await runUnscoped('machine review: lấy mẫu giá của danh mục', () =>
+      Listing.find({ category: categoryId, status: LISTING_STATUS.ACTIVE })
+        .select('price')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean()
+        .exec(),
+    )
+    return rows.map((r) => r.price)
+  },
+
+  /**
+   * Cùng người bán, tiêu đề y hệt (không phân hoa/thường), còn sống, trong cửa sổ gần đây.
+   * `excludeId` null = tin đang XÉT chưa được ghi (cổng nội dung lúc create) — không có gì để loại.
+   */
+  async hasRecentDuplicateTitle(
+    sellerId: Types.ObjectId,
+    title: string,
+    excludeId: Types.ObjectId | null,
+    since: Date,
+  ): Promise<boolean> {
+    const dup = await runUnscoped('machine review: soi tin trùng của cùng người bán', () =>
+      Listing.exists({
+        seller: sellerId,
+        ...(excludeId ? { _id: { $ne: excludeId } } : {}),
+        title: new RegExp(`^${escapeRegex(title)}$`, 'i'),
+        status: { $in: [LISTING_STATUS.ACTIVE, ...PENDING_STATUSES] },
+        createdAt: { $gte: since },
+      }).exec(),
+    )
+    return dup !== null
+  },
+
+  /**
+   * Ghi phán quyết máy, có chốt race: điều kiện `status: PENDING` làm người duyệt tay thắng —
+   * họ bấm trước thì lệnh này match 0 document và trả `null`, máy lặng lẽ bỏ qua. Không cần
+   * lock hay lease, và cũng vì thế chạy 2 instance không xử trùng.
+   */
+  applyMachineVerdict(id: Types.ObjectId, update: Partial<IListing>) {
+    return runUnscoped('machine review: ghi phán quyết vào tin còn pending', () =>
+      Listing.findOneAndUpdate({ _id: id, status: LISTING_STATUS.PENDING }, update, {
+        new: true,
+        runValidators: true,
+      }).exec(),
     )
   },
 
@@ -329,6 +392,59 @@ export const listingRepository = {
    * Số liệu cho màn tổng quan của bàn quản trị, gói trong ba aggregate chạy song song.
    * `tenantPlugin` chèn `$match organizationId` vào đầu mỗi pipeline nên không cần lọc tay.
    */
+  /**
+   * Đo lượng đăng tin toàn nền tảng — dữ liệu ĐỊNH GIÁ cho hệ Xu (xu-wallet.decision.md §3).
+   * Số này phải tích luỹ TRƯỚC ngày bật phí, nên endpoint tồn tại từ giai đoạn miễn phí.
+   *
+   * Đếm MỌI tin được tạo trong cửa sổ, kể cả bị từ chối hay đã xoá sau đó: thứ cần đo là
+   * NHU CẦU đăng (thứ sẽ bị tính phí), không phải số tin sống sót.
+   *
+   * Không có index cho `createdAt` trần và không thêm: đường lạnh master-only chạy vài lần
+   * mỗi tháng — một COLLSCAN đo được còn rẻ hơn một index phải nuôi trên mọi lượt ghi
+   * (đúng tinh thần rule 13: nghi ngờ thì ĐO, đừng thêm bừa).
+   */
+  async postingStats(since: Date) {
+    const [facets] = await runUnscoped('pricing prep: đo lượng đăng tin toàn nền tảng', () =>
+      Listing.aggregate<{
+        total: Array<{ count: number }>
+        posters: Array<{ count: number }>
+        byCategory: Array<{ _id: Types.ObjectId; count: number }>
+        posterHistogram: Array<{ _id: number | string; users: number }>
+      }>([
+        { $match: { createdAt: { $gte: since } } },
+        {
+          $facet: {
+            total: [{ $count: 'count' }],
+            posters: [{ $group: { _id: '$seller' } }, { $count: 'count' }],
+            byCategory: [
+              { $group: { _id: '$category', count: { $sum: 1 } } },
+              { $sort: { count: -1 } },
+              { $limit: 20 },
+            ],
+            // Ai đăng bao nhiêu — nhóm 4+ tin/cửa sổ chính là nhóm sẽ trả tiền.
+            posterHistogram: [
+              { $group: { _id: '$seller', posts: { $sum: 1 } } },
+              {
+                $bucket: {
+                  groupBy: '$posts',
+                  boundaries: [1, 2, 4, 11],
+                  default: '11+',
+                  output: { users: { $sum: 1 } },
+                },
+              },
+            ],
+          },
+        },
+      ]).exec(),
+    )
+
+    return {
+      totalPosts: facets.total[0]?.count ?? 0,
+      distinctPosters: facets.posters[0]?.count ?? 0,
+      byCategory: facets.byCategory,
+      posterHistogram: facets.posterHistogram,
+    }
+  },
   async statsForModeration(trendDays: number) {
     const since = new Date(Date.now() - trendDays * 24 * 60 * 60 * 1000)
 
@@ -359,5 +475,17 @@ export const listingRepository = {
     ])
 
     return { byStatus, byCategory, byDay }
+  },
+
+  /**
+   * Mọi URL ảnh mà tin còn giữ — cho job dọn ảnh mồ côi (`upload.cleanup.service.ts`).
+   * Gồm cả snapshot avatar người đăng. Tin xoá mềm cố ý RỚT khỏi kết quả (hook của model):
+   * không có đường khôi phục tin, nên ảnh của nó là rác hợp lệ.
+   */
+  async allImageRefs(): Promise<string[]> {
+    const rows = await runUnscoped('image cleanup: gom URL ảnh của mọi tin', () =>
+      Listing.find().select('images posterAvatar').lean().exec(),
+    )
+    return rows.flatMap((r) => [...r.images, r.posterAvatar])
   },
 }

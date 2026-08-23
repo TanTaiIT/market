@@ -22,11 +22,14 @@
     "seed": "cross-env NODE_ENV=development tsx scripts/seed.ts",
     "seed:templates": "cross-env NODE_ENV=development tsx scripts/seed-templates.ts",
     "seed:bulk": "cross-env NODE_ENV=development tsx scripts/seed-bulk.ts",
+    "seed:banned-phrases": "cross-env NODE_ENV=development tsx scripts/seed-banned-phrases.ts",
+    "seed:listing-products": "cross-env NODE_ENV=development tsx scripts/seed-listing-products.ts",
     "migrate:v2": "cross-env NODE_ENV=development tsx scripts/migrate-v2.ts",
     "explain:indexes": "cross-env NODE_ENV=development tsx scripts/explain-indexes.ts",
     "prepare": "husky",
     "migrate:trust": "cross-env NODE_ENV=development tsx scripts/migrate-trust-merge.ts",
-    "migrate:org-admin": "cross-env NODE_ENV=development tsx scripts/migrate-org-admin.ts"
+    "migrate:org-admin": "cross-env NODE_ENV=development tsx scripts/migrate-org-admin.ts",
+    "migrate:rank-at": "cross-env NODE_ENV=development tsx scripts/migrate-rank-at.ts"
   },
   "keywords": [
     "marketplace",
@@ -37,9 +40,11 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@agendajs/mongo-backend": "^4.0.3",
     "@asteasolutions/zod-to-openapi": "^7.1.1",
     "@node-rs/bcrypt": "^1.10.4",
     "@scalar/express-api-reference": "^0.4.170",
+    "agenda": "^6.2.6",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

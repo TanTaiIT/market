@@ -132,4 +132,10 @@ export const organizationRepository = {
       runValidators: true,
     }).exec()
   },
+
+  /** Avatar + cover của mọi org — cho job dọn ảnh mồ côi (`upload.cleanup.service.ts`). */
+  async allImageUrls(): Promise<string[]> {
+    const rows = await Organization.find().select('avatarUrl coverUrl').lean().exec()
+    return rows.flatMap((r) => [r.avatarUrl, r.coverUrl]).filter((u): u is string => !!u)
+  },
 }

@@ -40,6 +40,10 @@ export const AUTO_APPROVAL_REASONS = [
   'recent_rejection',
   'category_manual_review',
   'trust_too_low',
+  // Hai lý do của CỔNG NỘI DUNG — lớp chạy trước uy tín (moderation.machine.ts):
+  // banned = tin thành REJECTED ngay từ cửa; flagged = đủ bậc nhưng bị tước fast-path.
+  'content_banned',
+  'content_flagged',
 ] as const
 
 export type AutoApprovalReason = (typeof AUTO_APPROVAL_REASONS)[number]
@@ -55,12 +59,16 @@ export function autoApprovalReason(input: {
   recentRejections: number
   categoryRequiresReview: boolean
   isOutsider: boolean
+  contentFlagged?: boolean
 }): AutoApprovalReason {
   if (input.autoApproved) return 'approved'
   // Người ngoài không bao giờ tự đăng, bất kể uy tín — `routeListing` ép PENDING_UNVERIFIED.
   if (input.isOutsider) return 'outsider_post'
   if (input.recentRejections > 0) return 'recent_rejection'
   if (input.categoryRequiresReview) return 'category_manual_review'
+  // Đứng SAU các chốt uy tín: flag chỉ được tính khi mọi chốt khác đã cho qua —
+  // đúng thứ tự thật trong `create` (FLAG checks chỉ chạy khi fast-path sắp mở).
+  if (input.contentFlagged) return 'content_flagged'
   return 'trust_too_low'
 }
 
@@ -119,3 +127,39 @@ export function checkQuota(input: QuotaInput): QuotaVerdict {
     ...(remaining > 0 ? {} : { reason: 'quota_full' as const }),
   }
 }
+
+/** Phần của một tin mà người duyệt thực sự nhìn khi xét nó. */
+export interface ReviewedContent {
+  title: string
+  description: string
+  price: number
+  images: string[]
+  categoryId: string
+}
+
+/**
+ * Bản sửa có chạm vào phần đã được duyệt không.
+ *
+ * So GIÁ TRỊ chứ không xem client có gửi field lên hay không: form sửa thường PATCH cả cụm và
+ * gửi lại nguyên `title` cũ — đếm đó là thay đổi thì mỗi lần bật `isNegotiable` cũng đá tin
+ * xuống hàng đợi duyệt.
+ */
+export function touchesReviewedContent(
+  before: ReviewedContent,
+  patch: Partial<ReviewedContent>,
+): boolean {
+  return (
+    changed(patch.title, before.title) ||
+    changed(patch.description, before.description) ||
+    changed(patch.price, before.price) ||
+    changed(patch.categoryId, before.categoryId) ||
+    // Thứ tự tính: ảnh đầu tiên là ảnh đại diện, đảo chỗ là đổi thứ người mua nhìn thấy.
+    (patch.images !== undefined && !sameImages(patch.images, before.images))
+  )
+}
+
+/** `undefined` = client không gửi field đó lên, khác hẳn với gửi lên một giá trị mới. */
+const changed = <T>(next: T | undefined, current: T) => next !== undefined && next !== current
+
+const sameImages = (a: string[], b: string[]) =>
+  a.length === b.length && a.every((url, i) => url === b[i])

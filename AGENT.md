@@ -80,8 +80,9 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
     (a) TTL index — Mongo không cho compound;
     (b) collection `dualAxis` (hiện chỉ `Listing`): trục danh mục có `organizationId: null` nên
         prefix đó vô dụng, index của trục này mở đầu bằng `visibility`;
-    (c) đường đọc chạy trong `runUnscoped` và scope bằng khoá khác — `Listing` lọc theo `seller`
-        cho màn "tin của tôi" là ca duy nhất hiện có.
+    (c) đường đọc chạy trong `runUnscoped` và scope bằng khoá khác — hiện có ba ca, đều trên
+        `Listing`: lọc theo `seller` (màn "tin của tôi") và hai index của máy quét duyệt tin
+        (hàng đợi `status + machineReview`, mẫu giá `category + status`).
     Nghi ngờ một index có được dùng không thì ĐO, đừng đoán: `npm run explain:indexes`.
 
 ## Testing

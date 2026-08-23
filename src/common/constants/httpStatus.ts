@@ -4,6 +4,8 @@ export const httpStatus = {
   NO_CONTENT: 204,
   BAD_REQUEST: 400,
   UNAUTHORIZED: 401,
+  /** Ví không đủ Xu — client dẫn người dùng sang màn nạp, khác hẳn 403 "không có quyền". */
+  PAYMENT_REQUIRED: 402,
   FORBIDDEN: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,

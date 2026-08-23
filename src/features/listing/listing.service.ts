@@ -3,12 +3,33 @@ import { listingRepository } from './listing.repository'
 import { CreateListingInput, UpdateListingInput, ListingQuery, NearbyQuery } from './listing.schema'
 import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
-import { QUOTA, QuotaVerdict, autoApprovalReason, checkQuota, isAutoApprove } from './listing.quota'
+import { PostingFee, postingFee } from './listing.pricing'
+import {
+  QUOTA,
+  QuotaVerdict,
+  autoApprovalReason,
+  checkQuota,
+  isAutoApprove,
+  ReviewedContent,
+  touchesReviewedContent,
+} from './listing.quota'
 import { userRepository } from '../user/user.repository'
+import { categoryRepository } from '../category/category.repository'
+import {
+  MACHINE_REVIEW,
+  bannedContentReason,
+  bannedPhraseIn,
+  medianOf,
+  reviewByMachine,
+} from '../moderation/moderation.machine'
+import { notificationService } from '../notification/notification.service'
+import { bannedPhraseService } from '../banned-phrase/banned-phrase.service'
+import { listingProductService } from '../listing-product/listing-product.service'
 import { categoryService } from '../category/category.service'
 import { categoryTemplateService } from '../category-template/category-template.service'
 import { organizationRepository } from '../organization/organization.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
+import { trustRepository } from '../trust/trust.repository'
 import { Grant, canModerateListing } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from '../../common/errors'
 import {
@@ -203,14 +224,54 @@ async function assertOwner(id: string, userId: string) {
   return listing
 }
 
+/** Mốc đầu cửa sổ đếm tin bị từ chối — create và update phải hỏi cùng một câu hỏi. */
+function rejectionWindowStart(): Date {
+  return new Date(Date.now() - QUOTA.REJECTION_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+}
+
+/**
+ * FLAG của cổng nội dung — chỉ chạy khi fast-path uy tín SẮP MỞ, vì tin vào PENDING kiểu gì
+ * máy quét cũng chấm đầy đủ vài phút sau (tiết kiệm 2 query cho đường thường).
+ *
+ * Dùng CHUNG bảng luật với máy quét (`reviewByMachine`) chứ không viết bộ thứ hai — hai
+ * signals đã biết chắc theo ngữ cảnh (không án từ chối, danh mục không bắt duyệt tay, vì
+ * khác đi thì fast-path đã đóng trước khi tới đây) truyền cứng false.
+ */
+async function fastPathFlagged(
+  input: CreateListingInput,
+  sellerId: Types.ObjectId,
+  categoryId: Types.ObjectId,
+): Promise<boolean> {
+  const dupSince = new Date(Date.now() - MACHINE_REVIEW.DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+  const [prices, hasDuplicateTitle] = await Promise.all([
+    listingRepository.sampleActivePrices(categoryId, MACHINE_REVIEW.PRICE_SAMPLE_SIZE),
+    // excludeId null: tin đang xét chưa được ghi, không có gì để tự loại.
+    listingRepository.hasRecentDuplicateTitle(sellerId, input.title, null, dupSince),
+  ])
+  const screening = reviewByMachine({
+    title: input.title,
+    description: input.description,
+    // Rỗng vì cụm cấm đã xét TRƯỚC ở tầng create — hàm này chỉ còn lo phần FLAG.
+    bannedPhrases: [],
+    price: input.price,
+    categoryMedianPrice: medianOf(prices),
+    hasRecentRejection: false,
+    hasDuplicateTitle,
+    categoryRequiresReview: false,
+  })
+  return screening.verdict !== 'approve'
+}
+
 export const listingService = {
   /**
-   * Đăng tin. Ba chốt, theo đúng thứ tự này:
+   * Đăng tin. Bốn chốt, theo đúng thứ tự này:
    *
-   * 1. **Định tuyến** (`routeListing`) — quyết định hàng đợi + trạng thái. Chạy trước quota vì
+   * 1. **Cổng nội dung** (`moderation.machine.ts`) — đứng TRƯỚC mọi phép tính uy tín:
+   *    cụm cấm → tin thành REJECTED ngay từ cửa; nội dung đáng ngờ → tước quyền tự đăng.
+   * 2. **Định tuyến** (`routeListing`) — quyết định hàng đợi + trạng thái. Chạy trước quota vì
    *    chính nó nói cho ta biết đây là bucket nào (thành viên / người ngoài / trục danh mục).
-   * 2. **Quota** — backpressure theo bucket, cộng chốt chặn tin bị từ chối xuyên trục.
-   * 3. Ghi, với `organizationId`/`visibility`/`provinceCode` do bước 1 quyết định, không phải
+   * 3. **Quota** — backpressure theo bucket, cộng chốt chặn tin bị từ chối xuyên trục.
+   * 4. Ghi, với `organizationId`/`visibility`/`provinceCode` do bước 2 quyết định, không phải
    *    do client gửi lên.
    */
   async create(input: CreateListingInput, author: ListingAuthor) {
@@ -235,10 +296,27 @@ export const listingService = {
     const sellerId = new Types.ObjectId(author.id)
     const categoryId = new Types.ObjectId(input.categoryId)
 
-    const since = new Date(Date.now() - QUOTA.REJECTION_WINDOW_DAYS * 24 * 60 * 60 * 1000)
-    const recentRejections = await listingRepository.countRecentRejections(sellerId, since)
+    const recentRejections = await listingRepository.countRecentRejections(
+      sellerId,
+      rejectionWindowStart(),
+    )
 
     const target = await resolveTargetOrg(input, author)
+
+    // ── CỔNG NỘI DUNG — lớp 0, đứng TRƯỚC mọi phép tính uy tín ─────────────────
+    // BLOCK (cụm cấm) chạy cho MỌI tin, 0 query. Tin dính không bị chặn ở HTTP mà thành
+    // REJECTED ngay từ cửa: `moderation.at` cho `countRecentRejections` đếm, nên dò luật
+    // 3 lần trong 7 ngày là REJECTION_BLOCK tự khoá quyền đăng — 400 suông thì dò vô hạn.
+    const banned = bannedPhraseIn(
+      input.title + '\n' + input.description,
+      await bannedPhraseService.phrases(),
+    )
+
+    const wouldAutoApprove =
+      !banned && isAutoApprove(author.trustLevel, recentRejections) && !category.requireManualReview
+    const contentFlagged = wouldAutoApprove
+      ? await fastPathFlagged(input, sellerId, categoryId)
+      : false
 
     const routed = routeListing({
       visibility,
@@ -250,10 +328,9 @@ export const listingService = {
           ? await hasCategoryModerator(input.categoryId, provinceCode!)
           : false,
       unitId: author.unitId,
-      // Cờ của danh mục là phủ quyết, đứng SAU phép tính uy tín: có danh mục mà ảnh và mô tả
-      // hợp lệ vẫn không đủ để tự đăng (xem `Category.requireManualReview`).
-      autoApprove:
-        isAutoApprove(author.trustLevel, recentRejections) && !category.requireManualReview,
+      // Cờ của danh mục là phủ quyết, đứng SAU phép tính uy tín; và cổng nội dung phủ quyết
+      // TẤT CẢ — đủ bậc nhưng nội dung bị FLAG thì vẫn xuống hàng đợi.
+      autoApprove: wouldAutoApprove && !contentFlagged,
     })
 
     const isOutsider = routed.queue === MODERATION_QUEUE.ORG_OUTSIDER
@@ -277,13 +354,16 @@ export const listingService = {
     // sự cố thì con số đã khác từ lâu.
     const autoApproval = {
       trustLevel: author.trustLevel,
-      reason: autoApprovalReason({
-        autoApproved: routed.status === LISTING_STATUS.ACTIVE,
-        trustLevel: author.trustLevel,
-        recentRejections,
-        categoryRequiresReview: category.requireManualReview,
-        isOutsider,
-      }),
+      reason: banned
+        ? ('content_banned' as const)
+        : autoApprovalReason({
+            autoApproved: routed.status === LISTING_STATUS.ACTIVE,
+            trustLevel: author.trustLevel,
+            recentRejections,
+            categoryRequiresReview: category.requireManualReview,
+            isOutsider,
+            contentFlagged,
+          }),
     }
 
     const doc = toListingDoc(
@@ -303,14 +383,41 @@ export const listingService = {
     )
     doc.autoApproval = autoApproval
 
+    if (banned) {
+      doc.status = LISTING_STATUS.REJECTED
+      doc.moderation = { reason: bannedContentReason(banned), byName: 'Hệ thống', at: new Date() }
+    }
+
     // Người ngoài ghi vào org mà họ KHÔNG thuộc về: request này không có scope org (đúng thiết
     // kế), nên đây là một lối đi xuyên tenant thật sự và phải khai bằng `runUnscoped` — tin
     // mang `organizationId` tường minh, và tổ chức đã bật `allowOutsiderPosts` để mời nó vào.
-    return routed.queue === MODERATION_QUEUE.ORG_OUTSIDER
+    const listing = await (routed.queue === MODERATION_QUEUE.ORG_OUTSIDER
       ? runUnscoped('outsider post into org đã bật allowOutsiderPosts', () =>
           listingRepository.create(doc),
         )
-      : listingRepository.create(doc)
+      : listingRepository.create(doc))
+
+    if (banned) {
+      // Cùng lời với người duyệt tay từ chối — người đăng không cần biết ai chặn, chỉ cần vì sao.
+      await notificationService.notifyUser({
+        organizationId: listing.organizationId,
+        userId: listing.seller,
+        title: 'Tin của bạn bị từ chối',
+        body: `"${listing.title}" — ${bannedContentReason(banned)}`,
+      })
+    }
+
+    return listing
+  },
+
+  /** Catalog gói tin CÔNG KHAI — chỉ gói đang mở bán; master quản qua /listing-products. */
+  productCatalog() {
+    return listingProductService.listEnabled()
+  },
+
+  /** Báo giá một lượt đăng — controller đọc để đính vào response, luật nằm ở `listing.pricing.ts`. */
+  feeQuote(author: ListingAuthor, categoryId?: string): PostingFee {
+    return postingFee({ trustLevel: author.trustLevel, categoryId })
   },
 
   /** Trạng thái quota để client hiện "bạn còn N slot" thay vì để người dùng đoán (§8.4). */
@@ -328,12 +435,16 @@ export const listingService = {
           )
         : 0
 
-    return checkQuota({
-      trustLevel: author.trustLevel,
-      isOutsider: Boolean(author.organizationId) && !author.isMember,
-      recentRejections,
-      pendingCount,
-    })
+    return {
+      ...checkQuota({
+        trustLevel: author.trustLevel,
+        isOutsider: Boolean(author.organizationId) && !author.isMember,
+        recentRejections,
+        pendingCount,
+      }),
+      // Field phí sống trong hợp đồng API từ GIAI ĐOẠN MIỄN PHÍ — xem listing.pricing.ts.
+      fee: this.feeQuote(author, categoryId),
+    }
   },
 
   /**
@@ -445,12 +556,25 @@ export const listingService = {
 
   async update(id: string, userId: string, input: UpdateListingInput) {
     const existing = await assertOwner(id, userId)
+
+    // Cổng nội dung chặn cả đường SỬA — khác create, ở đây 400 thẳng chứ không đẻ bản ghi
+    // REJECTED mới (đây là request sửa, tin đã tồn tại). Soi nội dung SAU KHI GHÉP chứ không
+    // chỉ phần gửi lên: tin cũ lọt lưới từ trước ngày có cổng thì không được sửa vặt cho tới
+    // khi dọn sạch phần cấm — gửi kèm bản chữ sạch trong cùng patch là qua.
+    const banned = bannedPhraseIn(
+      (input.title ?? existing.title) + '\n' + (input.description ?? existing.description),
+      await bannedPhraseService.phrases(),
+    )
+    if (banned) throw new BadRequestError(bannedContentReason(banned))
+
     if (input.categoryId) await categoryService.assertUsable(input.categoryId)
 
     const { categoryId, location, attributes, ...rest } = input
     const update: Partial<IListing> = { ...rest }
     if (categoryId) update.category = new Types.ObjectId(categoryId)
     if (location) update.location = location
+
+    const targetCategory = categoryId ?? existing.category.toString()
 
     /*
      * Validate lại khi `attributes` HOẶC `categoryId` đổi — không chỉ khi `attributes` đổi.
@@ -460,7 +584,6 @@ export const listingService = {
      * không có. Validate theo danh mục MỚI sẽ tự loại chúng — đó chính là việc "loại key lạ".
      */
     if (attributes || categoryId) {
-      const targetCategory = categoryId ?? existing.category.toString()
       const validated = await categoryTemplateService.validateForCategory(
         targetCategory,
         // Danh mục đổi mà client không gửi lại `attributes` thì vẫn phải lọc bộ cũ qua template
@@ -474,6 +597,57 @@ export const listingService = {
       update.attributes = new Map(Object.entries(validated.attributes))
       update.attrs = validated.attrs
       if (validated.templateId) update.templateRef = toTemplateRef(validated)
+    }
+
+    /*
+     * Tin ĐANG HIỂN THỊ mà đổi nội dung người duyệt từng nhìn thì phải xếp hàng lại.
+     *
+     * Không có chốt này thì cả cơ chế duyệt chỉ tốn đúng một lần lách: đăng một tin sạch, đợi
+     * nó lên bảng, rồi sửa thành bất cứ thứ gì — `update` không hề chạm `status` nên tin ở lại
+     * `ACTIVE` vĩnh viễn mà không ai xem lại.
+     *
+     * Ngoại lệ là người bán ĐỦ ĐIỀU KIỆN TỰ ĐĂNG ngay lúc này: xoá tin rồi đăng lại họ vẫn ra
+     * `ACTIVE`, nên giữ tin của họ lại chỉ đẻ thêm việc cho người duyệt chứ không chặn được gì.
+     */
+    const reviewedBefore: ReviewedContent = {
+      title: existing.title,
+      description: existing.description,
+      price: existing.price,
+      images: existing.images,
+      categoryId: existing.category.toString(),
+    }
+
+    const touches = touchesReviewedContent(reviewedBefore, input)
+
+    // Máy đã chấm BẢN CŨ — nội dung đổi thì phán quyết đó hết giá trị. Null mở lại cửa cho
+    // job quét (query của nó là `machineReview: null`), áp cho cả tin đang chờ lẫn tin bị
+    // đá về chờ ở khối dưới.
+    if (touches) update.machineReview = null
+
+    if (existing.status === LISTING_STATUS.ACTIVE && touches) {
+      const [category, trustLevel, recentRejections] = await Promise.all([
+        categoryRepository.findById(targetCategory).exec(),
+        trustRepository.levelOf(userId),
+        listingRepository.countRecentRejections(existing.seller, rejectionWindowStart()),
+      ])
+      const categoryRequiresReview = category?.requireManualReview ?? false
+
+      if (!isAutoApprove(trustLevel, recentRejections) || categoryRequiresReview) {
+        // Về `PENDING` chứ không `PENDING_UNVERIFIED`: hàng đợi người-ngoài dành cho tin CHƯA
+        // ai duyệt. Tin này đã qua tay người duyệt một lượt — thứ cần xem lại là nội dung mới,
+        // không phải tư cách người đăng.
+        update.status = LISTING_STATUS.PENDING
+        update.autoApproval = {
+          trustLevel,
+          reason: autoApprovalReason({
+            autoApproved: false,
+            trustLevel,
+            recentRejections,
+            categoryRequiresReview,
+            isOutsider: false,
+          }),
+        }
+      }
     }
 
     return listingRepository.updateById(id, update)
@@ -555,5 +729,10 @@ export const listingService = {
 
   moderationStats(trendDays: number) {
     return listingRepository.statsForModeration(trendDays)
+  },
+
+  /** Dữ liệu định giá cho hệ Xu — xem ghi chú dài ở `listingRepository.postingStats`. */
+  postingStats(days: number) {
+    return listingRepository.postingStats(new Date(Date.now() - days * 24 * 60 * 60 * 1000))
   },
 }

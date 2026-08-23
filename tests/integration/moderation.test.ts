@@ -456,3 +456,82 @@ describe('Nhật ký hoạt động mang theo hậu quả uy tín', () => {
     expect(feed.body.data[0].summary).toMatch(/uy tín bậc 1$/)
   }, 60_000)
 })
+
+/**
+ * Sửa một tin ĐÃ LÊN BẢNG là đăng một tin mới bằng cửa sau. Trước đây `update` không hề chạm
+ * `status`, nên cả cơ chế duyệt chỉ tốn đúng một lần lách: đăng tin sạch, đợi được duyệt, rồi
+ * thay nội dung thành bất cứ thứ gì.
+ */
+describe('Sửa tin đang hiển thị thì phải duyệt lại', () => {
+  /** Người sạch tiểu sử: `seller` đã dính vài lượt từ chối ở trên nên bị quota chặn. */
+  const seller = { token: '', id: '', slug: '' }
+
+  beforeAll(async () => {
+    Object.assign(seller, await joinOrg(owner.slug, 'Người bán sửa tin', 'editor@mod-trust.local'))
+  }, 60_000)
+  /** Tin đi đúng đường thật: vào hàng đợi, được người duyệt cho lên bảng. */
+  async function liveListing(title: string) {
+    const id = await createListing(seller, title)
+    await request(app)
+      .patch(`/api/v1/moderation/listings/${id}`)
+      .set(as(owner))
+      .send({ status: 'active' })
+      .expect(200)
+    return id
+  }
+
+  it('người chưa đủ bậc đổi nội dung → tin rời bảng, quay lại hàng đợi', async () => {
+    await raiseTo(seller.id, 0)
+    const id = await liveListing('Tin sạch để được duyệt')
+
+    await request(app)
+      .patch(`/api/v1/listings/${id}`)
+      .set(as(seller))
+      .send({ title: 'Nội dung đã bị thay sau khi lên bảng' })
+      .expect(200)
+
+    const doc = await readDecision(id)
+    expect(doc?.status).toBe('pending')
+    expect(doc?.autoApproval).toMatchObject({ trustLevel: 0, reason: 'trust_too_low' })
+  }, 60_000)
+
+  it('người đủ bậc tự đăng sửa thoải mái — tin ở nguyên trên bảng', async () => {
+    await raiseTo(seller.id, 2)
+    const id = await createListing(seller, 'Tin tự đăng của người bậc 2')
+
+    await request(app)
+      .patch(`/api/v1/listings/${id}`)
+      .set(as(seller))
+      .send({ title: 'Đổi tiêu đề, vẫn tự đăng được' })
+      .expect(200)
+
+    expect((await readDecision(id))?.status).toBe('active')
+  }, 60_000)
+
+  it('gửi lại nguyên giá trị cũ thì không bị đá xuống — form sửa hay PATCH cả cụm', async () => {
+    await raiseTo(seller.id, 0)
+    const title = 'Tin chỉ đổi mỗi cờ thương lượng'
+    const id = await liveListing(title)
+
+    await request(app)
+      .patch(`/api/v1/listings/${id}`)
+      .set(as(seller))
+      .send({ title, isNegotiable: true })
+      .expect(200)
+
+    expect((await readDecision(id))?.status).toBe('active')
+  }, 60_000)
+
+  it('tin còn trong hàng đợi thì sửa xong vẫn nằm đó, không tự bật lên', async () => {
+    await raiseTo(seller.id, 0)
+    const id = await createListing(seller, 'Tin còn chờ duyệt')
+
+    await request(app)
+      .patch(`/api/v1/listings/${id}`)
+      .set(as(seller))
+      .send({ price: 90000 })
+      .expect(200)
+
+    expect((await readDecision(id))?.status).toBe('pending')
+  }, 60_000)
+})
