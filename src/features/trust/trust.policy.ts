@@ -10,6 +10,21 @@
 /** Bao nhiêu bài sạch thì lên một bậc. */
 export const CLEAN_APPROVALS_PER_LEVEL = 5
 
+/**
+ * Trần bậc uy tín. PHẢI bằng ngưỡng tự đăng (`QUOTA.AUTO_APPROVE_TRUST_LEVEL`) — có canary test
+ * neo hai con số này với nhau.
+ *
+ * Không chặn trần thì bậc tích vô hạn, và nó biến thành LỚP ĐỆM CHỐNG TRỪNG PHẠT: người có 30
+ * bài sạch (bậc 6) bị từ chối chỉ tụt còn bậc 5 — vẫn trên ngưỡng, nên sau 7 ngày là tự đăng
+ * lại như chưa có gì. Người mới đúng bậc 2 thì tụt còn 1, phải làm lại 5 bài sạch qua tay người
+ * duyệt. Cùng một vi phạm, cái giá lệch nhau hàng tuần, và lệch theo hướng SAI: càng đăng nhiều
+ * càng miễn nhiễm.
+ *
+ * Chặn trần khiến mọi người bán đứng cách hình phạt đúng một khoảng như nhau. Bậc trên trần
+ * cũng chẳng mua thêm gì (hạn mức lấy `min(level, 2)`), nên không ai mất gì cả.
+ */
+export const MAX_TRUST_LEVEL = 2
+
 export interface TrustState {
   /** Bậc uy tín. `isAutoApprove` mở quyền tự đăng từ bậc 2. */
   level: number
@@ -43,5 +58,10 @@ export function nextTrust(current: TrustState, approved: boolean): TrustState {
   // chối: bậc 3 chuỗi 15 → bị từ chối còn bậc 2 chuỗi 0 → duyệt sạch MỘT tin thành
   // `floor(1 / 5) = 0`. Một lần sai sót xoá sạch bậc — đúng thứ dòng trên nói là không được làm.
   const promoted = cleanApprovals % CLEAN_APPROVALS_PER_LEVEL === 0
-  return { level: current.level + (promoted ? 1 : 0), cleanApprovals }
+  return {
+    // Chặn trần: xem `MAX_TRUST_LEVEL` cho lý do. `cleanApprovals` vẫn tăng tiếp vì nó là
+    // chuỗi-sạch-liên-tiếp có nghĩa riêng, chỉ có bậc là dừng lại.
+    level: Math.min(current.level + (promoted ? 1 : 0), MAX_TRUST_LEVEL),
+    cleanApprovals,
+  }
 }

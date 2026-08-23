@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 import { registry } from '../../config/openapi'
 import { organizationSlugSchema } from '../organization/organization.schema'
 import {
@@ -53,7 +54,9 @@ export const createListingSchema = z
     isNegotiable: z.boolean().optional(),
     condition: z.nativeEnum(LISTING_CONDITION).optional(),
     categoryId: objectId,
-    images: z.array(z.string().url()).min(1).max(12),
+    // Cùng một luật với ảnh nhóm — trước đây đường này lỏng hơn, và đó là lỗ hổng thật: ảnh
+    // host ở nơi khác đổi được ruột SAU KHI tin đã qua đủ bốn lớp duyệt.
+    images: z.array(cloudinaryImageUrl).min(1).max(12),
     // Tuỳ chọn: tin không có khu vực vẫn hợp lệ, chỉ là nó không lên được bộ lọc theo tỉnh
     // và không xuất hiện ở `/listings/nearby` của ai cả.
     location: locationInputSchema.optional(),
@@ -97,6 +100,32 @@ export const postingFeeSchema = z
   })
   .openapi('PostingFee')
 
+/**
+ * Vị thế đăng tin của CHÍNH CHỦ — thứ người bán được phép biết về mình.
+ *
+ * Cố tình KHÔNG trả con số bậc uy tín. Bậc chặn trần ở 2 (`MAX_TRUST_LEVEL`) nên trên giao
+ * diện chỉ có hai trạng thái đáng nói: tin phải chờ duyệt, hay tin lên bảng ngay. Hiện số
+ * bậc chỉ làm người dùng tưởng còn thang để leo, trong khi hệ thống không có gì ở trên đó.
+ *
+ * Trước đây khối này không tồn tại: người bán bị hạ bậc, mất quyền tự đăng, bị bóp hạn mức
+ * — mà không có chỗ nào nhìn thấy vì sao hay còn bao lâu. Một hệ uy tín vô hình thì không
+ * dạy được ai hành vi tốt, nó chỉ làm người ta thấy hệ thống thất thường.
+ */
+export const postingStandingSchema = z
+  .object({
+    canSelfPublish: z.boolean().openapi({ description: 'Tin lên bảng ngay, không qua hàng đợi' }),
+    /** Còn bao nhiêu tin được duyệt sạch nữa thì tự đăng được. `0` khi đã tự đăng được. */
+    cleanApprovalsNeeded: z.number(),
+    /** `null` = không bị phạt. Khác `null` = đang trong cửa sổ hậu-từ-chối. */
+    penalty: z
+      .object({
+        rejections: z.number(),
+        until: z.string().datetime(),
+      })
+      .nullable(),
+  })
+  .openapi('PostingStanding')
+
 export const quotaStatusSchema = z
   .object({
     allowed: z.boolean(),
@@ -105,6 +134,7 @@ export const quotaStatusSchema = z
     remaining: z.number(),
     reason: z.enum(['blocked_by_rejections', 'quota_full']).optional(),
     fee: postingFeeSchema,
+    standing: postingStandingSchema,
   })
   .openapi('QuotaStatus')
 
@@ -242,6 +272,7 @@ export type NearbyQuery = z.infer<typeof nearbyQuerySchema>
 
 registry.register('CreateListing', createListingSchema)
 registry.register('PostingFee', postingFeeSchema)
+registry.register('PostingStanding', postingStandingSchema)
 registry.register('QuotaStatus', quotaStatusSchema)
 registry.register('PostingStats', postingStatsSchema)
 registry.register('UpdateListing', updateListingSchema)

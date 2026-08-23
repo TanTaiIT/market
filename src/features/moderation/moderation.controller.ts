@@ -1,6 +1,6 @@
 import { moderationService } from './moderation.service'
 import { catchAsync } from '../../common/utils/catchAsync'
-import { orgActor } from '../../common/utils/actor'
+import { moderatorActor, orgActor } from '../../common/utils/actor'
 import { success } from '../../common/utils/apiResponse'
 
 export const moderationController = {
@@ -43,7 +43,7 @@ export const moderationController = {
   // PATCH /moderation/listings/:id
   setListingStatus: catchAsync(async (req, res) => {
     const listing = await moderationService.setListingStatus(req.params.id, req.body, {
-      ...orgActor(req, 'moderation.setStatus'),
+      ...moderatorActor(req),
       grants: req.grants!,
     })
     success(res, { message: 'Listing status updated', data: listing })
@@ -52,7 +52,7 @@ export const moderationController = {
   // DELETE /moderation/listings/:id
   removeListing: catchAsync(async (req, res) => {
     await moderationService.removeListing(req.params.id, {
-      ...orgActor(req, 'moderation.remove'),
+      ...moderatorActor(req),
       grants: req.grants!,
     })
     success(res, { message: 'Listing removed' })

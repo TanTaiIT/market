@@ -16,8 +16,15 @@ export const TRUST_PENDING_LIMITS = [3, 5, 10] as const
 export const QUOTA = {
   /** Người ngoài org: cứng, không theo uy tín — họ chưa có quan hệ nào với tổ chức đó. */
   OUTSIDER_LIMIT: 2,
-  /** Có tin bị từ chối trong cửa sổ → hạ về 1 tin chờ, buộc phải xử lý xong mới đăng tiếp. */
-  PENALIZED_LIMIT: 1,
+  /**
+   * Có VI PHẠM trong cửa sổ → bóp hạn mức tin chờ.
+   *
+   * `2` chứ không `1`: hồi phục cần 5 lượt được duyệt, mà 1 slot nghĩa là 5 vòng đăng-chờ
+   * TUẦN TỰ — người duyệt xử mỗi ngày một lượt thì mất cả tuần chỉ để về lại vạch cũ. Vẫn
+   * là phanh thật (bình thường bậc 0 được 3 slot), nhưng không biến hồi phục thành hình
+   * phạt thứ hai.
+   */
+  PENALIZED_LIMIT: 2,
   /** Đủ số lần bị từ chối trong cửa sổ → khoá quyền đăng, cần người gỡ tay. */
   REJECTION_BLOCK: 3,
   REJECTION_WINDOW_DAYS: 7,

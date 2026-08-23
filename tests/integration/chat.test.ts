@@ -73,7 +73,7 @@ beforeAll(async () => {
       description: 'Đèn LED ba mức sáng, dùng nửa năm, còn nguyên hộp',
       price: 120000,
       categoryId,
-      images: ['https://example.com/a.jpg'],
+      images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
       location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
     })
     .expect(201)

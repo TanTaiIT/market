@@ -126,6 +126,20 @@ export const setUserStatusSchema = z
   })
   .openapi('SetUserStatus')
 
+export const clearRejectionsSchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(3)
+      .max(300)
+      .openapi({ example: 'Đã xác minh: ba lượt từ chối do lỗi người duyệt' }),
+  })
+  .strict()
+  .openapi('ClearRejections')
+
+export type ClearRejectionsInput = z.infer<typeof clearRejectionsSchema>
+
 /**
  * Một dòng của bảng người dùng. Có `email` — khác hẳn `PublicProfile`: đây là màn của master,
  * và khoá/mở đúng người cần đối chiếu được bằng định danh thật chứ không chỉ cái tên hiển thị.

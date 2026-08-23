@@ -192,7 +192,7 @@ export function listingPayload(title: string, categoryId: string) {
     description: 'Mô tả đủ dài cho validation',
     price: 1000000,
     categoryId,
-    images: ['https://example.com/a.jpg'],
+    images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
     location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
   }
 }

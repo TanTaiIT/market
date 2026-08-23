@@ -59,6 +59,20 @@ export class RoutingError extends ApiError {
 
 export function routeListing(input: RoutingInput): RoutingResult {
   if (input.visibility === POST_VISIBILITY.PUBLIC) {
+    /*
+     * Người ngoài KHÔNG được gắn tên một nhóm mình không thuộc lên tin công khai.
+     *
+     * `organizationId` ở nhánh này chỉ là attribution — cái badge "đăng bởi nhóm X" hiện trên
+     * bảng tin chung. Để người ngoài chọn nhóm tuỳ ý là cho họ mượn danh nghĩa của nhóm đó
+     * trước cả trăm nghìn người, mà quản trị nhóm không có lấy một lượt duyệt nào (tin này đi
+     * hàng đợi danh mục, không qua họ). Tin của người ngoài chỉ sống TRONG nhóm.
+     */
+    if (input.orgId && !input.isMember) {
+      throw new RoutingError(
+        'Tin công khai không mang được tên nhóm bạn chưa tham gia — bỏ chọn nhóm, hoặc đổi sang tin nội bộ nhóm',
+      )
+    }
+
     return {
       // Ô chưa có ai phụ trách thì tin rơi về master — dòng chảy đó phải NHÌN THẤY được, nên
       // nó là một hàng đợi thật chứ không phải trạng thái lửng lơ (§11.1).

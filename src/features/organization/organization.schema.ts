@@ -1,30 +1,13 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
 import { ORG_TYPES, TENANT_STATUS, VERIFICATION_TIERS } from '../../common/constants'
+import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 
 export const organizationSlugSchema = z
   .string()
   .min(3)
   .max(40)
   .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Slug chỉ gồm a-z, 0-9 và dấu gạch ngang')
-
-/**
- * Ảnh phải nằm trên Cloudinary.
- *
- * `z.string().url()` không đủ: avatar là danh tính của cả nhóm, nhận URL tuỳ ý là biến nó
- * thành chỗ nhúng link lạ, và ảnh sẽ chết theo cái host của người dán. Chỉ chốt HOST, không
- * chốt cloud name — đổi tài khoản Cloudinary không phải là lý do để sửa code.
- */
-const cloudinaryUrl = z
-  .string()
-  .url()
-  .refine((value) => {
-    try {
-      return new URL(value).host === 'res.cloudinary.com'
-    } catch {
-      return false
-    }
-  }, 'Ảnh phải là đường dẫn Cloudinary (res.cloudinary.com)')
 
 export const organizationSummarySchema = z
   .object({
@@ -152,9 +135,15 @@ export const updateOrganizationSchema = z
   .object({
     name: z.string().min(1).max(150).optional(),
     description: z.string().max(500).optional(),
-    avatarUrl: cloudinaryUrl.nullable().optional(),
-    coverUrl: cloudinaryUrl.nullable().optional(),
+    avatarUrl: cloudinaryImageUrl.nullable().optional(),
+    coverUrl: cloudinaryImageUrl.nullable().optional(),
     allowJoinRequests: z.boolean().optional(),
+    /**
+     * Nhóm có nhận tin từ người KHÔNG phải thành viên không. Bật (mặc định) = ai cũng gửi
+     * tin vào được, tin nằm ở hàng đợi `pending_unverified` chờ quản trị nhóm duyệt.
+     * Tắt = nhóm kín, chỉ thành viên đăng được.
+     */
+    allowOutsiderPosts: z.boolean().optional(),
   })
   .strict()
   .openapi('UpdateOrganization')

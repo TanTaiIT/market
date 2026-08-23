@@ -61,7 +61,7 @@ const listingBody = (categoryId: string, attributes?: Record<string, unknown>) =
   description: 'Máy đẹp, dùng giữ gìn, đủ phụ kiện.',
   price: 12_000_000,
   categoryId,
-  images: ['https://cdn.example.com/a.jpg'],
+  images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
   ...(attributes ? { attributes } : {}),
 })
 

@@ -19,3 +19,14 @@ export function orgActor(req: Request, operation: string): OrgActor {
     organizationId: requireOwnOrgId(operation).toString(),
   }
 }
+
+/**
+ * Actor cho thao tác chạy trên CẢ HAI trục (duyệt / gỡ tin) — CHỈ có `id`.
+ *
+ * Tồn tại để không ai với tay lấy `orgActor` ở đây: nó đòi org trong scope và ném lỗi ngay
+ * trước khi ai kịp xét quyền, mà người phụ trách danh mục lẫn master thường chẳng thuộc nhóm
+ * nào. Đó đúng là thứ đã khoá chặt trục công khai một thời gian.
+ */
+export function moderatorActor(req: Request): { id: string } {
+  return { id: req.user!.id }
+}

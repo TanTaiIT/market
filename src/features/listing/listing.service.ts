@@ -28,15 +28,18 @@ import { listingProductService } from '../listing-product/listing-product.servic
 import { categoryService } from '../category/category.service'
 import { categoryTemplateService } from '../category-template/category-template.service'
 import { organizationRepository } from '../organization/organization.repository'
+import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { trustRepository } from '../trust/trust.repository'
-import { Grant, canModerateListing } from '../../common/authz/policy'
+import { CLEAN_APPROVALS_PER_LEVEL, MAX_TRUST_LEVEL } from '../trust/trust.policy'
+import { Grant, canModerateAnyInOrg, canModerateListing } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from '../../common/errors'
 import {
   LISTING_STATUS,
   ListingStatus,
   MODERATION_QUEUE,
   POST_VISIBILITY,
+  type RejectionSeverity,
 } from '../../common/constants'
 import { slugifyWithSuffix } from '../../common/utils/slugify'
 import { runUnscoped } from '../../common/tenant/tenantContext'
@@ -65,23 +68,36 @@ const LISTING_TTL_DAYS = 30
  * không chặn gì được. Khi phép kiểm còn ở phía người gọi thì `report.service.resolve` — gọi
  * thẳng `setModerationStatus` — đi vòng qua nó, và một staff org ẩn được tin trục danh mục.
  *
- * 403 chứ không 404: bàn duyệt vừa liệt kê tin này ra, giấu sự tồn tại của nó không còn nghĩa.
+ * **403 hay 404** không tuỳ tiện — hai mã trả lời hai câu hỏi khác nhau:
+ *
+ * - `403` khi bàn duyệt của chính người này ĐÃ liệt kê tin ra: tin công khai (hàng đợi danh mục
+ *   là bảng chung, sự tồn tại của tin vốn không phải bí mật), hoặc tin của org mà họ có quyền
+ *   duyệt ở đâu đó trong đó nhưng sai nhóm con. Giấu sự tồn tại lúc này chỉ làm người ta bối rối.
+ * - `404` khi tin thuộc một org họ KHÔNG có chân nào cả. Đây là ranh giới tenant: xác nhận
+ *   "id này có tồn tại" cho người ngoài org là một máy dò danh sách tin của tổ chức khác.
  */
 export function assertCanModerateListing(listing: IListingDocument, grants: Grant[]): void {
+  const orgId = listing.organizationId?.toString() ?? null
   const allowed = canModerateListing(grants, {
     visibility: listing.visibility,
-    organizationId: listing.organizationId?.toString() ?? null,
+    organizationId: orgId,
     unitId: listing.unitId?.toString() ?? null,
     categoryId: listing.category.toString(),
     provinceCode: listing.provinceCode,
   })
   if (allowed) return
 
-  throw new ForbiddenError(
-    listing.visibility === POST_VISIBILITY.PUBLIC
-      ? 'Tin công khai do người phụ trách danh mục duyệt, không phải tổ chức'
-      : 'Tin này không thuộc phạm vi duyệt của bạn',
-  )
+  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
+    throw new ForbiddenError('Tin công khai do người phụ trách danh mục duyệt, không phải tổ chức')
+  }
+
+  // Tin nội bộ của một org mà người này không có quyền duyệt gì bên trong: với họ, tin này
+  // không tồn tại.
+  if (!orgId || !canModerateAnyInOrg(grants, orgId)) {
+    throw new NotFoundError('Listing not found')
+  }
+
+  throw new ForbiddenError('Tin này không thuộc phạm vi duyệt của bạn')
 }
 
 /** Kết quả `validateForCategory` — alias để `toListingDoc` không phải khai lại hình của nó. */
@@ -106,6 +122,8 @@ export interface ListingAuthor {
   unitId: string | null
   /** Bậc uy tín ở TRỤC ĐANG ĐĂNG — controller chọn đúng nguồn (membership hay PublicTrust). */
   trustLevel: number
+  /** Chuỗi tin sạch liên tiếp. Chỉ `postingStanding` cần — xem lý do ở đó. */
+  cleanApprovals: number
 }
 
 function toListingDoc(
@@ -156,14 +174,16 @@ function toListingDoc(
  */
 async function resolveProvinceCode(
   input: CreateListingInput,
-  author: ListingAuthor,
+  targetOrgId: string | null,
   visibility: string,
 ): Promise<string | null> {
   const picked = input.provinceCode ?? input.location?.province
   if (picked) return picked
 
-  if (author.organizationId) {
-    const org = await organizationRepository.findById(author.organizationId)
+  // Tỉnh của org ĐÍCH, không phải org của người đăng: người ngoài gửi tin vào nhóm ở tỉnh
+  // khác thì tin thuộc về tỉnh của nhóm đó.
+  if (targetOrgId) {
+    const org = await organizationRepository.findById(targetOrgId)
     if (org?.provinceCode) return org.provinceCode
   }
 
@@ -174,26 +194,53 @@ async function resolveProvinceCode(
   return null
 }
 
+interface TargetOrg {
+  orgId: string | null
+  /** Tư cách thành viên tại ĐÚNG org đích, không phải org đang nằm trong scope. */
+  isMember: boolean
+  unitId: string | null
+  allowOutsiderPosts: boolean
+}
+
 /**
- * Org đích của một tin, và tin đó có được phép vào đó không.
+ * Org đích của một tin, tư cách người đăng tại org đó, và org đó có nhận tin người ngoài không.
  *
- * Người ngoài không có org trong scope: `resolveTenant` cố tình không mở scope org cho người
- * không phải thành viên khi ghi. Nên org đích phải đến từ `orgSlug` trong body — đúng cái slug
- * họ vừa xác nhận trên dropdown, cùng đường mà đơn xin tham gia đang đi.
+ * **`orgSlug` gửi lên THẮNG org suy từ scope.** Đây là chốt dễ sai nhất cả file:
+ * `resolveTenant` tự chọn org khi người dùng chỉ thuộc đúng một org, nên bản cũ (`if
+ * (author.isMember || !input.orgSlug)`) khiến một thành viên org A gửi `orgSlug: "org-b"` bị
+ * nuốt mất lựa chọn — tin rơi vào org A, KHÔNG một tiếng động. Với nghiệp vụ "ai cũng đăng
+ * được vào nhóm khác" thì đó lại đúng là ca phổ biến nhất.
+ *
+ * Tư cách thành viên vì thế phải tra lại theo org ĐÍCH: cùng một người vừa là thành viên org A
+ * vừa là người ngoài với org B, và hai vai đó đi hai hàng đợi khác nhau.
  */
 async function resolveTargetOrg(
   input: CreateListingInput,
   author: ListingAuthor,
-): Promise<{ orgId: string | null; allowOutsiderPosts: boolean }> {
-  if (author.isMember || !input.orgSlug) {
-    return { orgId: author.organizationId, allowOutsiderPosts: false }
+): Promise<TargetOrg> {
+  if (!input.orgSlug) {
+    return {
+      orgId: author.organizationId,
+      isMember: author.isMember,
+      unitId: author.unitId,
+      allowOutsiderPosts: false,
+    }
   }
 
   const org = await organizationRepository.findActiveBySlug(input.orgSlug)
   if (!org) throw new NotFoundError('Tổ chức không tồn tại hoặc đã bị khoá')
 
-  const full = await organizationRepository.findById(org._id)
-  return { orgId: org._id.toString(), allowOutsiderPosts: Boolean(full?.allowOutsiderPosts) }
+  const [full, membership] = await Promise.all([
+    organizationRepository.findById(org._id),
+    membershipRepository.findActive(author.id, org._id),
+  ])
+
+  return {
+    orgId: org._id.toString(),
+    isMember: Boolean(membership),
+    unitId: membership?.unitId?.toString() ?? null,
+    allowOutsiderPosts: Boolean(full?.allowOutsiderPosts),
+  }
 }
 
 async function hasCategoryModerator(categoryId: string, provinceCode: string): Promise<boolean> {
@@ -222,6 +269,42 @@ async function assertOwner(id: string, userId: string) {
     throw new ForbiddenError('You can only modify your own listing')
   }
   return listing
+}
+
+/**
+ * Vị thế đăng tin, diễn giải cho CHÍNH CHỦ đọc — xem `postingStandingSchema` về việc vì sao
+ * không trả con số bậc.
+ *
+ * `cleanApprovalsNeeded` đếm theo `MAX_TRUST_LEVEL`: mỗi bậc cần `CLEAN_APPROVALS_PER_LEVEL`
+ * bài sạch, nên khoảng cách còn lại là số bậc thiếu nhân lên, TRỪ phần chuỗi đã đi được trong
+ * bậc hiện tại. Đây là con số người bán thật sự cần ("còn 5 tin nữa"), khác hẳn con số bậc mà
+ * họ không diễn giải được — nên nó phải đúng: nói quá còn tệ hơn không nói gì.
+ */
+function postingStanding(
+  author: ListingAuthor,
+  recentRejections: number,
+  lastRejectionAt: Date | null,
+) {
+  const levelsShort = Math.max(0, MAX_TRUST_LEVEL - author.trustLevel)
+  // `nextTrust` thăng bậc theo `cleanApprovals % CLEAN_APPROVALS_PER_LEVEL`, nên người đã có 4
+  // tin sạch chỉ còn thiếu 1 để lên bậc. Không trừ phần này thì con số luôn nói quá với bất kỳ
+  // ai đang dở dang — đúng những người cần nó nhất.
+  const doneInLevel = author.cleanApprovals % CLEAN_APPROVALS_PER_LEVEL
+  return {
+    canSelfPublish: isAutoApprove(author.trustLevel, recentRejections),
+    cleanApprovalsNeeded:
+      levelsShort === 0 ? 0 : levelsShort * CLEAN_APPROVALS_PER_LEVEL - doneInLevel,
+    // Án phạt hết đúng khi lượt từ chối gần nhất rơi ra khỏi cửa sổ 7 ngày.
+    penalty:
+      recentRejections > 0 && lastRejectionAt
+        ? {
+            rejections: recentRejections,
+            until: new Date(
+              lastRejectionAt.getTime() + QUOTA.REJECTION_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+            ).toISOString(),
+          }
+        : null,
+  }
 }
 
 /** Mốc đầu cửa sổ đếm tin bị từ chối — create và update phải hỏi cùng một câu hỏi. */
@@ -292,7 +375,8 @@ export const listingService = {
     if (!seller) throw new NotFoundError('User not found')
 
     const visibility = input.visibility ?? POST_VISIBILITY.ORG_INTERNAL
-    const provinceCode = await resolveProvinceCode(input, author, visibility)
+    const target = await resolveTargetOrg(input, author)
+    const provinceCode = await resolveProvinceCode(input, target.orgId, visibility)
     const sellerId = new Types.ObjectId(author.id)
     const categoryId = new Types.ObjectId(input.categoryId)
 
@@ -300,8 +384,6 @@ export const listingService = {
       sellerId,
       rejectionWindowStart(),
     )
-
-    const target = await resolveTargetOrg(input, author)
 
     // ── CỔNG NỘI DUNG — lớp 0, đứng TRƯỚC mọi phép tính uy tín ─────────────────
     // BLOCK (cụm cấm) chạy cho MỌI tin, 0 query. Tin dính không bị chặn ở HTTP mà thành
@@ -321,7 +403,7 @@ export const listingService = {
     const routed = routeListing({
       visibility,
       orgId: target.orgId,
-      isMember: author.isMember,
+      isMember: target.isMember,
       allowOutsiderPosts: target.allowOutsiderPosts,
       hasCategoryModerator:
         visibility === POST_VISIBILITY.PUBLIC
@@ -385,7 +467,13 @@ export const listingService = {
 
     if (banned) {
       doc.status = LISTING_STATUS.REJECTED
-      doc.moderation = { reason: bannedContentReason(banned), byName: 'Hệ thống', at: new Date() }
+      // Cụm cấm là vi phạm quy định sàn, không phải "tin sai sót" — mức độ phải nói đúng thế.
+      doc.moderation = {
+        reason: bannedContentReason(banned),
+        byName: 'Hệ thống',
+        at: new Date(),
+        severity: 'violation',
+      }
     }
 
     // Người ngoài ghi vào org mà họ KHÔNG thuộc về: request này không có scope org (đúng thiết
@@ -424,7 +512,10 @@ export const listingService = {
   async quotaStatus(author: ListingAuthor, categoryId?: string) {
     const sellerId = new Types.ObjectId(author.id)
     const since = new Date(Date.now() - QUOTA.REJECTION_WINDOW_DAYS * 24 * 60 * 60 * 1000)
-    const recentRejections = await listingRepository.countRecentRejections(sellerId, since)
+    const [recentRejections, lastRejectionAt] = await Promise.all([
+      listingRepository.countRecentRejections(sellerId, since),
+      listingRepository.lastRejectionAt(sellerId, since),
+    ])
 
     const pendingCount = categoryId
       ? await listingRepository.countPendingInCategory(sellerId, new Types.ObjectId(categoryId))
@@ -444,6 +535,7 @@ export const listingService = {
       }),
       // Field phí sống trong hợp đồng API từ GIAI ĐOẠN MIỄN PHÍ — xem listing.pricing.ts.
       fee: this.feeQuote(author, categoryId),
+      standing: postingStanding(author, recentRejections, lastRejectionAt),
     }
   },
 
@@ -509,6 +601,22 @@ export const listingService = {
    */
   async getById(id: string) {
     const listing = await listingRepository.findById(id)
+    if (!listing) throw new NotFoundError('Listing not found')
+    return listing
+  },
+
+  /**
+   * Đọc tin cho BÀN DUYỆT — unscoped, vì thẩm quyền ở đây đến từ trục của tin chứ không từ
+   * tenant scope (xem `setModerationStatus`). Người phụ trách danh mục không có org trong
+   * scope, nên `getById` thường sẽ trả 404 ngay trước khi ai kịp xét quyền.
+   *
+   * Không rò rỉ gì: caller BẮT BUỘC đưa tin này qua `assertCanModerateListing` trước khi làm
+   * bất cứ điều gì với nó.
+   */
+  async getForModeration(id: string) {
+    const listing = await runUnscoped('moderation: đọc tin để xét thẩm quyền theo trục', () =>
+      listingRepository.findById(id).exec(),
+    )
     if (!listing) throw new NotFoundError('Listing not found')
     return listing
   },
@@ -684,22 +792,46 @@ export const listingService = {
 
   async setModerationStatus(
     id: string,
-    next: { status: ListingStatus; reason?: string; byUserId: string; byName: string },
+    next: {
+      status: ListingStatus
+      reason?: string
+      byUserId: string
+      byName: string
+      /** Chỉ ghi khi TỪ CHỐI — với duyệt/ẩn thì mức độ không có nghĩa gì. */
+      severity?: RejectionSeverity
+    },
     grants: Grant[],
   ) {
-    const listing = await listingRepository.findById(id)
+    // Đọc và ghi ĐỀU unscoped, người gác thật là `assertCanModerateListing` kẹp ở giữa.
+    //
+    // Tenant scope không diễn đạt nổi thẩm quyền của trục danh mục: nhánh GHI của `tenantPlugin`
+    // chỉ cho đụng `organizationId: null` hoặc org trong scope, nên một người phụ trách danh mục
+    // (không thuộc nhóm nào) không sửa được tin công khai MANG BADGE nhóm — dù chính họ là người
+    // có thẩm quyền trên trục đó. Ép scope ở đây là ép sai chiều.
+    //
+    // An toàn không mất: `assertCanModerateListing` phân xử theo ĐÚNG trục của tin và chạy TRƯỚC
+    // mọi lượt ghi, không call-site nào đi vòng được (chính nó là bản vá cho lỗ cũ của
+    // `report.service`).
+    const listing = await runUnscoped('moderation: đọc tin để xét thẩm quyền theo trục', () =>
+      listingRepository.findById(id).exec(),
+    )
     if (!listing) throw new NotFoundError('Listing not found')
     assertCanModerateListing(listing, grants)
 
-    const updated = await listingRepository.updateById(id, {
-      status: next.status,
-      moderation: {
-        reason: next.reason,
-        byUserId: new Types.ObjectId(next.byUserId),
-        byName: next.byName,
-        at: new Date(),
-      },
-    })
+    const updated = await runUnscoped('moderation: ghi phán quyết đã qua chốt thẩm quyền', () =>
+      listingRepository
+        .updateById(id, {
+          status: next.status,
+          moderation: {
+            reason: next.reason,
+            byUserId: new Types.ObjectId(next.byUserId),
+            byName: next.byName,
+            at: new Date(),
+            ...(next.status === LISTING_STATUS.REJECTED && { severity: next.severity }),
+          },
+        })
+        .exec(),
+    )
     return updated!
   },
 
@@ -720,11 +852,17 @@ export const listingService = {
     return updated!
   },
 
+  /** Cùng lập luận unscoped với `setModerationStatus` — thẩm quyền đến từ trục của tin. */
   async removeByModerator(id: string, grants: Grant[]) {
-    const listing = await listingRepository.findById(id)
+    const listing = await runUnscoped('moderation: đọc tin để xét thẩm quyền trước khi gỡ', () =>
+      listingRepository.findById(id).exec(),
+    )
     if (!listing) throw new NotFoundError('Listing not found')
     assertCanModerateListing(listing, grants)
-    return listingRepository.softDelete(id)
+
+    return runUnscoped('moderation: gỡ tin đã qua chốt thẩm quyền', () =>
+      listingRepository.softDelete(id).exec(),
+    )
   },
 
   moderationStats(trendDays: number) {

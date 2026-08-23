@@ -6,7 +6,6 @@ import { QUOTA } from '../listing/listing.quota'
 import { IListingDocument } from '../listing/listing.model'
 import { categoryRepository } from '../category/category.repository'
 import { LISTING_STATUS } from '../../common/constants'
-import { runUnscoped } from '../../common/tenant/tenantContext'
 import { logger } from '../../config/logger'
 
 interface SweepResult {
@@ -76,11 +75,9 @@ async function judge(
   const [category, prices, recentRejections, hasDuplicateTitle] = await Promise.all([
     categoryRepository.findById(listing.category.toString()).exec(),
     listingRepository.sampleActivePrices(listing.category, MACHINE_REVIEW.PRICE_SAMPLE_SIZE),
-    // `countRecentRejections` vốn phục vụ đường create (có tenant context sẵn) nên không tự
-    // bọc — ở đây gọi từ job, phải khai unscoped tại chỗ.
-    runUnscoped('machine review: đếm lượt bị từ chối gần đây của người bán', () =>
-      listingRepository.countRecentRejections(listing.seller, since),
-    ),
+    // Không bọc `runUnscoped` ở đây nữa: `countRecentRejections` tự bọc từ trong repository,
+    // vì phép đếm đó sai với MỌI caller có scope hẹp, không riêng job này.
+    listingRepository.countRecentRejections(listing.seller, since),
     listingRepository.hasRecentDuplicateTitle(listing.seller, listing.title, listing._id, dupSince),
   ])
 
@@ -115,7 +112,7 @@ async function apply(listing: IListingDocument, verdict: MachineVerdict): Promis
       machineReview: { at, verdict: 'rejected' },
       // `moderation.at` là thứ `countRecentRejections` đếm — nhờ nó lượt từ chối máy tự động
       // khoá cửa tự-đăng và bóp quota của người này 7 ngày, không cần đụng tới bậc uy tín.
-      moderation: { reason: verdict.reason, byName: 'Hệ thống', at },
+      moderation: { reason: verdict.reason, byName: 'Hệ thống', at, severity: 'violation' },
     })
     if (updated) await notifyPoster(updated, LISTING_STATUS.REJECTED, verdict.reason)
     return updated !== null

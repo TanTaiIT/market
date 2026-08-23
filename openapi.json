@@ -628,6 +628,9 @@
           },
           "allowJoinRequests": {
             "type": "boolean"
+          },
+          "allowOutsiderPosts": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false
@@ -969,6 +972,40 @@
           "currency"
         ]
       },
+      "PostingStanding": {
+        "type": "object",
+        "properties": {
+          "canSelfPublish": {
+            "type": "boolean",
+            "description": "Tin lên bảng ngay, không qua hàng đợi"
+          },
+          "cleanApprovalsNeeded": {
+            "type": "number"
+          },
+          "penalty": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "rejections": {
+                "type": "number"
+              },
+              "until": {
+                "type": "string",
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "rejections",
+              "until"
+            ]
+          }
+        },
+        "required": [
+          "canSelfPublish",
+          "cleanApprovalsNeeded",
+          "penalty"
+        ]
+      },
       "QuotaStatus": {
         "type": "object",
         "properties": {
@@ -993,6 +1030,9 @@
           },
           "fee": {
             "$ref": "#/components/schemas/PostingFee"
+          },
+          "standing": {
+            "$ref": "#/components/schemas/PostingStanding"
           }
         },
         "required": [
@@ -1000,7 +1040,8 @@
           "limit",
           "pending",
           "remaining",
-          "fee"
+          "fee",
+          "standing"
         ]
       },
       "PostingStats": {
@@ -2810,6 +2851,14 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 300
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "quality",
+              "violation"
+            ],
+            "default": "quality"
           }
         },
         "required": [
@@ -3275,6 +3324,21 @@
           "province",
           "wards"
         ]
+      },
+      "ClearRejections": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "example": "Đã xác minh: ba lượt từ chối do lỗi người duyệt"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
       },
       "ListingProduct": {
         "type": "object",
@@ -4192,6 +4256,120 @@
           },
           "403": {
             "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{id}/clear-rejections": {
+      "post": {
+        "operationId": "userClearRejections",
+        "tags": [
+          "User"
+        ],
+        "summary": "Gỡ án phạt đăng tin (master)",
+        "description": "Ba lượt bị từ chối VI PHẠM trong 7 ngày sẽ khoá quyền đăng tin, và không có cách nào tự hết ngoài chờ cửa sổ trôi qua. Endpoint này hạ mức những lượt đó về `quality` nên án tự hết. CHỈ gỡ phanh hạn mức — bậc uy tín đã mất vẫn phải kiếm lại bằng tin sạch.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClearRejections"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã gỡ án",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "cleared": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "cleared"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Người này không có án phạt nào đang hiệu lực",
             "content": {
               "application/json": {
                 "schema": {

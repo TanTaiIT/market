@@ -86,22 +86,82 @@ export const listingRepository = {
   },
 
   /** Bucket quota trục org: tin CHỜ DUYỆT của một người trong một org. */
+  /*
+   * BA phép đếm dưới đây đều chạy `runUnscoped`, và đó là điều kiện để chúng ĐÚNG.
+   *
+   * Chúng đếm tin ở trạng thái `pending` / `rejected`, trong khi vế trục công khai mà
+   * `tenantPlugin` chèn vào mọi `countDocuments` là `{visibility: public, status ∈
+   * [active, sold, expired]}`. Hai điều kiện status loại trừ nhau, nên với người dùng KHÔNG
+   * thuộc org nào (scope chỉ có trục công khai) mọi phép đếm đều ra 0 — hạn mức tin chờ và
+   * chốt phanh-sau-khi-bị-từ-chối im lặng ngừng hoạt động, đúng với nhóm đông nhất của sàn.
+   *
+   * Đây là phép đếm NỘI BỘ để chặn spam, không phải đường đọc dữ liệu cho người dùng: kết
+   * quả chỉ ra một con số, không rò một dòng tin nào. Vì thế bỏ scope là hợp lệ và bắt buộc.
+   */
   countPendingInOrg(sellerId: Types.ObjectId, organizationId: Types.ObjectId) {
-    return Listing.countDocuments({
-      seller: sellerId,
-      organizationId,
-      status: { $in: PENDING_STATUSES },
-    }).exec()
+    return runUnscoped('quota: đếm tin chờ duyệt của người này trong org đích', () =>
+      Listing.countDocuments({
+        seller: sellerId,
+        organizationId,
+        status: { $in: PENDING_STATUSES },
+      }).exec(),
+    )
   },
 
   /** Bucket quota trục danh mục — tách hẳn khỏi bucket org (§8.2). */
   countPendingInCategory(sellerId: Types.ObjectId, categoryId: Types.ObjectId) {
-    return Listing.countDocuments({
-      seller: sellerId,
-      category: categoryId,
-      visibility: POST_VISIBILITY.PUBLIC,
-      status: { $in: PENDING_STATUSES },
-    }).exec()
+    return runUnscoped('quota: đếm tin chờ duyệt của người này trong danh mục', () =>
+      Listing.countDocuments({
+        seller: sellerId,
+        category: categoryId,
+        visibility: POST_VISIBILITY.PUBLIC,
+        status: { $in: PENDING_STATUSES },
+      }).exec(),
+    )
+  },
+
+  /**
+   * Mốc bị từ chối GẦN NHẤT trong cửa sổ — để nói với người bán "tự đăng lại được sau N
+   * ngày" thay vì để họ đoán. Cùng lý do unscoped với `countRecentRejections` ngay dưới.
+   */
+  async lastRejectionAt(sellerId: Types.ObjectId, since: Date): Promise<Date | null> {
+    const row = await runUnscoped('quota: mốc bị từ chối gần nhất của người bán', () =>
+      Listing.findOne({
+        seller: sellerId,
+        status: LISTING_STATUS.REJECTED,
+        'moderation.at': { $gte: since },
+        'moderation.severity': { $ne: 'quality' },
+      })
+        .sort({ 'moderation.at': -1 })
+        .select('moderation.at')
+        .lean()
+        .exec(),
+    )
+    return row?.moderation?.at ?? null
+  },
+
+  /**
+   * Master gỡ án: hạ mức mọi lượt TỪ CHỐI VI PHẠM gần đây của người này về `quality`.
+   *
+   * Dùng lại chính cơ chế mức độ thay vì thêm một field "đã ân xá": `countRecentRejections`
+   * vốn đã bỏ qua `quality`, nên chỉ cần hạ mức là án tự hết — một luật, không phải hai.
+   *
+   * KHÔNG xoá gì: `reason` và `moderation.at` ở lại nguyên, và vết master đã gỡ án nằm ở
+   * nhật ký kiểm toán. Thứ duy nhất đổi là PHÂN LOẠI mức độ — đúng thứ master đang ghi đè.
+   */
+  async downgradeRecentRejections(sellerId: Types.ObjectId, since: Date): Promise<number> {
+    const res = await runUnscoped('master gỡ án phạt: hạ mức vi phạm gần đây', () =>
+      Listing.updateMany(
+        {
+          seller: sellerId,
+          status: LISTING_STATUS.REJECTED,
+          'moderation.at': { $gte: since },
+          'moderation.severity': { $ne: 'quality' },
+        },
+        { $set: { 'moderation.severity': 'quality' } },
+      ).exec(),
+    )
+    return res.modifiedCount
   },
 
   /**
@@ -109,11 +169,16 @@ export const listingRepository = {
    * đâu cũng là tín hiệu về người đăng, và đếm theo từng trục là để hở đúng đường vòng.
    */
   countRecentRejections(sellerId: Types.ObjectId, since: Date) {
-    return Listing.countDocuments({
-      seller: sellerId,
-      status: LISTING_STATUS.REJECTED,
-      'moderation.at': { $gte: since },
-    }).exec()
+    return runUnscoped('quota: đếm lượt bị từ chối gần đây, xuyên mọi trục', () =>
+      Listing.countDocuments({
+        seller: sellerId,
+        status: LISTING_STATUS.REJECTED,
+        'moderation.at': { $gte: since },
+        // `$ne` chứ không `$eq: violation`: tin bị từ chối TRƯỚC ngày phân mức không có
+        // field này, và ân xá ngược cho chúng là tự xoá lịch sử vi phạm.
+        'moderation.severity': { $ne: 'quality' },
+      }).exec(),
+    )
   },
 
   // Không populate gì cả. `seller`: User nằm ngoài tenantPlugin nên populate xuyên org lách
