@@ -112,7 +112,7 @@ async function apply(listing: IListingDocument, verdict: MachineVerdict): Promis
       machineReview: { at, verdict: 'rejected' },
       // `moderation.at` là thứ `countRecentRejections` đếm — nhờ nó lượt từ chối máy tự động
       // khoá cửa tự-đăng và bóp quota của người này 7 ngày, không cần đụng tới bậc uy tín.
-      moderation: { reason: verdict.reason, byName: 'Hệ thống', at },
+      moderation: { reason: verdict.reason, byName: 'Hệ thống', at, severity: 'violation' },
     })
     if (updated) await notifyPoster(updated, LISTING_STATUS.REJECTED, verdict.reason)
     return updated !== null

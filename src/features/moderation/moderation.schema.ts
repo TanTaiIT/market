@@ -4,6 +4,7 @@ import {
   AUDIT_ACTION,
   LISTING_STATUS,
   MODERATABLE_STATUSES,
+  REJECTION_SEVERITIES,
   VN_PROVINCE_NAMES,
 } from '../../common/constants'
 
@@ -55,6 +56,11 @@ export const setListingStatusSchema = z
   .object({
     status: z.enum([LISTING_STATUS.ACTIVE, LISTING_STATUS.REJECTED, LISTING_STATUS.HIDDEN]),
     reason: z.string().trim().min(1).max(300).optional(),
+    /**
+     * Chỉ có nghĩa khi từ chối. Mặc định `quality` — người duyệt phải CHỦ ĐỘNG chọn
+     * `violation` mới sinh hình phạt. Xem `REJECTION_SEVERITIES`.
+     */
+    severity: z.enum(REJECTION_SEVERITIES).default('quality'),
   })
   .strict()
   // Từ chối mà không nói lý do thì người đăng không biết sửa gì — chặn ở schema thay vì

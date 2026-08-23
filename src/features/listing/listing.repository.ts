@@ -121,6 +121,50 @@ export const listingRepository = {
   },
 
   /**
+   * Mốc bị từ chối GẦN NHẤT trong cửa sổ — để nói với người bán "tự đăng lại được sau N
+   * ngày" thay vì để họ đoán. Cùng lý do unscoped với `countRecentRejections` ngay dưới.
+   */
+  async lastRejectionAt(sellerId: Types.ObjectId, since: Date): Promise<Date | null> {
+    const row = await runUnscoped('quota: mốc bị từ chối gần nhất của người bán', () =>
+      Listing.findOne({
+        seller: sellerId,
+        status: LISTING_STATUS.REJECTED,
+        'moderation.at': { $gte: since },
+        'moderation.severity': { $ne: 'quality' },
+      })
+        .sort({ 'moderation.at': -1 })
+        .select('moderation.at')
+        .lean()
+        .exec(),
+    )
+    return row?.moderation?.at ?? null
+  },
+
+  /**
+   * Master gỡ án: hạ mức mọi lượt TỪ CHỐI VI PHẠM gần đây của người này về `quality`.
+   *
+   * Dùng lại chính cơ chế mức độ thay vì thêm một field "đã ân xá": `countRecentRejections`
+   * vốn đã bỏ qua `quality`, nên chỉ cần hạ mức là án tự hết — một luật, không phải hai.
+   *
+   * KHÔNG xoá gì: `reason` và `moderation.at` ở lại nguyên, và vết master đã gỡ án nằm ở
+   * nhật ký kiểm toán. Thứ duy nhất đổi là PHÂN LOẠI mức độ — đúng thứ master đang ghi đè.
+   */
+  async downgradeRecentRejections(sellerId: Types.ObjectId, since: Date): Promise<number> {
+    const res = await runUnscoped('master gỡ án phạt: hạ mức vi phạm gần đây', () =>
+      Listing.updateMany(
+        {
+          seller: sellerId,
+          status: LISTING_STATUS.REJECTED,
+          'moderation.at': { $gte: since },
+          'moderation.severity': { $ne: 'quality' },
+        },
+        { $set: { 'moderation.severity': 'quality' } },
+      ).exec(),
+    )
+    return res.modifiedCount
+  },
+
+  /**
    * Tin bị từ chối gần đây, ĐẾM XUYÊN TRỤC. Cố tình không lọc org/visibility: bị từ chối ở
    * đâu cũng là tín hiệu về người đăng, và đếm theo từng trục là để hở đúng đường vòng.
    */
@@ -130,6 +174,9 @@ export const listingRepository = {
         seller: sellerId,
         status: LISTING_STATUS.REJECTED,
         'moderation.at': { $gte: since },
+        // `$ne` chứ không `$eq: violation`: tin bị từ chối TRƯỚC ngày phân mức không có
+        // field này, và ân xá ngược cho chúng là tự xoá lịch sử vi phạm.
+        'moderation.severity': { $ne: 'quality' },
       }).exec(),
     )
   },

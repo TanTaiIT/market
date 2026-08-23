@@ -272,6 +272,19 @@ export const AUDIT_ACTION = {
 export type AuditAction = (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION]
 
 /**
+ * Mức độ của một lượt TỪ CHỐI. Trước đây ảnh mờ và bán hàng cấm trừ đúng một bậc như nhau —
+ * người bán thật thà bị đối xử như kẻ gian.
+ *
+ * `quality`  — tin sai sót, sửa rồi đăng lại: KHÔNG đụng uy tín, KHÔNG bóp hạn mức.
+ * `violation` — vi phạm quy định sàn: tụt bậc + vào cửa sổ phạt 7 ngày.
+ *
+ * Mặc định là `quality`: người duyệt phải CHỦ ĐỘNG nói "đây là vi phạm" mới có hình phạt.
+ * Ngược lại thì mọi cú bấm từ chối đều trừng phạt, đúng cái bất công vừa sửa.
+ */
+export const REJECTION_SEVERITIES = ['quality', 'violation'] as const
+export type RejectionSeverity = (typeof REJECTION_SEVERITIES)[number]
+
+/**
  * Trạng thái bàn duyệt thao tác được — `draft` là của người đăng, quản trị không đụng.
  *
  * `pending_unverified` PHẢI có mặt: đó là trạng thái của tin do người ngoài gửi vào tổ chức.

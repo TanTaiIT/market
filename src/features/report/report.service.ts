@@ -154,7 +154,7 @@ export const reportService = {
     })
 
     await recordAudit(
-      { id: actor.id, name: byName, organizationId: actor.organizationId },
+      { id: actor.id, name: byName },
       {
         action: hideTarget ? AUDIT_ACTION.REPORT_RESOLVE : AUDIT_ACTION.REPORT_DISMISS,
         summary: hideTarget

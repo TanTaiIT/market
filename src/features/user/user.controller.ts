@@ -4,6 +4,12 @@ import { catchAsync } from '../../common/utils/catchAsync'
 import { success } from '../../common/utils/apiResponse'
 
 export const userController = {
+  // POST /users/:id/clear-rejections
+  clearRejections: catchAsync(async (req, res) => {
+    const data = await userService.clearRejections(req.params.id, req.body, req.user!.id)
+    success(res, { message: 'Rejection penalty cleared', data })
+  }),
+
   // GET /users/me
   getMe: catchAsync(async (req, res) => {
     const user = await userService.getById(req.user!.id)

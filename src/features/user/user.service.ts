@@ -1,11 +1,18 @@
 import { userRepository } from './user.repository'
-import { AdminUserQuery, SetUserStatusInput, UpdateProfileInput } from './user.schema'
+import {
+  AdminUserQuery,
+  ClearRejectionsInput,
+  SetUserStatusInput,
+  UpdateProfileInput,
+} from './user.schema'
 import { toAdminUserDto } from './user.types'
 import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { usableMastersExcluding } from '../role-grant/role-grant.service'
 import { trustRepository } from '../trust/trust.repository'
 import { listingService } from '../listing/listing.service'
+import { listingRepository } from '../listing/listing.repository'
+import { QUOTA } from '../listing/listing.quota'
 import { notificationService } from '../notification/notification.service'
 import { SYSTEM_ROLES } from '../../common/constants'
 import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
@@ -105,6 +112,42 @@ export const userService = {
 
     const updated = await this.getById(id)
     return toAdminUserDto(updated, await trustRepository.levelOf(id))
+  },
+
+  /**
+   * Gỡ án phạt đăng tin — quyền MASTER.
+   *
+   * Ba lượt bị từ chối vì vi phạm trong 7 ngày là KHOÁ quyền đăng, và trước endpoint này thì
+   * cách duy nhất ra là ngồi đợi cửa sổ trôi qua: comment trong `listing.quota.ts` hứa "cần
+   * người gỡ tay" mà không có ai gỡ được, kể cả master.
+   *
+   * Chỉ gỡ PHANH HẠN MỨC, KHÔNG trả lại bậc uy tín. Bậc mất đi vẫn phải kiếm lại bằng tin
+   * sạch — nếu không thì đây thành nút "tha bổng" và bậc uy tín mất hết ý nghĩa.
+   */
+  async clearRejections(id: string, input: ClearRejectionsInput, actorId: string) {
+    const target = await userRepository.findById(id)
+    if (!target) throw new NotFoundError('User not found')
+
+    const since = new Date(Date.now() - QUOTA.REJECTION_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+    const cleared = await listingRepository.downgradeRecentRejections(target._id, since)
+    if (cleared === 0) throw new ConflictError('Người này không có án phạt nào đang hiệu lực')
+
+    logger.info('rejection penalty cleared by master', {
+      actorId,
+      userId: id,
+      cleared,
+      reason: input.reason,
+    })
+
+    // Người bị phạt phải biết án đã hết — không thì họ vẫn tưởng mình đang bị khoá.
+    await notificationService.notifyUser({
+      organizationId: null,
+      userId: target._id,
+      title: 'Án phạt đăng tin đã được gỡ',
+      body: `${input.reason} — bạn đăng tin lại được bình thường.`,
+    })
+
+    return { cleared }
   },
 
   /**

@@ -44,6 +44,36 @@ export const requireCategoryModerator = catchAsync(async (req, _res, next) => {
 })
 
 /**
+ * Cửa cho hai thao tác GHI dùng chung cả hai trục: đổi trạng thái và gỡ tin.
+ *
+ * Cố tình KHÔNG hỏi "bạn đang đứng trong nhóm nào" (`requireOrg`) — đó là câu hỏi của trục org,
+ * và trục danh mục không có câu trả lời: người phụ trách (danh mục × tỉnh) thường chẳng thuộc
+ * nhóm nào. Hỏi nhầm câu đó chính là thứ từng khoá chặt cả trục công khai: hàng đợi liệt kê ra
+ * được mà không ai bấm duyệt nổi, kể cả master, nên tin công khai của người không có nhóm kẹt
+ * `pending` vĩnh viễn.
+ *
+ * Ở đây chỉ chốt "người này có quyền duyệt Ở ĐÂU ĐÓ không" — đủ để chặn người dùng thường.
+ * Thẩm quyền trên ĐÚNG tin đang xét do `assertCanModerateListing` phán, vì chỉ nó mới biết tin
+ * thuộc trục nào.
+ */
+export const requireAnyModerator = catchAsync(async (req, _res, next) => {
+  const grants = req.grants ?? (await roleGrantService.grantsOf(req.user!.id))
+  req.grants = grants
+
+  const moderatesSomething =
+    isMaster(grants) ||
+    grants.some(
+      (g) =>
+        g.scopeType === SCOPE_TYPES.ORG ||
+        g.scopeType === SCOPE_TYPES.ORG_UNIT ||
+        g.scopeType === SCOPE_TYPES.CATEGORY_PROVINCE,
+    )
+  if (!moderatesSomething) throw new ForbiddenError('Bạn không có quyền duyệt tin')
+
+  next()
+})
+
+/**
  * Master thấy toàn bộ trục công khai — dùng cho dashboard phủ sóng và hàng đợi fallback.
  * `categoryIds: []` ở scope nghĩa là "không giới hạn danh mục", xem `publicPredicate`.
  */

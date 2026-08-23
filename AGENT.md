@@ -46,7 +46,10 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
 5. Route cần đăng nhập → `authenticate`. Phân quyền dùng middleware theo **phạm vi**, không
    theo vai trò trong org: `requireOrg` (phải có org đang hoạt động) · `requireMembership` ·
    `requireOrgModerator` (duyệt được thứ gì đó trong org) · `requireOrgAdmin` (đổi cấu trúc
-   org) · `requireCategoryModerator` / `requireMasterPublicAxis` (trục danh mục).
+   org) · `requireCategoryModerator` / `requireMasterPublicAxis` (trục danh mục) ·
+   `requireAnyModerator` (thao tác GHI chạy trên **cả hai** trục: duyệt/gỡ một tin bất kỳ —
+   cố tình KHÔNG đòi `requireOrg`, vì người phụ trách danh mục không thuộc nhóm nào; dùng
+   `requireOrgModerator` ở đó là khoá chặt trục công khai, xem `moderation.routes.ts`).
    Route public tuỳ chọn đăng nhập → `optionalAuth`.
    Middleware ở tầng route cố tình **rộng**, để người có phạm vi hẹp vẫn mở được màn hình của
    họ. Phạm vi thật chốt ở service bằng `src/common/authz/policy.ts` (hàm thuần) — xem

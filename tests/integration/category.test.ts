@@ -155,7 +155,7 @@ const listingBody = (categoryId: string) => ({
   description: 'Mô tả đủ dài cho zod schema đi qua',
   price: 250000,
   categoryId,
-  images: ['https://example.com/a.jpg'],
+  images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
   location: { province: 'Hồ Chí Minh' as const, ward: 'Phường Bến Thành' },
 })
 

@@ -1,7 +1,11 @@
 import { z } from 'zod'
 import { Router } from 'express'
 import { moderationController } from './moderation.controller'
-import { requireCategoryModerator, requireMasterPublicAxis } from './moderation.middleware'
+import {
+  requireAnyModerator,
+  requireCategoryModerator,
+  requireMasterPublicAxis,
+} from './moderation.middleware'
 import {
   modListingQuerySchema,
   modParamsSchema,
@@ -26,10 +30,13 @@ import {
 
 const router = Router()
 
-/**
- * Toàn bộ nhánh này là bàn quản trị của **một trường**: `authenticate` đã ràng token vào đúng
- * org đang resolve, `authorize` chặn thành viên thường. Đây cũng là chỗ duy nhất trả về tin ở
- * trạng thái không public — quy tắc 7 của AGENT chỉ áp cho endpoint công khai.
+/*
+ * Nhánh này là bàn duyệt, và nó KHÔNG đồng nhất một tầng phân quyền: mỗi route tự khai
+ * middleware của trục mình, chỉ các route GET của trục org ở cuối file mới nằm dưới `router.use`
+ * chung. Thứ tự khai ở đây là có nghĩa — đọc từ trên xuống.
+ *
+ * Đây cũng là chỗ duy nhất trả về tin ở trạng thái không public — quy tắc 7 của AGENT chỉ áp
+ * cho endpoint công khai.
  */
 // Trục DANH MỤC: phạm vi đến từ `role_grants` scope category_province, không từ org đang
 // resolve — nên nhánh này phải khai TRƯỚC `router.use` của trục org bên dưới.
@@ -49,22 +56,35 @@ router.patch(
   moderationController.reroute,
 )
 
+/*
+ * GHI — dùng chung cho CẢ HAI trục, nên phải nằm TRÊN ranh giới org bên dưới.
+ *
+ * Trước đây hai route này nằm dưới `requireOrg`, và đó là lỗi khoá chặt trục công khai:
+ * người phụ trách danh mục liệt kê được hàng đợi nhưng mọi cú bấm đều 403, còn master mượn
+ * slug một org bất kỳ thì ăn 404 vì tenant scope lúc đó không phủ tin công khai chưa duyệt.
+ * Kết quả: tin công khai của người không thuộc nhóm nào kẹt `pending` vĩnh viễn.
+ */
+router.patch(
+  '/listings/:id',
+  authenticate,
+  requireAnyModerator,
+  validate({ params: modParamsSchema, body: setListingStatusSchema }),
+  moderationController.setListingStatus,
+)
+router.delete(
+  '/listings/:id',
+  authenticate,
+  requireAnyModerator,
+  validate({ params: modParamsSchema }),
+  moderationController.removeListing,
+)
+
 // Trục ORG: từ đây trở xuống là bàn quản trị của một tổ chức.
 router.use(authenticate, requireOrg, requireOrgModerator)
 
 router.get('/overview', moderationController.overview)
 router.get('/activity', validate({ query: activityQuerySchema }), moderationController.activity)
 router.get('/listings', validate({ query: modListingQuerySchema }), moderationController.listings)
-router.patch(
-  '/listings/:id',
-  validate({ params: modParamsSchema, body: setListingStatusSchema }),
-  moderationController.setListingStatus,
-)
-router.delete(
-  '/listings/:id',
-  validate({ params: modParamsSchema }),
-  moderationController.removeListing,
-)
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }

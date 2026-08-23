@@ -8,6 +8,8 @@ import {
   PostVisibility,
   VN_PROVINCE_NAMES,
   VnProvinceName,
+  REJECTION_SEVERITIES,
+  type RejectionSeverity,
 } from '../../common/constants'
 import { tenantPlugin } from '../../common/tenant/tenantPlugin'
 import { AUTO_APPROVAL_REASONS, type AutoApprovalReason } from './listing.quota'
@@ -119,6 +121,7 @@ export interface IListing {
     byUserId?: Types.ObjectId
     byName?: string
     at?: Date
+    severity?: RejectionSeverity
   }
   expiresAt?: Date
   deletedAt: Date | null
@@ -266,6 +269,9 @@ const listingSchema = new Schema<IListingDocument>(
           byUserId: { type: Schema.Types.ObjectId, ref: 'User' },
           byName: { type: String, trim: true, maxlength: 100 },
           at: { type: Date },
+          // Chỉ có nghĩa với lượt TỪ CHỐI. Vắng mặt = dữ liệu trước ngày phân mức, và
+          // `countRecentRejections` xử nó như `violation` để không ân xá ngược cho ai.
+          severity: { type: String, enum: [...REJECTION_SEVERITIES] },
         },
         { _id: false },
       ),

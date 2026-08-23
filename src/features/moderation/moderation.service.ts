@@ -25,11 +25,16 @@ import {
 import { Grant } from '../../common/authz/policy'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToOrgAdmins } from '../../sockets/emit'
+import { runUnscoped } from '../../common/tenant/tenantContext'
 import { logger } from '../../config/logger'
 
+/**
+ * CHỈ có `id`. Thao tác duyệt chạy trên cả hai trục, nên "người duyệt thuộc nhóm nào" không
+ * phải dữ kiện của nó: thẩm quyền do `assertCanModerateListing` phán theo trục của TIN, còn
+ * vết kiểm toán ghi dưới org SỞ HỮU tin (`recordAudit`), không phải org của người bấm.
+ */
 export interface ModeratorActor {
   id: string
-  organizationId: string
 }
 
 /** Biểu đồ nhịp hoạt động của prototype là 14 ngày. */
@@ -58,7 +63,7 @@ const ACTION_BY_STATUS: Record<string, AuditAction> = {
  * Chuyển `AuditLog` sang dual-axis là việc còn nợ (v2-org-permission.plan.md).
  */
 export async function recordAudit(
-  actor: { id: string; name: string; organizationId: string },
+  actor: { id: string; name: string },
   entry: {
     action: AuditAction
     summary: string
@@ -79,12 +84,19 @@ export async function recordAudit(
     return null
   }
 
-  const log = await moderationRepository.recordAudit({
-    actorId: new Types.ObjectId(actor.id),
-    actorName: actor.name,
-    ...entry,
-  })
-  emitToOrgAdmins(actor.organizationId, 'admin:activity', toAuditEventDto(log))
+  // Khai `organizationId` TƯỜNG MINH và chạy unscoped: để plugin tự lấy từ scope thì vết
+  // duyệt rơi vào nhật ký org của NGƯỜI DUYỆT, không phải org sở hữu tin. Cùng lệch đó khiến
+  // master duyệt hộ org khác sẽ ghi nhầm sổ — và với người duyệt không có nhóm thì lệnh ghi
+  // còn không chạy nổi.
+  const log = await runUnscoped('audit: ghi vết dưới org SỞ HỮU đối tượng bị tác động', () =>
+    moderationRepository.recordAudit({
+      organizationId: subjectOrgId,
+      actorId: new Types.ObjectId(actor.id),
+      actorName: actor.name,
+      ...entry,
+    }),
+  )
+  emitToOrgAdmins(subjectOrgId.toString(), 'admin:activity', toAuditEventDto(log))
   return log
 }
 
@@ -98,10 +110,36 @@ export async function recordAudit(
 async function applyTrustEffect(
   listing: IListingDocument,
   status: ListingStatus,
+  context: { actorId: string; previousStatus: ListingStatus },
 ): Promise<TrustState | null> {
   const approved = status === LISTING_STATUS.ACTIVE
   const rejected = status === LISTING_STATUS.REJECTED
   if (!approved && !rejected) return null
+
+  /*
+   * TỰ duyệt tin của chính mình KHÔNG tính. Đây là lỗ farm uy tín, và nó rẻ đến mức không thể
+   * để mở: ai có quyền duyệt trong một nhóm chỉ cần đăng rồi tự bấm "duyệt" mười lần là lên
+   * bậc 2, rồi tự đăng thẳng lên bảng tin công khai của cả sàn mà không ai từng nhìn qua.
+   *
+   * `assertCanModerateListing` không chặn được: nó hỏi "có quyền duyệt tin này không", và câu
+   * trả lời cho chính chủ đang giữ quyền admin nhóm là CÓ. Việc duyệt vẫn hợp lệ — chỉ có điều
+   * nó không phải bằng chứng về uy tín, vì không ai độc lập nhìn tin đó.
+   */
+  if (listing.seller.toString() === context.actorId) return null
+
+  /*
+   * Quyết định trên hàng đợi NGƯỜI-NGOÀI trung tính với uy tín, cả hai chiều.
+   *
+   * "Tin này không phù hợp nhóm tôi" và "tin này vi phạm quy định sàn" là hai phán quyết khác
+   * nhau đang dùng chung một nút. Từ nay người ngoài gửi tin vào một nhóm lạ mà bị từ chối thì
+   * chỉ mất tin đó — không mất vị thế trên toàn sàn. Bậc uy tín là MỘT số toàn cục
+   * (`trust.model.ts`), nên nếu tính thì quản trị của bất kỳ nhóm nào cũng hạ được uy tín của
+   * bất kỳ ai từng gửi tin vào đó, không cần ác ý.
+   *
+   * Chiều cộng cũng bỏ, không phải cho đối xứng đẹp mà để bịt farm bằng người quen: một nhóm
+   * thân thiện bật `allowOutsiderPosts` rồi duyệt tin của bạn mình là đường lên bậc 2 khác.
+   */
+  if (context.previousStatus === LISTING_STATUS.PENDING_UNVERIFIED) return null
 
   return trustRepository.record(listing.seller, approved)
 }
@@ -178,7 +216,7 @@ async function actorName(actor: ModeratorActor): Promise<string> {
 
 export const moderationService = {
   /** Một lượt gọi cho cả màn tổng quan — bốn thẻ số, hai biểu đồ. */
-  async overview(actor: ModeratorActor) {
+  async overview(actor: { id: string; organizationId: string }) {
     const [stats, categories, openReports, users] = await Promise.all([
       listingService.moderationStats(TREND_DAYS),
       categoryService.list({ includeInactive: true }),
@@ -232,20 +270,29 @@ export const moderationService = {
     input: SetListingStatusInput,
     actor: ModeratorActor & { grants: Grant[] },
   ) {
-    const existing = await listingService.getById(id)
+    const existing = await listingService.getForModeration(id)
     assertCanModerateListing(existing, actor.grants)
 
     const name = await actorName(actor)
     const previousStatus = existing.status
     const listing = await listingService.setModerationStatus(
       id,
-      { status: input.status, reason: input.reason, byUserId: actor.id, byName: name },
+      {
+        status: input.status,
+        reason: input.reason,
+        byUserId: actor.id,
+        byName: name,
+        severity: input.severity,
+      },
       actor.grants,
     )
 
     // Ghi uy tín TRƯỚC khi log: dòng nhật ký phải nói được hậu quả, mà hậu quả chỉ biết sau
     // khi đã ghi. Thứ tự ngược lại thì bậc trong log luôn là bậc cũ.
-    const trust = await applyTrustEffect(listing, input.status)
+    const trust = await applyTrustEffect(listing, input.status, {
+      actorId: actor.id,
+      previousStatus,
+    })
 
     const action = ACTION_BY_STATUS[input.status]
     await recordAudit(
@@ -360,9 +407,9 @@ export const moderationService = {
     // Không còn nhánh if/else cho trục danh mục: `recordAudit` tự xử lý `organizationId: null`
     // — cùng một cách với mọi thao tác duyệt khác, thay vì riêng chỗ này biết bỏ qua.
     const orgId = listing.organizationId
-    const name = await actorName({ id: actorId, organizationId: orgId?.toString() ?? '' })
+    const name = await actorName({ id: actorId })
     await recordAudit(
-      { id: actorId, name, organizationId: orgId?.toString() ?? '' },
+      { id: actorId, name },
       {
         action: AUDIT_ACTION.LISTING_REASSIGN,
         summary,
@@ -379,7 +426,7 @@ export const moderationService = {
   },
 
   async removeListing(id: string, actor: ModeratorActor & { grants: Grant[] }) {
-    assertCanModerateListing(await listingService.getById(id), actor.grants)
+    assertCanModerateListing(await listingService.getForModeration(id), actor.grants)
 
     const name = await actorName(actor)
     const listing = await listingService.removeByModerator(id, actor.grants)

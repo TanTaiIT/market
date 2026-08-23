@@ -30,6 +30,14 @@ export const trustRepository = {
     return (await readState(userId))?.level ?? 0
   },
 
+  /**
+   * Cả trạng thái, không chỉ bậc: `postingStanding` phải biết CHUỖI SẠCH đang đi được bao xa
+   * mới nói đúng "còn mấy tin nữa" — chỉ có bậc thì luôn nói quá với người đang dở dang.
+   */
+  async stateOf(userId: Id): Promise<TrustState> {
+    return (await readState(userId)) ?? ZERO_TRUST
+  },
+
   /** Bậc của nhiều người một lượt — cho danh bạ thành viên, tránh N+1. */
   async levelsOf(userIds: Types.ObjectId[]): Promise<Map<string, number>> {
     if (userIds.length === 0) return new Map()

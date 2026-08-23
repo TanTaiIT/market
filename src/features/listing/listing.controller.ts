@@ -13,14 +13,15 @@ import { trustRepository } from '../trust/trust.repository'
  */
 async function listingAuthor(req: Request): Promise<ListingAuthor> {
   const orgId = currentScope()?.ownOrgId?.toString() ?? null
-  const trustLevel = await trustRepository.levelOf(req.user!.id)
+  const trust = await trustRepository.stateOf(req.user!.id)
 
   return {
     id: req.user!.id,
     organizationId: orgId,
     isMember: Boolean(req.membership),
     unitId: req.membership?.unitId ?? null,
-    trustLevel,
+    trustLevel: trust.level,
+    cleanApprovals: trust.cleanApprovals,
   }
 }
 

@@ -7,7 +7,7 @@ const baseListing = {
   description: 'Còn dùng tốt, đã đi được hai năm.',
   price: 1500000,
   categoryId: '6a7dd90eeff1d27bcbfa0e9f',
-  images: ['https://example.com/a.jpg'],
+  images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
 }
 
 describe('bảng phường/xã', () => {

@@ -51,7 +51,7 @@ function postListing(body: Record<string, unknown>) {
       description: 'Mô tả đủ dài cho zod schema đi qua',
       price: 150000,
       categoryId,
-      images: ['https://example.com/a.jpg'],
+      images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
       location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
       ...body,
     })

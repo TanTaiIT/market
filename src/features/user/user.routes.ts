@@ -4,6 +4,7 @@ import { userController } from './user.controller'
 import {
   adminUserQuerySchema,
   adminUserSchema,
+  clearRejectionsSchema,
   setUserStatusSchema,
   updateProfileSchema,
   userParamsSchema,
@@ -38,6 +39,13 @@ router.patch(
   requireMaster,
   validate({ params: userParamsSchema, body: setUserStatusSchema }),
   userController.setStatus,
+)
+router.post(
+  '/:id/clear-rejections',
+  authenticate,
+  requireMaster,
+  validate({ params: userParamsSchema, body: clearRejectionsSchema }),
+  userController.clearRejections,
 )
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
@@ -115,6 +123,30 @@ registry.registerPath({
     200: jsonResponse('Danh sách người dùng', envelope(z.array(adminUserSchema))),
     401: errorResponse('Thiếu hoặc sai access token'),
     403: errorResponse('Cần quyền master'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/users/{id}/clear-rejections',
+  operationId: 'userClearRejections',
+  tags: ['User'],
+  summary: 'Gỡ án phạt đăng tin (master)',
+  description:
+    'Ba lượt bị từ chối VI PHẠM trong 7 ngày sẽ khoá quyền đăng tin, và không có cách nào ' +
+    'tự hết ngoài chờ cửa sổ trôi qua. Endpoint này hạ mức những lượt đó về `quality` nên án ' +
+    'tự hết. CHỈ gỡ phanh hạn mức — bậc uy tín đã mất vẫn phải kiếm lại bằng tin sạch.',
+  ...protectedRoute,
+  request: {
+    params: userParamsSchema,
+    body: { content: { 'application/json': { schema: clearRejectionsSchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã gỡ án', envelope(z.object({ cleared: z.number() }))),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền master'),
+    404: errorResponse('Không tìm thấy người dùng'),
+    409: errorResponse('Người này không có án phạt nào đang hiệu lực'),
   },
 })
 
