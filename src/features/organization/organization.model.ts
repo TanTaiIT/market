@@ -39,7 +39,14 @@ export interface IOrganization {
   coverUrl: string | null
   description: string
   allowJoinRequests: boolean
-  /** Mặc định TẮT: org nào không muốn nhận tin từ người ngoài thì slug đơn giản không hiện ra. */
+  /**
+   * Nhóm có nhận tin từ người KHÔNG phải thành viên không.
+   *
+   * Mặc định BẬT (đổi 2026-08-23): gửi tin vào một nhóm không còn đòi phải gia nhập trước.
+   * Tin của người ngoài đi hàng đợi riêng (`pending_unverified`) và KHÔNG bao giờ tự đăng,
+   * dù người gửi uy tín tới đâu — quản trị nhóm luôn là người quyết cuối.
+   * Nhóm kín (trường học, nội bộ công ty) tự tắt qua `PATCH /organizations/current`.
+   */
   allowOutsiderPosts: boolean
   /** Ai tạo org này. Chỉ master tạo được org (quyết định Q2), nên đây luôn là một master. */
   createdBy: Types.ObjectId | null
@@ -88,7 +95,7 @@ const organizationSchema = new Schema<IOrganizationDocument>(
     description: { type: String, default: '', trim: true, maxlength: 500 },
 
     allowJoinRequests: { type: Boolean, default: true },
-    allowOutsiderPosts: { type: Boolean, default: false },
+    allowOutsiderPosts: { type: Boolean, default: true },
 
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
 

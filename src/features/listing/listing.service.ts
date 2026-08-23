@@ -28,6 +28,7 @@ import { listingProductService } from '../listing-product/listing-product.servic
 import { categoryService } from '../category/category.service'
 import { categoryTemplateService } from '../category-template/category-template.service'
 import { organizationRepository } from '../organization/organization.repository'
+import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { Grant, canModerateListing } from '../../common/authz/policy'
@@ -156,14 +157,16 @@ function toListingDoc(
  */
 async function resolveProvinceCode(
   input: CreateListingInput,
-  author: ListingAuthor,
+  targetOrgId: string | null,
   visibility: string,
 ): Promise<string | null> {
   const picked = input.provinceCode ?? input.location?.province
   if (picked) return picked
 
-  if (author.organizationId) {
-    const org = await organizationRepository.findById(author.organizationId)
+  // Tỉnh của org ĐÍCH, không phải org của người đăng: người ngoài gửi tin vào nhóm ở tỉnh
+  // khác thì tin thuộc về tỉnh của nhóm đó.
+  if (targetOrgId) {
+    const org = await organizationRepository.findById(targetOrgId)
     if (org?.provinceCode) return org.provinceCode
   }
 
@@ -174,26 +177,53 @@ async function resolveProvinceCode(
   return null
 }
 
+interface TargetOrg {
+  orgId: string | null
+  /** Tư cách thành viên tại ĐÚNG org đích, không phải org đang nằm trong scope. */
+  isMember: boolean
+  unitId: string | null
+  allowOutsiderPosts: boolean
+}
+
 /**
- * Org đích của một tin, và tin đó có được phép vào đó không.
+ * Org đích của một tin, tư cách người đăng tại org đó, và org đó có nhận tin người ngoài không.
  *
- * Người ngoài không có org trong scope: `resolveTenant` cố tình không mở scope org cho người
- * không phải thành viên khi ghi. Nên org đích phải đến từ `orgSlug` trong body — đúng cái slug
- * họ vừa xác nhận trên dropdown, cùng đường mà đơn xin tham gia đang đi.
+ * **`orgSlug` gửi lên THẮNG org suy từ scope.** Đây là chốt dễ sai nhất cả file:
+ * `resolveTenant` tự chọn org khi người dùng chỉ thuộc đúng một org, nên bản cũ (`if
+ * (author.isMember || !input.orgSlug)`) khiến một thành viên org A gửi `orgSlug: "org-b"` bị
+ * nuốt mất lựa chọn — tin rơi vào org A, KHÔNG một tiếng động. Với nghiệp vụ "ai cũng đăng
+ * được vào nhóm khác" thì đó lại đúng là ca phổ biến nhất.
+ *
+ * Tư cách thành viên vì thế phải tra lại theo org ĐÍCH: cùng một người vừa là thành viên org A
+ * vừa là người ngoài với org B, và hai vai đó đi hai hàng đợi khác nhau.
  */
 async function resolveTargetOrg(
   input: CreateListingInput,
   author: ListingAuthor,
-): Promise<{ orgId: string | null; allowOutsiderPosts: boolean }> {
-  if (author.isMember || !input.orgSlug) {
-    return { orgId: author.organizationId, allowOutsiderPosts: false }
+): Promise<TargetOrg> {
+  if (!input.orgSlug) {
+    return {
+      orgId: author.organizationId,
+      isMember: author.isMember,
+      unitId: author.unitId,
+      allowOutsiderPosts: false,
+    }
   }
 
   const org = await organizationRepository.findActiveBySlug(input.orgSlug)
   if (!org) throw new NotFoundError('Tổ chức không tồn tại hoặc đã bị khoá')
 
-  const full = await organizationRepository.findById(org._id)
-  return { orgId: org._id.toString(), allowOutsiderPosts: Boolean(full?.allowOutsiderPosts) }
+  const [full, membership] = await Promise.all([
+    organizationRepository.findById(org._id),
+    membershipRepository.findActive(author.id, org._id),
+  ])
+
+  return {
+    orgId: org._id.toString(),
+    isMember: Boolean(membership),
+    unitId: membership?.unitId?.toString() ?? null,
+    allowOutsiderPosts: Boolean(full?.allowOutsiderPosts),
+  }
 }
 
 async function hasCategoryModerator(categoryId: string, provinceCode: string): Promise<boolean> {
@@ -292,7 +322,8 @@ export const listingService = {
     if (!seller) throw new NotFoundError('User not found')
 
     const visibility = input.visibility ?? POST_VISIBILITY.ORG_INTERNAL
-    const provinceCode = await resolveProvinceCode(input, author, visibility)
+    const target = await resolveTargetOrg(input, author)
+    const provinceCode = await resolveProvinceCode(input, target.orgId, visibility)
     const sellerId = new Types.ObjectId(author.id)
     const categoryId = new Types.ObjectId(input.categoryId)
 
@@ -300,8 +331,6 @@ export const listingService = {
       sellerId,
       rejectionWindowStart(),
     )
-
-    const target = await resolveTargetOrg(input, author)
 
     // ── CỔNG NỘI DUNG — lớp 0, đứng TRƯỚC mọi phép tính uy tín ─────────────────
     // BLOCK (cụm cấm) chạy cho MỌI tin, 0 query. Tin dính không bị chặn ở HTTP mà thành
@@ -321,7 +350,7 @@ export const listingService = {
     const routed = routeListing({
       visibility,
       orgId: target.orgId,
-      isMember: author.isMember,
+      isMember: target.isMember,
       allowOutsiderPosts: target.allowOutsiderPosts,
       hasCategoryModerator:
         visibility === POST_VISIBILITY.PUBLIC

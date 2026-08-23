@@ -628,6 +628,9 @@
           },
           "allowJoinRequests": {
             "type": "boolean"
+          },
+          "allowOutsiderPosts": {
+            "type": "boolean"
           }
         },
         "additionalProperties": false

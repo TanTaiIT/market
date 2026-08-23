@@ -219,6 +219,7 @@ export const organizationService = {
     if (input.avatarUrl !== undefined) org.avatarUrl = input.avatarUrl
     if (input.coverUrl !== undefined) org.coverUrl = input.coverUrl
     if (input.allowJoinRequests !== undefined) org.allowJoinRequests = input.allowJoinRequests
+    if (input.allowOutsiderPosts !== undefined) org.allowOutsiderPosts = input.allowOutsiderPosts
 
     await org.save()
     return org

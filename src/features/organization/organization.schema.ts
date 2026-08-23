@@ -155,6 +155,12 @@ export const updateOrganizationSchema = z
     avatarUrl: cloudinaryUrl.nullable().optional(),
     coverUrl: cloudinaryUrl.nullable().optional(),
     allowJoinRequests: z.boolean().optional(),
+    /**
+     * Nhóm có nhận tin từ người KHÔNG phải thành viên không. Bật (mặc định) = ai cũng gửi
+     * tin vào được, tin nằm ở hàng đợi `pending_unverified` chờ quản trị nhóm duyệt.
+     * Tắt = nhóm kín, chỉ thành viên đăng được.
+     */
+    allowOutsiderPosts: z.boolean().optional(),
   })
   .strict()
   .openapi('UpdateOrganization')
