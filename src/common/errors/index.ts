@@ -31,6 +31,16 @@ export class ConflictError extends ApiError {
   }
 }
 
+/**
+ * Ví không đủ Xu. 402 chứ không 400: client phân biệt được "gõ sai" với "hết tiền" mà không
+ * phải đọc chuỗi thông báo — cái sau dẫn thẳng sang màn nạp.
+ */
+export class InsufficientBalanceError extends ApiError {
+  constructor(message = 'Số dư Xu không đủ') {
+    super(httpStatus.PAYMENT_REQUIRED, message)
+  }
+}
+
 export class TooManyRequestsError extends ApiError {
   constructor(message = 'Too many requests') {
     super(httpStatus.TOO_MANY_REQUESTS, message)

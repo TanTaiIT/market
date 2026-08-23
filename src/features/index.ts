@@ -21,6 +21,7 @@ import reportRoutes from './report/report.routes'
 import locationRoutes from './location/location.routes'
 import bannedPhraseRoutes from './banned-phrase/banned-phrase.routes'
 import listingProductRoutes from './listing-product/listing-product.routes'
+import walletRoutes from './wallet/wallet.routes'
 
 const router = Router()
 
@@ -46,6 +47,8 @@ router.use('/locations', locationRoutes)
 router.use('/banned-phrases', bannedPhraseRoutes)
 // Bàn quản trị catalog gói tin — master-only; đường xem công khai nằm ở /listings/products.
 router.use('/listing-products', listingProductRoutes)
+// Ví Xu — của chính chủ; master chỉ có đường cộng/trừ, không có đường đọc ví người khác.
+router.use('/wallet', walletRoutes)
 
 // --- Bàn quản trị của một org (manager | staff, xét bằng role_grants) ---
 router.use('/moderation', moderationRoutes)

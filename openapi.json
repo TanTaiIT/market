@@ -3529,6 +3529,104 @@
           }
         },
         "additionalProperties": false
+      },
+      "Wallet": {
+        "type": "object",
+        "properties": {
+          "balance": {
+            "type": "number"
+          },
+          "currency": {
+            "type": "string",
+            "enum": [
+              "xu"
+            ]
+          }
+        },
+        "required": [
+          "balance",
+          "currency"
+        ]
+      },
+      "XuTransaction": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "topup",
+              "post_fee",
+              "product_purchase",
+              "refund",
+              "promo_grant",
+              "admin_adjust"
+            ]
+          },
+          "balanceAfter": {
+            "type": "number"
+          },
+          "note": {
+            "type": "string"
+          },
+          "refs": {
+            "type": "object",
+            "properties": {
+              "listingId": {
+                "type": "string"
+              },
+              "paymentId": {
+                "type": "string"
+              },
+              "productCode": {
+                "type": "string"
+              }
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "_id",
+          "amount",
+          "type",
+          "balanceAfter",
+          "note",
+          "createdAt"
+        ]
+      },
+      "AdjustWallet": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "integer",
+            "example": 100
+          },
+          "note": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "example": "Tặng Xu khai trương"
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 80
+          }
+        },
+        "required": [
+          "amount",
+          "note",
+          "idempotencyKey"
+        ],
+        "additionalProperties": false
       }
     },
     "parameters": {}
@@ -11531,6 +11629,260 @@
           },
           "404": {
             "description": "Không tìm thấy gói",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet": {
+      "get": {
+        "operationId": "walletGet",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Số dư Xu của tôi",
+        "description": "Ví chưa từng phát sinh giao dịch trả về `0` — không phải 404.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Số dư",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Wallet"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/transactions": {
+      "get": {
+        "operationId": "walletHistory",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Lịch sử biến động ví",
+        "description": "Sổ cái của chính chủ, mới nhất trước. `balanceAfter` là số dư ngay sau dòng đó — dùng nó để đối chiếu thay vì cộng dồn ở client.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lịch sử ví",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/XuTransaction"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wallet/{userId}/adjust": {
+      "post": {
+        "operationId": "walletAdjust",
+        "tags": [
+          "Wallet"
+        ],
+        "summary": "Cộng / trừ Xu tay (master)",
+        "description": "Tặng Xu, bồi thường, thu hồi Xu cấp nhầm. `amount` âm là trừ. `note` bắt buộc — dòng sổ do người tạo ra mà không nói vì sao thì tháng sau không ai giải thích được cho khách. `idempotencyKey` do client sinh mỗi lần mở form: bấm nhầm hai lần chỉ ra một dòng sổ.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "userId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustWallet"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã ghi sổ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/XuTransaction"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Số Xu phải là số nguyên khác 0",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Trừ quá số dư đang có",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
             "content": {
               "application/json": {
                 "schema": {

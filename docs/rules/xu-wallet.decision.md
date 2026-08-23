@@ -1,7 +1,7 @@
 # ADR: Hệ Xu — tiền tệ nội bộ tính phí đăng tin
 
-**Trạng thái**: chuẩn bị (giai đoạn miễn phí đang chạy, phí = 0). Ngày bật phí do chủ dự án
-quyết — tài liệu này tồn tại để ngày đó KHÔNG cần thiết kế lại gì, chỉ thực thi.
+**Trạng thái**: giai đoạn 1 (ví) ĐÃ XÂY; giai đoạn 2 (nạp) đã dựng rồi gỡ bỏ — xem §4.2. Phí đăng tin vẫn = 0. Ngày bật phí do
+chủ dự án quyết — tài liệu này tồn tại để ngày đó KHÔNG cần thiết kế lại gì, chỉ thực thi.
 
 ## 1. Bối cảnh
 
@@ -22,11 +22,15 @@ tenant-exempt (tài khoản là toàn cục — cùng lý do với `UserTrust`, 
 multi-tenant.convention §1.3 khi xây):
 
 ```
-wallets           { userId unique, balance (CACHE), version }   ← CAS như UserTrust
+wallets           { userId unique, balance (CACHE) }
 xu_transactions   { userId, amount(±), type, balanceAfter,
-                    refs{listingId|paymentId}, idempotencyKey unique, createdAt }
-type ∈ topup · post_fee · refund · promo_grant · admin_adjust
+                    refs{listingId|paymentId|productCode}, idempotencyKey unique, createdAt }
+type ∈ topup · post_fee · product_purchase · refund · promo_grant · admin_adjust
 ```
+
+**Đã xây, có một khác biệt so với thiết kế ban đầu**: bỏ field `version`/CAS — Mongo chạy
+replica set nên `$inc` nguyên tử bên trong một transaction vừa gọn hơn vừa chặt hơn CAS thủ
+công. Đổi lại, hạ tầng BẮT BUỘC là replica set (Atlas mặc định có; dev local cần `--replSet`).
 
 Bất biến:
 1. Sổ cái append-only — sai thì ghi dòng điều chỉnh ngược dấu, không sửa/xoá.
@@ -50,11 +54,31 @@ Bất biến:
 
 ## 4. Lộ trình
 
-1. **Ví nhìn được**: collections + `GET /wallet` + lịch sử + master tặng/điều chỉnh
-   (`admin_adjust` kèm lý do) + notify biến động. Số dư ai cũng 0 — FE xây màn ví.
-2. **Nạp**: collection `payments` + một cổng (khuyến nghị khởi đầu: VietQR + webhook đối
-   soát, hoặc MVP chuyển khoản → master cộng tay bằng `admin_adjust`). Webhook bắt buộc
-   idempotent.
+1. ~~**Ví nhìn được**~~ ✅ ĐÃ XONG: `GET /wallet`, `GET /wallet/transactions`,
+   `POST /wallet/{userId}/adjust` (master, `note` + `idempotencyKey` bắt buộc), notify biến
+   động cho các loại người dùng không tự bấm ra.
+2. **Nạp** — CHƯA XÂY. Đã dựng một lần rồi **gỡ bỏ có chủ ý** (2026-08-23): hệ thống chưa có
+   nhu cầu quét tiền thật, và giữ code thanh toán không dùng tới là giữ một mặt tấn công
+   không ai canh. Bản đã gỡ gồm: `POST /payments/topup` (sinh mã đối soát + ảnh QR
+   `img.vietqr.io`), `GET /payments/{id}` cho client poll, `POST /payments/{id}/confirm` cho
+   master xác nhận tay, webhook VietQR.vn hai chiều (`/api/token_generate` +
+   `/bank/api/transaction-sync`), bảng `bank_transactions` làm nhật ký đối soát kiêm hàng đợi
+   khớp tay, và `scripts/simulate-vietqr.ts` để test không cần tiền thật.
+
+   **Những gì học được, giữ lại để khỏi phải phát hiện lần nữa** khi dựng lại:
+   - Tiền tố mã đối soát KHÔNG được là `NAP`: bỏ dấu xong thì chữ "nạp" mà người Việt luôn gõ
+     trong nội dung chuyển khoản cũng thành `NAP`, bộ dò bắt nhầm ngay giao dịch đầu tiên.
+     Dùng tên ứng dụng (`GHIM`) và trả về DANH SÁCH ứng viên để phép tra DB làm trọng tài.
+   - VietQR gồm hai thứ khác nhau: `img.vietqr.io` sinh ảnh QR miễn phí không cần đăng ký, còn
+     `api.vietqr.org` (VietQR JSC + MB) mới là dịch vụ đối soát — có sandbox `dev.vietqr.org`
+     kèm API mô phỏng callback, test được webhook mà không cần một đồng tiền thật.
+   - Webhook của họ bắt merchant tự dựng CẢ endpoint `token_generate` (Basic → Bearer), không
+     phải chỉ kiểm một API key như SePay.
+   - `transType: D` là tiền RA — cộng Xu cho nó là biếu không tiền cho người vừa rút.
+   - Giao dịch đã xử lý rồi mà trả `error: true` là tự tạo vòng lặp retry vô tận của họ.
+   - Cộng Xu theo số tiền THẬT nhận được, không theo số tiền đơn hẹn.
+
+   Code đã gỡ còn trong git history của phiên làm việc; dựng lại thì bắt đầu từ các bài học trên.
 3. **Bật phí**: `POST_FEE > 0` (chuyển sang config master sửa được) → trừ trong transaction
    cùng lệnh tạo tin → thiếu Xu trả `402` dẫn tới màn nạp → nối hoàn-Xu vào
    `setListingStatus`/máy quét theo bảng §3 → `promo_grant` toàn bộ user hiện hữu.
