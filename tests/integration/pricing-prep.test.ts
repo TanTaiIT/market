@@ -106,21 +106,6 @@ describe('Chuẩn bị hệ Xu — số liệu định giá cho master', () => {
   })
 })
 
-describe('Chuẩn bị gói tin — catalog công khai', () => {
-  it('ai cũng xem được catalog, mọi gói đang enabled: false', async () => {
-    const res = await request(app).get('/api/v1/listings/products').expect(200)
-
-    expect(res.body.data).toHaveLength(4)
-    expect(res.body.data.map((p: { code: string }) => p.code)).toEqual(
-      expect.arrayContaining(['bump', 'featured_3d', 'featured_7d', 'extend_30d']),
-    )
-    for (const product of res.body.data) {
-      expect(product.enabled).toBe(false)
-      expect(product.price).toBeNull()
-    }
-  })
-})
-
 async function readRank(id: string) {
   const { Listing } = await import('../../src/features/listing/listing.model')
   const { runUnscoped } = await import('../../src/common/tenant/tenantContext')

@@ -41,7 +41,7 @@ export function postingFee(_input: PostingFeeInput): PostingFee {
 export const PRODUCT_EFFECTS = ['rank_to_top', 'featured', 'extend_expiry'] as const
 export type ProductEffect = (typeof PRODUCT_EFFECTS)[number]
 
-export interface ListingProductDef {
+interface ListingProductDef {
   code: string
   name: string
   effect: ProductEffect
@@ -56,11 +56,35 @@ export interface ListingProductDef {
 }
 
 /**
- * Catalog gói tin — SoT duy nhất, cùng nhà với phí đăng. Định nghĩa TRƯỚC khi bán được để
- * hợp đồng API (`GET /listings/products`) và UI của FE dựng xong chờ sẵn; ngày mở bán là
- * lật `enabled` + điền giá, không phải thiết kế mới.
+ * Luật nhất quán của một gói — thuần, để create và update của master cùng hỏi một chỗ
+ * (update là PATCH nên zod không thấy đủ document, service ghép xong mới kiểm được).
+ * Trả danh sách lỗi đọc được; rỗng = hợp lệ.
  */
-export const LISTING_PRODUCTS: readonly ListingProductDef[] = [
+export function productRuleErrors(def: {
+  effect: ProductEffect
+  durationDays: number | null
+  price: PostingFee | null
+  enabled: boolean
+}): string[] {
+  const errors: string[] = []
+  if (def.effect === 'rank_to_top' && def.durationDays !== null) {
+    errors.push('Đẩy tin là hiệu ứng tức thời — không có thời hạn')
+  }
+  if (def.effect !== 'rank_to_top' && !def.durationDays) {
+    errors.push('Gói theo thời hạn phải khai durationDays')
+  }
+  if (def.enabled && !def.price) {
+    errors.push('Không thể mở bán khi chưa có giá — điền giá trước rồi hãy bật')
+  }
+  return errors
+}
+
+/**
+ * Gói KHỞI ĐIỂM — chỉ để seed (`scripts/seed-listing-products.ts`) và test. Catalog thật sống
+ * trong DB, master quản qua /listing-products: sửa mảng này không đổi được gì trên hệ đang
+ * chạy (cùng số phận với DEFAULT_BANNED_PHRASES).
+ */
+export const DEFAULT_LISTING_PRODUCTS: readonly ListingProductDef[] = [
   {
     code: 'bump',
     name: 'Đẩy tin',

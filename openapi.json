@@ -952,7 +952,6 @@
       },
       "PostingFee": {
         "type": "object",
-        "nullable": true,
         "properties": {
           "amount": {
             "type": "number",
@@ -968,48 +967,6 @@
         "required": [
           "amount",
           "currency"
-        ]
-      },
-      "ListingProduct": {
-        "type": "object",
-        "properties": {
-          "code": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "effect": {
-            "type": "string",
-            "enum": [
-              "rank_to_top",
-              "featured",
-              "extend_expiry"
-            ]
-          },
-          "durationDays": {
-            "type": "number",
-            "nullable": true
-          },
-          "cooldownHours": {
-            "type": "number",
-            "nullable": true
-          },
-          "price": {
-            "$ref": "#/components/schemas/PostingFee"
-          },
-          "enabled": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "code",
-          "name",
-          "effect",
-          "durationDays",
-          "cooldownHours",
-          "price",
-          "enabled"
         ]
       },
       "QuotaStatus": {
@@ -3319,6 +3276,81 @@
           "wards"
         ]
       },
+      "ListingProduct": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "rank_to_top",
+              "featured",
+              "extend_expiry"
+            ]
+          },
+          "durationDays": {
+            "type": "number",
+            "nullable": true
+          },
+          "cooldownHours": {
+            "type": "number",
+            "nullable": true
+          },
+          "price": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "amount": {
+                "type": "number"
+              },
+              "currency": {
+                "type": "string",
+                "enum": [
+                  "xu"
+                ]
+              }
+            },
+            "required": [
+              "amount",
+              "currency"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "order": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "_id",
+          "code",
+          "name",
+          "description",
+          "effect",
+          "durationDays",
+          "cooldownHours",
+          "price",
+          "enabled",
+          "order",
+          "createdAt"
+        ]
+      },
       "GrantOrganizationAdmin": {
         "type": "object",
         "properties": {
@@ -3368,6 +3400,134 @@
         "required": [
           "phrase"
         ],
+        "additionalProperties": false
+      },
+      "CreateListingProduct": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]{2,40}$",
+            "example": "featured_7d_sale"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "example": "Tin nổi bật 7 ngày — ưu đãi"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "rank_to_top",
+              "featured",
+              "extend_expiry"
+            ]
+          },
+          "durationDays": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 365
+          },
+          "cooldownHours": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 720
+          },
+          "price": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "amount": {
+                "type": "integer",
+                "minimum": 0,
+                "example": 5
+              }
+            },
+            "required": [
+              "amount"
+            ],
+            "additionalProperties": false
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          }
+        },
+        "required": [
+          "code",
+          "name",
+          "effect"
+        ],
+        "additionalProperties": false
+      },
+      "UpdateListingProduct": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 100,
+            "example": "Tin nổi bật 7 ngày — ưu đãi"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "effect": {
+            "type": "string",
+            "enum": [
+              "rank_to_top",
+              "featured",
+              "extend_expiry"
+            ]
+          },
+          "durationDays": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 365
+          },
+          "cooldownHours": {
+            "type": "integer",
+            "nullable": true,
+            "minimum": 1,
+            "maximum": 720
+          },
+          "price": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "amount": {
+                "type": "integer",
+                "minimum": 0,
+                "example": 5
+              }
+            },
+            "required": [
+              "amount"
+            ],
+            "additionalProperties": false
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          }
+        },
         "additionalProperties": false
       }
     },
@@ -5052,7 +5212,7 @@
           "Listing"
         ],
         "summary": "Catalog gói tin (đẩy tin, tin nổi bật…)",
-        "description": "Danh sách gói trả bằng Xu áp lên một tin. `enabled: false` + `price: null` = chưa mở bán — FE dựng UI trước, ngày mở bán chỉ là dữ liệu đổi. Đường mua sẽ là `POST /listings/{id}/products/{code}` khi ví Xu vận hành.",
+        "description": "Những gói trả bằng Xu ĐANG MỞ BÁN — bản nháp/ngừng bán không xuất hiện ở đây. Master quản catalog qua /listing-products. Đường mua sẽ là `POST /listings/{id}/products/{code}` khi ví Xu vận hành.",
         "responses": {
           "200": {
             "description": "Catalog gói tin",
@@ -11019,6 +11179,358 @@
           },
           "404": {
             "description": "Không tìm thấy cụm cấm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listing-products": {
+      "get": {
+        "operationId": "listingProductAdminList",
+        "tags": [
+          "ListingProduct"
+        ],
+        "summary": "Mọi gói tin, kể cả nháp (master)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog đầy đủ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ListingProduct"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "listingProductCreate",
+        "tags": [
+          "ListingProduct"
+        ],
+        "summary": "Xuất bản gói tin mới (master)",
+        "description": "Tạo gói ở trạng thái nháp (`enabled: false`) rồi bật khi sẵn sàng, hoặc tạo bật ngay — nhưng mở bán bắt buộc có giá. `code` là định danh bất biến (sổ cái tham chiếu bằng nó); mốc ưu đãi mới = một gói mới với code riêng, ví dụ `featured_7d_sale`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateListingProduct"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tạo gói",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ListingProduct"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Vi phạm luật gói (mở bán thiếu giá, đẩy tin kèm thời hạn…)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Đã có gói mang code này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listing-products/{id}": {
+      "patch": {
+        "operationId": "listingProductUpdate",
+        "tags": [
+          "ListingProduct"
+        ],
+        "summary": "Sửa / bật / ngừng bán một gói (master)",
+        "description": "PATCH từng phần — luật xuyên field kiểm trên bản ghép với dữ liệu đang lưu. `code` không sửa được: gói đổi bản chất thì tạo gói mới, ngừng bán gói cũ.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateListingProduct"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã cập nhật",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ListingProduct"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Vi phạm luật gói",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy gói",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "listingProductRemove",
+        "tags": [
+          "ListingProduct"
+        ],
+        "summary": "Xoá một gói chưa từng bán (master)",
+        "description": "Gói đã bán một thời gian thì NGỪNG BÁN (`enabled: false`) thay vì xoá.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã xoá",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ListingProduct"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy gói",
             "content": {
               "application/json": {
                 "schema": {

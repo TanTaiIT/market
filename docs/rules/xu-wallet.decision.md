@@ -73,8 +73,13 @@ miễn phí mãi, ai muốn nổi hơn thì trả. Lộ trình vì thế có ph�
 tin** trước, phí đăng để ngỏ vô thời hạn. Ngày bật gói tin không ai giận; ngày bật phí đăng
 luôn có người bỏ đi.
 
-Catalog là SoT tại `listing.pricing.ts` (`LISTING_PRODUCTS`), lộ qua `GET /listings/products`
-từ hôm nay với `enabled: false` + `price: null` — FE dựng UI trước, mở bán chỉ là dữ liệu đổi.
+Catalog sống trong DB (`ListingProduct`, tenant-exempt) — master xuất bản/sửa/ngừng bán qua
+`/listing-products` (CRUD, master-only), tạo được nhiều mốc ưu đãi (`featured_7d_sale`…) mà
+không cần deploy. `GET /listings/products` công khai CHỈ trả gói đang `enabled`. Luật cứng:
+mở bán phải có giá; `code` bất biến (sổ cái tham chiếu bằng nó — đổi bản chất gói = tạo gói
+mới, ngừng bán gói cũ); mua rồi thì sổ cái snapshot điều khoản, sửa gói không viết lại lịch
+sử. Bộ khởi điểm seed bằng `npm run seed:listing-products` (idempotent, không đè bản master
+đã sửa); `DEFAULT_LISTING_PRODUCTS` trong `listing.pricing.ts` từ nay CHỈ là seed.
 
 | Gói | Hiệu ứng | Cơ chế đã chuẩn bị |
 | --- | --- | --- |

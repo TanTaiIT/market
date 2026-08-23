@@ -12,8 +12,8 @@ import {
   postingStatsQuerySchema,
   postingStatsSchema,
   postingFeeSchema,
-  listingProductSchema,
 } from './listing.schema'
+import { listingProductResponseSchema } from '../listing-product/listing-product.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
@@ -38,7 +38,7 @@ router.get('/mine', authenticate, validate({ query: listingQuerySchema }), listi
 // Trạng thái quota — client hiện "còn N slot" thay vì để người dùng đoán vì sao bị chặn (§8.4).
 router.get('/quota', authenticate, listingController.quota)
 
-// Catalog gói tin — công khai: giá bán là thông tin cho khách, không phải bí mật.
+// Catalog gói tin CÔNG KHAI — chỉ gói đang mở bán (master quản catalog ở /listing-products).
 router.get('/products', listingController.products)
 
 // Dữ liệu định giá cho hệ Xu — master-only, và phải đứng TRƯỚC '/:id' kẻo Express nuốt
@@ -225,11 +225,11 @@ registry.registerPath({
   tags: ['Listing'],
   summary: 'Catalog gói tin (đẩy tin, tin nổi bật…)',
   description:
-    'Danh sách gói trả bằng Xu áp lên một tin. `enabled: false` + `price: null` = chưa mở ' +
-    'bán — FE dựng UI trước, ngày mở bán chỉ là dữ liệu đổi. Đường mua sẽ là ' +
-    '`POST /listings/{id}/products/{code}` khi ví Xu vận hành.',
+    'Những gói trả bằng Xu ĐANG MỞ BÁN — bản nháp/ngừng bán không xuất hiện ở đây. Master ' +
+    'quản catalog qua /listing-products. Đường mua sẽ là `POST /listings/{id}/products/{code}` ' +
+    'khi ví Xu vận hành.',
   responses: {
-    200: jsonResponse('Catalog gói tin', envelope(z.array(listingProductSchema))),
+    200: jsonResponse('Catalog gói tin', envelope(z.array(listingProductResponseSchema))),
   },
 })
 

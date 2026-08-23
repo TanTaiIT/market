@@ -3,7 +3,7 @@ import { listingRepository } from './listing.repository'
 import { CreateListingInput, UpdateListingInput, ListingQuery, NearbyQuery } from './listing.schema'
 import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
-import { LISTING_PRODUCTS, PostingFee, postingFee } from './listing.pricing'
+import { PostingFee, postingFee } from './listing.pricing'
 import {
   QUOTA,
   QuotaVerdict,
@@ -24,6 +24,7 @@ import {
 } from '../moderation/moderation.machine'
 import { notificationService } from '../notification/notification.service'
 import { bannedPhraseService } from '../banned-phrase/banned-phrase.service'
+import { listingProductService } from '../listing-product/listing-product.service'
 import { categoryService } from '../category/category.service'
 import { categoryTemplateService } from '../category-template/category-template.service'
 import { organizationRepository } from '../organization/organization.repository'
@@ -409,9 +410,9 @@ export const listingService = {
     return listing
   },
 
-  /** Catalog gói tin — hiện toàn bộ `enabled: false`, mở bán ở giai đoạn ví Xu. */
+  /** Catalog gói tin CÔNG KHAI — chỉ gói đang mở bán; master quản qua /listing-products. */
   productCatalog() {
-    return LISTING_PRODUCTS
+    return listingProductService.listEnabled()
   },
 
   /** Báo giá một lượt đăng — controller đọc để đính vào response, luật nằm ở `listing.pricing.ts`. */

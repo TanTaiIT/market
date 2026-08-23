@@ -23,20 +23,20 @@ describe('Luật phí đăng tin — giai đoạn miễn phí', () => {
 })
 
 describe('Catalog gói tin — giai đoạn chưa mở bán', () => {
-  it('CANARY: mọi gói đang tắt và chưa có giá — mở bán đọc xu-wallet.decision.md §6 trước', async () => {
-    const { LISTING_PRODUCTS } = await import('../../src/features/listing/listing.pricing')
-    for (const product of LISTING_PRODUCTS) {
+  it('CANARY: bộ gói SEED phải tắt và chưa có giá — mở bán là việc của master qua API', async () => {
+    const { DEFAULT_LISTING_PRODUCTS } = await import('../../src/features/listing/listing.pricing')
+    for (const product of DEFAULT_LISTING_PRODUCTS) {
       expect(product.enabled).toBe(false)
       expect(product.price).toBeNull()
     }
   })
 
   it('mã gói không trùng nhau, và gói theo thời hạn phải khai số ngày', async () => {
-    const { LISTING_PRODUCTS } = await import('../../src/features/listing/listing.pricing')
-    const codes = LISTING_PRODUCTS.map((p) => p.code)
+    const { DEFAULT_LISTING_PRODUCTS } = await import('../../src/features/listing/listing.pricing')
+    const codes = DEFAULT_LISTING_PRODUCTS.map((p) => p.code)
     expect(new Set(codes).size).toBe(codes.length)
 
-    for (const product of LISTING_PRODUCTS) {
+    for (const product of DEFAULT_LISTING_PRODUCTS) {
       if (product.effect === 'featured' || product.effect === 'extend_expiry') {
         expect(product.durationDays).toBeGreaterThan(0)
       }

@@ -23,6 +23,7 @@
     "seed:templates": "cross-env NODE_ENV=development tsx scripts/seed-templates.ts",
     "seed:bulk": "cross-env NODE_ENV=development tsx scripts/seed-bulk.ts",
     "seed:banned-phrases": "cross-env NODE_ENV=development tsx scripts/seed-banned-phrases.ts",
+    "seed:listing-products": "cross-env NODE_ENV=development tsx scripts/seed-listing-products.ts",
     "migrate:v2": "cross-env NODE_ENV=development tsx scripts/migrate-v2.ts",
     "explain:indexes": "cross-env NODE_ENV=development tsx scripts/explain-indexes.ts",
     "prepare": "husky",

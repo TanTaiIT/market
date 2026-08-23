@@ -32,7 +32,8 @@ năng, nó là rò rỉ dữ liệu giữa hai khách hàng khác nhau.
    `Category`,
    `FieldDefinition`,
    `CategoryTemplate`,
-   `BannedPhrase`
+   `BannedPhrase`,
+   `ListingProduct`
    — xem §1.3 để biết vì sao và bù bằng gì.
 2. **Không tự viết filter `organizationId` trong repository/service.** Scope đến từ
    context. Tự viết nghĩa là đang có hai nguồn sự thật, và cái viết tay sẽ sai trước.
@@ -103,6 +104,7 @@ thì nới scope cho **mọi** truy vấn của collection.
 | `FieldDefinition` | Từ điển field của template tin đăng — cùng lý do với `Category` | Không có dữ liệu riêng của khách hàng; ghi chỉ qua `scripts/seed-templates.ts` |
 | `CategoryTemplate` | Template gắn với `Category`, mà `Category` đã ngoài tenant | Như trên; API chỉ mở đường ĐỌC (`GET /categories/{id}/template`) |
 | `BannedPhrase` | Từ điển cụm cấm của cổng nội dung — luật áp TOÀN nền tảng, một org không được tự nới cho khu vực mình (cùng lý do với `Category`) | Không có dữ liệu riêng của khách hàng; ghi chỉ qua API master-only `/banned-phrases` |
+| `ListingProduct` | Catalog gói tin (đẩy tin, nổi bật…) — bảng giá áp toàn nền tảng, org không có catalog riêng | Không có dữ liệu riêng của khách hàng; ghi chỉ qua API master-only `/listing-products` |
 
 Muốn thêm một collection vào danh sách này → **dừng lại và hỏi**, không tự quyết.
 

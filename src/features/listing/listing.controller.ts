@@ -48,7 +48,8 @@ export const listingController = {
 
   // GET /listings/products
   products: catchAsync(async (_req, res) => {
-    success(res, { message: 'Listing products', data: listingService.productCatalog() })
+    const products = await listingService.productCatalog()
+    success(res, { message: 'Listing products', data: products })
   }),
 
   // GET /listings/posting-stats
