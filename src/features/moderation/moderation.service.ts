@@ -18,6 +18,7 @@ import {
   AuditAction,
   LISTING_STATUS,
   ListingStatus,
+  MASTER_DISPLAY_NAME,
   MODERATION_QUEUE,
   ModerationQueue,
   VN_PROVINCE_NAMES,
@@ -209,7 +210,15 @@ async function notifyRemoved(listing: IListingDocument): Promise<void> {
   })
 }
 
+/**
+ * Tên đi vào snapshot `audit_logs.actorName` — nhật ký này moderator của org đọc được.
+ *
+ * Master duyệt tin trong một org thì org đó KHÔNG được biết tên thật của họ: master là
+ * danh tính hệ thống, không phải người trong nhóm. Che ở đây (lúc GHI) chứ không lúc đọc —
+ * `actorName` là snapshot, che lúc đọc thì tên thật vẫn nằm sẵn trong DB của từng org.
+ */
 async function actorName(actor: ModeratorActor): Promise<string> {
+  if (await roleGrantRepository.isMasterUser(actor.id)) return MASTER_DISPLAY_NAME
   const user = await userRepository.findById(actor.id)
   return user?.name ?? 'Quản trị'
 }

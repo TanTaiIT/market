@@ -3,7 +3,7 @@ import { roleGrantRepository } from './role-grant.repository'
 import { toPolicyGrant, toRoleGrantDto } from './role-grant.types'
 import { userRepository } from '../user/user.repository'
 import { Grant, canGrant, canRevoke } from '../../common/authz/policy'
-import { SYSTEM_ROLES, SystemRole, ScopeType } from '../../common/constants'
+import { SystemRole, ScopeType } from '../../common/constants'
 import { ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { logger } from '../../config/logger'
 
@@ -96,10 +96,9 @@ export const roleGrantService = {
       throw new ForbiddenError('Không đủ thẩm quyền để thu hồi quyền này')
     }
 
-    // §5.4 — hệ thống không có master nào là hệ thống không ai cấp lại được quyền cho ai.
-    if (doc.role === SYSTEM_ROLES.MASTER && (await usableMastersExcluding(doc.userId)) === 0) {
-      throw new ConflictError('Phải luôn còn ít nhất một master')
-    }
+    // Không còn chốt §5.4 ở đây: `canRevoke` đã chặn MỌI grant role `master` từ trên, nên
+    // nhánh "thu hồi master cuối cùng" không tới được. Master là data mặc định của hệ
+    // thống (`scripts/migrate-master.ts`), đổi nó là việc ở tầng dữ liệu chứ không ở API.
 
     const revoked = await roleGrantRepository.revokeById(grantId, new Types.ObjectId(actorId))
     if (!revoked) throw new NotFoundError('Grant not found')

@@ -6,6 +6,7 @@ import {
   canModerateCategory,
   canModerateListing,
   canGrant,
+  canRevoke,
 } from '../../src/common/authz/policy'
 import { SYSTEM_ROLES, SCOPE_TYPES } from '../../src/common/constants'
 
@@ -110,10 +111,28 @@ describe('policy - ai cấp được quyền cho ai', () => {
 
   const staffInOrgA: Grant = { role: SYSTEM_ROLES.STAFF, scopeType: SCOPE_TYPES.ORG, orgId: ORG_A }
 
-  it('master cấp được mọi thứ cho người khác', () => {
+  it('master cấp được manager và quản lý danh mục cho người khác', () => {
     expect(canGrant(actorMaster, { userId: 'u1', grant: orgManager })).toBe(true)
     expect(canGrant(actorMaster, { userId: 'u1', grant: catManagerHcm })).toBe(true)
-    expect(canGrant(actorMaster, { userId: 'u1', grant: master })).toBe(true)
+  })
+
+  /**
+   * TRẦN của bất biến một-master. Chốt `§5.4` bên `role-grant.service` chỉ giữ SÀN (luôn còn
+   * ≥1 master); không có vế này thì một master bấm nhầm là hệ thống có hai người nắm quyền cao
+   * nhất, mà không phép kiểm nào phân biệt được cái nào mới đúng.
+   *
+   * Master là dữ liệu mặc định do `scripts/migrate-master.ts` dựng cùng database — không có
+   * đường runtime nào sinh ra nó, kể cả từ chính master.
+   */
+  it('KHÔNG ai cấp được role master, kể cả master', () => {
+    expect(canGrant(actorMaster, { userId: 'u1', grant: master })).toBe(false)
+    expect(canGrant(actorOrgManager, { userId: 'u1', grant: master })).toBe(false)
+    expect(canGrant(actorCatManager, { userId: 'u1', grant: master })).toBe(false)
+  })
+
+  /** `canRevoke === canGrant`, nên cấm cấp cũng là cấm thu hồi: master không gỡ được qua API. */
+  it('KHÔNG ai thu hồi được role master', () => {
+    expect(canRevoke(actorMaster, { userId: 'u1', grant: master })).toBe(false)
   })
 
   it('không ai tự nâng quyền cho chính mình, kể cả master', () => {

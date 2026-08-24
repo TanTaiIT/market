@@ -1,13 +1,6 @@
 import { Router } from 'express'
 import { authController } from './auth.controller'
-import {
-  registerSchema,
-  loginSchema,
-  refreshSchema,
-  authResponseSchema,
-  bootstrapMasterSchema,
-  bootstrapMasterResponseSchema,
-} from './auth.schema'
+import { registerSchema, loginSchema, refreshSchema, authResponseSchema } from './auth.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authLimiter } from '../../middlewares/rateLimiter.middleware'
 import { registry, envelope, jsonResponse, errorResponse } from '../../config/openapi'
@@ -18,20 +11,6 @@ const router = Router()
 router.post('/register', authLimiter, validate({ body: registerSchema }), authController.register)
 router.post('/login', authLimiter, validate({ body: loginSchema }), authController.login)
 router.post('/refresh', authLimiter, validate({ body: refreshSchema }), authController.refresh)
-
-/*
- * Dựng master đầu tiên. KHÔNG có `authenticate`, và đó là chủ ý — nó tồn tại đúng cho lúc chưa
- * ai có quyền gì. Cửa của nó là `MASTER_SETUP_TOKEN` trong môi trường: thiếu biến đó thì
- * service trả 404, tức route này coi như không tồn tại. Xem `authService.bootstrapMaster`.
- *
- * `authLimiter` (10 req/phút) chứ không `apiLimiter`: cùng nhóm rủi ro brute-force với login.
- */
-router.post(
-  '/bootstrap-master',
-  authLimiter,
-  validate({ body: bootstrapMasterSchema }),
-  authController.bootstrapMaster,
-)
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 // `operationId` là tên hàm client sau codegen -> phải ổn định và độc lập với path,
@@ -78,26 +57,6 @@ registry.registerPath({
   responses: {
     200: jsonResponse('Token đã được làm mới', authResponse),
     401: errorResponse('Refresh token hết hạn hoặc không hợp lệ'),
-  },
-})
-
-registry.registerPath({
-  method: 'post',
-  path: '/auth/bootstrap-master',
-  operationId: 'authBootstrapMaster',
-  tags: ['Auth'],
-  summary: 'Dựng tài khoản master đầu tiên (cần MASTER_SETUP_TOKEN của môi trường)',
-  description:
-    'Bootstrap thoát bài toán con gà - quả trứng: `POST /role-grants` cấp được master nhưng ' +
-    'chỉ master mới gọi được nó. Endpoint mở khoá bằng `MASTER_SETUP_TOKEN` — môi trường không ' +
-    'khai biến đó thì mọi lượt gọi nhận 404. Idempotent: email đã có thì đặt lại mật khẩu và ' +
-    'bổ sung quyền nếu thiếu. Gỡ biến môi trường sau khi dựng xong.',
-  request: { body: { content: { 'application/json': { schema: bootstrapMasterSchema } } } },
-  responses: {
-    200: jsonResponse('Master đã sẵn sàng', envelope(bootstrapMasterResponseSchema)),
-    400: errorResponse('Dữ liệu không hợp lệ'),
-    404: errorResponse('Sai setup token, hoặc môi trường không bật endpoint này'),
-    429: errorResponse('Quá nhiều request'),
   },
 })
 

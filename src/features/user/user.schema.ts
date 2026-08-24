@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { GENDER, VN_PROVINCE_NAMES, isWardOfProvince } from '../../common/constants'
+import {
+  GENDER,
+  VN_PROVINCE_NAMES,
+  impersonatesMaster,
+  isWardOfProvince,
+} from '../../common/constants'
 
 export const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
@@ -36,7 +41,13 @@ const userLocationInputSchema = userLocationSchema.superRefine((loc, ctx) => {
 
 export const updateProfileSchema = z
   .object({
-    name: z.string().min(1).max(100).optional(),
+    // Không cho mạo danh nhãn hệ thống — xem `impersonatesMaster`.
+    name: z
+      .string()
+      .min(1)
+      .max(100)
+      .refine((n) => !impersonatesMaster(n), 'Tên này hệ thống giữ riêng')
+      .optional(),
     /**
      * `''` = **xoá số điện thoại**, và đó là lý do có `.or(z.literal(''))`.
      *

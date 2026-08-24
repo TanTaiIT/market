@@ -57,17 +57,16 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
 
   /**
-   * Khoá mở của `POST /auth/bootstrap-master` — endpoint cấp quyền CAO NHẤT hệ thống.
+   * Tài khoản master — DỮ LIỆU MẶC ĐỊNH, chỉ `scripts/migrate-master.ts` đọc tới.
    *
-   * `optional()` là chốt an toàn chính, không phải sự tiện tay: không set thì route trả 404 y
-   * như một path không tồn tại, nên môi trường nào quên khai biến này là môi trường không có
-   * đường tạo master qua HTTP. Đặt nó vào secret manager của nơi deploy, gỡ ra sau khi dựng
-   * xong master đầu tiên.
+   * Không có đường runtime nào tạo master: `POST /role-grants` cấm role này và endpoint
+   * bootstrap qua HTTP đã bị gỡ. Hệ thống có đúng một master, và nó ra đời cùng database.
    *
-   * Tối thiểu 32 ký tự: đây là thứ duy nhất đứng giữa internet và quyền master, mà một chuỗi
-   * ngắn thì `authLimiter` (10 req/phút) không đủ chậm để cản dò.
+   * `optional()` vì server KHÔNG cần hai biến này để chạy — chỉ migration cần. Bắt buộc ở
+   * schema là mọi môi trường đã có master từ lâu vẫn phải mang theo mật khẩu master để boot.
    */
-  MASTER_SETUP_TOKEN: z.string().min(32).optional(),
+  MASTER_EMAIL: z.string().email().optional(),
+  MASTER_PASSWORD: z.string().min(6).max(72).optional(),
 
   // Admin API cho job dọn ảnh mồ côi (upload.cleanup.service.ts). Thiếu bộ ba thì job tự
   // tắt — không phải lỗi cấu hình, chỉ là chưa bật tính năng.

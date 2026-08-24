@@ -1,4 +1,5 @@
 import { Types } from 'mongoose'
+import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { reportRepository } from './report.repository'
 import { CreateReportInput, ReportQuery, ResolveReportInput } from './report.schema'
 import { IReportDocument } from './report.model'
@@ -7,7 +8,13 @@ import { trustRepository } from '../trust/trust.repository'
 import type { TrustState } from '../trust/trust.policy'
 import { userRepository } from '../user/user.repository'
 import { recordAudit } from '../moderation/moderation.service'
-import { AUDIT_ACTION, LISTING_STATUS, REPORT_STATUS, REPORT_TARGET } from '../../common/constants'
+import {
+  AUDIT_ACTION,
+  LISTING_STATUS,
+  MASTER_DISPLAY_NAME,
+  REPORT_STATUS,
+  REPORT_TARGET,
+} from '../../common/constants'
 import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
 import { Grant } from '../../common/authz/policy'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
@@ -75,7 +82,11 @@ export const reportService = {
         kind: input.kind,
         quote: input.quote,
         reporterId: reporter._id,
-        reporterName: reporter.name,
+        // Snapshot này moderator của org đọc được — master báo cáo thì che tên thật, cùng
+        // lý do với `audit_logs.actorName`.
+        reporterName: (await roleGrantRepository.isMasterUser(reporter._id))
+          ? MASTER_DISPLAY_NAME
+          : reporter.name,
       })
       return toDto(report, 1)
     } catch (err) {

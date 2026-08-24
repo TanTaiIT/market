@@ -179,17 +179,25 @@ function covers(outer: Grant, inner: Grant): boolean {
  * Master là người duy nhất cấp được `manager`; nếu master cũng là người duy nhất cấp được
  * `staff` thì 500 org × 30 nhóm con = 15.000 lần cấp quyền đổ vào một người. Vì vậy manager
  * cấp được `staff`, nhưng chỉ TRONG scope của chính mình.
+ *
+ * Role `master` thì KHÔNG AI cấp được, kể cả master. Hệ thống có đúng MỘT master và nó là dữ
+ * liệu mặc định do `scripts/migrate-master.ts` dựng cùng database — không có đường runtime nào
+ * sinh ra master thứ hai. Chốt `§5.4` (nay ở `userService.deleteAccount`) chỉ giữ SÀN — luôn
+ * còn ≥1; đây là TRẦN, không quá 1. Thiếu nó thì một master bấm nhầm là hệ thống có hai
+ * người nắm quyền cao nhất mà không cách nào biết cái nào mới đúng.
  */
 export function canGrant(
   actor: { userId: string; grants: Grant[] },
   target: { userId: string; grant: Grant },
 ): boolean {
+  if (target.grant.role === SYSTEM_ROLES.MASTER) return false
+
   // Không ai tự nâng quyền cho chính mình — kể cả master, để vết cấp quyền luôn có hai người.
   if (actor.userId === target.userId) return false
 
   if (isMaster(actor.grants)) return true
 
-  // Chỉ master cấp được master/manager. Manager cấp quá cấp mình là leo thang quyền.
+  // Chỉ master cấp được `manager`. Manager cấp quá cấp mình là leo thang quyền.
   if (target.grant.role !== SYSTEM_ROLES.STAFF) return false
 
   return actor.grants.some((g) => g.role === SYSTEM_ROLES.MANAGER && covers(g, target.grant))

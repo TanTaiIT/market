@@ -1,6 +1,6 @@
 import { Types } from 'mongoose'
 import { RoleGrant, IRoleGrant, IRoleGrantDocument } from './role-grant.model'
-import { SYSTEM_ROLES } from '../../common/constants'
+import { SCOPE_TYPES, SYSTEM_ROLES } from '../../common/constants'
 
 const ACTIVE = { revokedAt: null }
 
@@ -28,6 +28,28 @@ export const roleGrantRepository = {
    */
   listActiveMasterUserIds(): Promise<Types.ObjectId[]> {
     return RoleGrant.distinct('userId', { role: SYSTEM_ROLES.MASTER, ...ACTIVE }).exec()
+  },
+
+  /**
+   * Người này có phải master không.
+   *
+   * Kèm `scopeType` để khớp ĐÚNG định nghĩa của `policy.isMaster` — cái quyết định quyền
+   * thật. Lỏng hơn nó thì một grant `master` phạm vi org (không có quyền gì) vẫn được che
+   * như master; chặt hơn thì có master thật lọt ra ngoài, và đó mới là hướng chết người.
+   *
+   * Không cache: index `{ userId: 1, revokedAt: 1 }` phủ đúng câu này, và mọi call-site
+   * đều là đường ghi (ghi audit, tạo báo cáo) hoặc đọc hồ sơ lẻ — không chỗ nào trong
+   * vòng lặp. Cache một giá trị gần như bất biến nghe hấp dẫn, nhưng nó sẽ nói dối đúng
+   * lúc `migrate:master` vừa chạy mà tiến trình chưa restart.
+   */
+  async isMasterUser(userId: string | Types.ObjectId): Promise<boolean> {
+    const grant = await RoleGrant.exists({
+      userId,
+      role: SYSTEM_ROLES.MASTER,
+      scopeType: SCOPE_TYPES.SYSTEM,
+      ...ACTIVE,
+    })
+    return grant !== null
   },
 
   /**

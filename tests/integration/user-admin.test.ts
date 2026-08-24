@@ -60,7 +60,14 @@ describe('Bảng người dùng của master', () => {
 
     const spamRow = res.body.data.find((u: { email: string }) => u.email === spammer.email)
     expect(spamRow).toMatchObject({ isActive: true, trustLevel: 0 })
-    expect(res.body.meta.total).toBeGreaterThanOrEqual(3)
+
+    // Fixture có 3 tài khoản, nhưng master KHÔNG nằm trong bảng của chính mình — hai hành động
+    // duy nhất ở đây (khoá, xoá) đều từ chối tài khoản master, nên một dòng không bấm được gì
+    // chỉ là chỗ để tên họ rò ra ảnh chụp màn hình và log.
+    expect(res.body.meta.total).toBe(2)
+    const emails = res.body.data.map((u: { email: string }) => u.email)
+    expect(emails).not.toContain(master.email)
+    expect(emails).toContain(bystander.email)
   })
 
   it('tìm theo tiền tố email', async () => {

@@ -50,10 +50,11 @@ export const userRepository = {
    * nhận được vì đây là màn quản trị ít gọi, không phải đường nóng.
    */
   async paginateAdmin(
-    filters: { q?: string; status?: 'active' | 'locked' },
+    filters: { q?: string; status?: 'active' | 'locked'; excludeIds?: Types.ObjectId[] },
     { skip, limit }: { skip: number; limit: number },
   ) {
     const filter: FilterQuery<IUserDocument> = {}
+    if (filters.excludeIds?.length) filter._id = { $nin: filters.excludeIds }
     if (filters.status) filter.isActive = filters.status === 'active'
     if (filters.q) {
       // Người dùng gõ gì thì tìm đúng cái đó — một dấu `.` trong email không phải wildcard.

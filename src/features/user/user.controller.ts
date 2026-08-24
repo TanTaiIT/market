@@ -42,7 +42,7 @@ export const userController = {
   }),
 
   getById: catchAsync(async (req, res) => {
-    const user = await userService.getById(req.params.id)
+    const user = await userService.getPublicById(req.params.id)
     success(res, { message: 'User profile', data: toPublicProfileDto(user) })
   }),
 }

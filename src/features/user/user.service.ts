@@ -33,6 +33,20 @@ export const userService = {
     return user
   },
 
+  /**
+   * Hồ sơ NGƯỜI KHÁC xem. Tách khỏi `getById` vì `getById` còn phục vụ `/users/me` — gộp
+   * lại thì chính master không đọc nổi phiên của mình và app không khởi động được.
+   *
+   * Master trả 404 chứ không 403: `GET /users/:id` KHÔNG đòi đăng nhập, nên 403 sẽ xác nhận
+   * "có tài khoản ở id này, chỉ là không cho xem" — đủ để quét ra id của master. 404 thì
+   * không phân biệt được với một id chưa từng tồn tại.
+   */
+  async getPublicById(id: string) {
+    const user = await this.getById(id)
+    if (await roleGrantRepository.isMasterUser(user._id)) throw new NotFoundError('User not found')
+    return user
+  },
+
   async updateProfile(id: string, update: UpdateProfileInput) {
     const user = await userRepository.updateById(id, update)
     if (!user) throw new NotFoundError('User not found')
@@ -42,8 +56,15 @@ export const userService = {
   /** Bảng người dùng cho master, kèm bậc uy tín đọc theo lô để không N+1. */
   async listForAdmin(query: AdminUserQuery) {
     const pagination = parsePagination(query)
+    // Master không có mặt trong bảng người dùng — kể cả với chính họ. Hai hành động duy
+    // nhất của bảng này (khoá, xoá) đều từ chối tài khoản master, nên một dòng không bấm
+    // được gì chỉ là chỗ để rò tên ra ảnh chụp màn hình và log.
     const { items, total } = await userRepository.paginateAdmin(
-      { q: query.q, status: query.status },
+      {
+        q: query.q,
+        status: query.status,
+        excludeIds: await roleGrantRepository.listActiveMasterUserIds(),
+      },
       pagination,
     )
 
@@ -68,7 +89,8 @@ export const userService = {
    */
   async setStatus(id: string, input: SetUserStatusInput, actorId: string) {
     if (id === actorId) {
-      throw new BadRequestError('Không tự khoá chính mình — nhờ một master khác')
+      // Không còn 'nhờ một master khác': hệ thống chỉ có đúng một master.
+      throw new BadRequestError('Không tự khoá chính mình')
     }
 
     const target = await userRepository.findById(id)
@@ -78,12 +100,12 @@ export const userService = {
     }
 
     if (!input.isActive) {
-      // Không khoá người đang giữ quyền master: một master bị khoá vẫn "đếm là còn" ở mọi phép
-      // kiểm "phải luôn còn ít nhất một master" — gỡ quyền trước (đường revoke có sẵn chốt
-      // master cuối cùng), rồi mới khoá.
+      // Master không khoá được, chấm hết: quyền đó không thu hồi qua API (`canGrant`), nên
+      // "gỡ quyền trước rồi khoá" không còn là một đường đi. Dưới quy tắc một-master thì
+      // nhánh này chỉ chạy khi dữ liệu đã lệch bất biến — giữ lại làm lưới chắn cuối.
       const grants = await roleGrantRepository.listActiveByUser(id)
       if (grants.some((g) => g.role === SYSTEM_ROLES.MASTER)) {
-        throw new ConflictError('Người này đang giữ quyền master — thu hồi quyền trước khi khoá')
+        throw new ConflictError('Không khoá được tài khoản master')
       }
     }
 
@@ -156,15 +178,15 @@ export const userService = {
    * Trước đây chỉ set `deletedAt`: membership vẫn `active` nên người đã xoá còn nằm trong danh
    * bạ org, và role_grant vẫn hiệu lực nên quyền của họ còn được đếm là "đang có người giữ".
    *
-   * Chốt master đặt ở ĐÂY chứ không chỉ ở `roleGrantService.revoke`: đây là cửa thứ hai dẫn
-   * tới cùng một hậu quả — mất master cuối cùng thì không ai cấp lại quyền cho ai được nữa,
-   * và chính tài khoản vừa xoá cũng không tự khôi phục được (§5.4).
+   * Chốt master ở ĐÂY là cửa cuối: `canGrant` đã cấm cấp/thu hồi role master, nên xoá tài
+   * khoản là đường duy nhất còn lại có thể làm hệ thống mất master — mà mất rồi thì không
+   * đường runtime nào dựng lại, phải chạy `npm run migrate:master`.
    */
   async deleteAccount(id: string) {
     const grants = await roleGrantRepository.listActiveByUser(id)
     const isMaster = grants.some((g) => g.role === SYSTEM_ROLES.MASTER)
     if (isMaster && (await usableMastersExcluding(id)) === 0) {
-      throw new ConflictError('Bạn là master cuối cùng — cấp quyền cho người khác trước khi xoá')
+      throw new ConflictError('Tài khoản master không xoá được')
     }
 
     // Gỡ quyền TRƯỚC khi tắt tài khoản. Không có transaction ở đây, nên thứ tự chính là thứ

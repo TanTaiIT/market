@@ -77,6 +77,33 @@ export const TENANT_STATUS = {
 export type TenantStatus = (typeof TENANT_STATUS)[keyof typeof TENANT_STATUS]
 
 /**
+ * Tên hiển thị THAY CHO tên thật của master ở mọi chỗ người khác đọc được.
+ *
+ * Master là một danh tính hệ thống, không phải một đồng nghiệp trong tổ chức: moderator
+ * một trường không có việc gì phải biết ai đứng sau lượt duyệt đến từ cấp hệ thống.
+ *
+ * Ghi vào SNAPSHOT lúc tạo (`audit_logs.actorName`, `reports.reporterName`), không phải
+ * che lúc đọc: che lúc đọc thì tên thật vẫn nằm trong DB và rò ra ở lần đổi code sau.
+ */
+export const MASTER_DISPLAY_NAME = 'Quản trị hệ thống'
+
+/**
+ * Tên người dùng có mạo danh nhãn hệ thống không.
+ *
+ * Từ lúc `MASTER_DISPLAY_NAME` được ghi vào snapshot của nhật ký duyệt và báo cáo, chuỗi
+ * đó MANG THẨM QUYỀN: một moderator đặt tên mình đúng như vậy thì dòng của họ trong nhật
+ * ký org không phân biệt được với dòng do cấp hệ thống ghi. Che tên master mà không giữ
+ * chỗ cái tên ấy là mở ra đúng cái lỗ mình vừa bịt.
+ *
+ * So sau khi fold khoảng trắng + hạ chữ thường: "quản  trị   hệ thống" nhìn trên màn hình
+ * là một chuỗi giống hệt, chặn đúng-từng-ký-tự thì không chặn được gì.
+ */
+export function impersonatesMaster(name: string): boolean {
+  const fold = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+  return fold(name) === fold(MASTER_DISPLAY_NAME)
+}
+
+/**
  * QUYỀN HẠN hệ thống (`role_grants.role`) — khác hẳn `ORG_ROLES` là THÂN PHẬN trong org.
  * Gộp hai thứ vào một cột thì không biểu diễn nổi "thành viên nhưng không có quyền duyệt".
  *
