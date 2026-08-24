@@ -10,6 +10,7 @@ import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { usableMastersExcluding } from '../role-grant/role-grant.service'
 import { trustRepository } from '../trust/trust.repository'
+import { INITIAL_TRUST } from '../trust/trust.policy'
 import { listingService } from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { QUOTA } from '../listing/listing.quota'
@@ -70,7 +71,9 @@ export const userService = {
 
     const trustLevels = await trustRepository.levelsOf(items.map((u) => u._id))
     return {
-      items: items.map((u) => toAdminUserDto(u, trustLevels.get(u._id.toString()) ?? 0)),
+      items: items.map((u) =>
+        toAdminUserDto(u, trustLevels.get(u._id.toString()) ?? INITIAL_TRUST.level),
+      ),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },

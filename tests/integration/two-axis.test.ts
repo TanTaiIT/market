@@ -15,6 +15,7 @@ import {
   orgAuth,
   publishListing,
   registerUser,
+  setTrustLevel,
   startTestDb,
 } from '../helpers/fixtures'
 
@@ -63,6 +64,17 @@ beforeAll(async () => {
   await addMember(member.id, orgId)
 
   outsider = await registerUser(app, 'outsider@two-axis.local', 'Người ngoài')
+
+  /*
+   * Hạ bậc mọi người bán trong file này xuống 0.
+   *
+   * Từ khi mặc định là BẬC TRẦN (`INITIAL_TRUST`), tài khoản mới tự đăng thẳng lên bảng — nên
+   * nếu không nói rõ họ đã bị tụt bậc thì không có tin nào rơi vào hàng đợi, và mọi ca dưới đây
+   * mất luôn đối tượng để đo. Bậc 0 ở đây đọc là "người bán đang trong diện phải qua người
+   * duyệt", đúng tình huống mà các ca này mô tả.
+   */
+  await setTrustLevel(member.id, 0)
+  await setTrustLevel(outsider.id, 0)
 
   // Manager danh mục "Việc làm" tại TP.HCM — không phụ trách Hà Nội, không phụ trách "Sách vở".
   catManager = await registerUser(app, 'catmanager@two-axis.local', 'Quản lý Việc làm')
@@ -289,6 +301,8 @@ describe('Duyệt tin — phạm vi theo trục', () => {
     const poster = await registerUser(app, 'poster@two-axis.local', 'Người đăng')
     await addMember(poster.id, orgId)
     const loner = await registerUser(app, 'loner@two-axis.local', 'Người một mình')
+    await setTrustLevel(poster.id, 0)
+    await setTrustLevel(loner.id, 0)
     const asPoster = () => orgAuth(poster.token, SLUG)
 
     memberPublic = (

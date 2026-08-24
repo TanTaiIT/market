@@ -1,11 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import {
   CLEAN_APPROVALS_PER_LEVEL,
+  INITIAL_TRUST,
   MAX_TRUST_LEVEL,
   TrustState,
-  ZERO_TRUST,
   nextTrust,
 } from '../../src/features/trust/trust.policy'
+
+/**
+ * Đáy thang. KHÔNG còn là điểm xuất phát của ai cả — tài khoản mới bắt đầu ở `INITIAL_TRUST`
+ * (bậc trần). Tới được đây nghĩa là đã bị tụt hết, nên các ca dưới đây đọc là "người đã vi
+ * phạm đang leo lại", không phải "người mới đang leo lên".
+ */
+const BOTTOM: TrustState = { level: 0, cleanApprovals: 0 }
 
 /** Chạy n lượt duyệt sạch liên tiếp từ một trạng thái. */
 const approve = (state: TrustState, times = 1): TrustState =>
@@ -13,20 +20,46 @@ const approve = (state: TrustState, times = 1): TrustState =>
 
 const reject = (state: TrustState): TrustState => nextTrust(state, false)
 
+describe('Điểm xuất phát — tin trước, thu lại sau', () => {
+  it('tài khoản mới đứng ngay ở trần, không phải leo', () => {
+    expect(INITIAL_TRUST).toEqual({ level: MAX_TRUST_LEVEL, cleanApprovals: 0 })
+  })
+
+  it('CANARY: mặc định PHẢI đủ để tự đăng — lệch là cả chính sách thành vô nghĩa', async () => {
+    const { isAutoApprove } = await import('../../src/features/listing/listing.quota')
+    expect(isAutoApprove(INITIAL_TRUST.level, 0)).toBe(true)
+  })
+
+  it('một lần vi phạm là mất quyền tự đăng ngay', async () => {
+    const { isAutoApprove } = await import('../../src/features/listing/listing.quota')
+    const after = nextTrust(INITIAL_TRUST, false)
+
+    expect(after.level).toBe(MAX_TRUST_LEVEL - 1)
+    expect(isAutoApprove(after.level, 0)).toBe(false)
+  })
+
+  it('leo lại đúng 5 tin sạch là về trần', () => {
+    let state = nextTrust(INITIAL_TRUST, false)
+    for (let i = 0; i < 5; i += 1) state = nextTrust(state, true)
+
+    expect(state.level).toBe(MAX_TRUST_LEVEL)
+  })
+})
+
 describe('nextTrust — thăng bậc', () => {
   it(`chưa đủ ${CLEAN_APPROVALS_PER_LEVEL} bài sạch thì chưa lên bậc`, () => {
-    expect(approve(ZERO_TRUST, CLEAN_APPROVALS_PER_LEVEL - 1)).toEqual({
+    expect(approve(BOTTOM, CLEAN_APPROVALS_PER_LEVEL - 1)).toEqual({
       level: 0,
       cleanApprovals: 4,
     })
   })
 
   it('đủ 5 bài sạch lên bậc 1', () => {
-    expect(approve(ZERO_TRUST, 5)).toEqual({ level: 1, cleanApprovals: 5 })
+    expect(approve(BOTTOM, 5)).toEqual({ level: 1, cleanApprovals: 5 })
   })
 
   it('10 bài sạch lên bậc 2 — đúng mốc mở quyền tự đăng', () => {
-    expect(approve(ZERO_TRUST, 10)).toEqual({ level: 2, cleanApprovals: 10 })
+    expect(approve(BOTTOM, 10)).toEqual({ level: 2, cleanApprovals: 10 })
   })
 })
 
@@ -36,7 +69,7 @@ describe('nextTrust — giáng bậc', () => {
   })
 
   it('bậc 0 bị từ chối không xuống âm', () => {
-    expect(reject(ZERO_TRUST)).toEqual(ZERO_TRUST)
+    expect(reject(BOTTOM)).toEqual(BOTTOM)
   })
 
   /**
@@ -65,7 +98,7 @@ describe('Trần bậc — người đăng nhiều không được miễn nhiễ
   })
 
   it('bậc dừng ở trần dù chuỗi sạch dài bao nhiêu', () => {
-    let state = ZERO_TRUST
+    let state = BOTTOM
     for (let i = 0; i < 50; i += 1) state = nextTrust(state, true)
 
     expect(state.level).toBe(MAX_TRUST_LEVEL)
@@ -75,10 +108,10 @@ describe('Trần bậc — người đăng nhiều không được miễn nhiễ
 
   it('MỌI người bán đứng cách hình phạt đúng một khoảng như nhau', () => {
     // Người mới: đúng 10 bài sạch để tới trần.
-    let rookie = ZERO_TRUST
+    let rookie = BOTTOM
     for (let i = 0; i < 10; i += 1) rookie = nextTrust(rookie, true)
     // Người kỳ cựu: 50 bài sạch.
-    let veteran = ZERO_TRUST
+    let veteran = BOTTOM
     for (let i = 0; i < 50; i += 1) veteran = nextTrust(veteran, true)
 
     // Cùng một lượt từ chối, cùng một cái giá — đây là điều trước bản vá KHÔNG đúng.

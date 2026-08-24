@@ -15,6 +15,7 @@ import {
   orgAuth,
   publishListing,
   registerUser,
+  setTrustLevel,
   startTestDb,
 } from '../helpers/fixtures'
 
@@ -44,6 +45,10 @@ beforeAll(async () => {
 
   orgA.owner = await registerUser(app, 'owner@org-a.local', 'Owner A')
   orgB.owner = await registerUser(app, 'owner@org-b.local', 'Owner B')
+  // Mặc định giờ là BẬC TRẦN (`INITIAL_TRUST`) — tài khoản mới tự đăng thẳng lên bảng. Hạ bậc
+  // người bán để tin rơi vào hàng đợi, đúng tình huống các ca dưới đây mô tả.
+  await setTrustLevel(orgA.owner.id, 0)
+  await setTrustLevel(orgB.owner.id, 0)
 
   orgA.id = (
     await createOrg(app, master.token, {

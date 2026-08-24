@@ -1,6 +1,6 @@
 import { Types } from 'mongoose'
 import { UserTrust } from './trust.model'
-import { TrustState, ZERO_TRUST, nextTrust } from './trust.policy'
+import { TrustState, INITIAL_TRUST, nextTrust } from './trust.policy'
 import { logger } from '../../config/logger'
 
 type Id = string | Types.ObjectId
@@ -27,7 +27,8 @@ const same = (a: TrustState, b: TrustState) =>
 
 export const trustRepository = {
   async levelOf(userId: Id): Promise<number> {
-    return (await readState(userId))?.level ?? 0
+    // Không bản ghi = tài khoản mới = bậc trần. Xem `INITIAL_TRUST` cho lý do.
+    return (await readState(userId))?.level ?? INITIAL_TRUST.level
   },
 
   /**
@@ -35,10 +36,15 @@ export const trustRepository = {
    * mới nói đúng "còn mấy tin nữa" — chỉ có bậc thì luôn nói quá với người đang dở dang.
    */
   async stateOf(userId: Id): Promise<TrustState> {
-    return (await readState(userId)) ?? ZERO_TRUST
+    return (await readState(userId)) ?? INITIAL_TRUST
   },
 
-  /** Bậc của nhiều người một lượt — cho danh bạ thành viên, tránh N+1. */
+  /**
+   * Bậc của nhiều người một lượt — cho danh bạ thành viên, tránh N+1.
+   *
+   * Map CHỈ chứa người đã có bản ghi. Ai vắng mặt là chưa từng bị chấm, và mặc định của họ là
+   * `INITIAL_TRUST.level` chứ KHÔNG phải 0 — caller phải điền đúng cái đó.
+   */
   async levelsOf(userIds: Types.ObjectId[]): Promise<Map<string, number>> {
     if (userIds.length === 0) return new Map()
     const rows = await UserTrust.find({ userId: { $in: userIds } })
@@ -63,15 +69,16 @@ export const trustRepository = {
   async record(userId: Id, approved: boolean): Promise<TrustState> {
     for (let attempt = 0; attempt < CAS_RETRIES; attempt += 1) {
       const existing = await readState(userId)
-      const previous = existing ?? ZERO_TRUST
+      const previous = existing ?? INITIAL_TRUST
       const next = nextTrust(previous, approved)
 
-      // Không đổi gì thì không ghi: từ chối tin của người đang ở bậc 0 là ca thường gặp nhất,
-      // và nó không có lý do gì để đẻ ra một bản ghi toàn số 0.
+      // Không đổi gì thì không ghi: từ chối người ĐÃ ở đáy không còn gì để trừ, và nó không
+      // có lý do gì để đẻ ra một lượt ghi vô nghĩa. (Từ khi mặc định là bậc trần, đáy là chỗ
+      // người vi phạm nhiều lần rơi xuống, không còn là nơi ai bắt đầu.)
       if (same(previous, next)) return next
 
-      // `existing` chứ không phải so `previous === ZERO_TRUST`: so định danh đối tượng chỉ
-      // đúng chừng nào `readState` còn trả đúng cái ZERO_TRUST đóng băng. Ngày nó trả một
+      // `existing` chứ không phải so `previous === INITIAL_TRUST`: so định danh đối tượng chỉ
+      // đúng chừng nào `readState` còn trả đúng cái INITIAL_TRUST đóng băng. Ngày nó trả một
       // object 0 mới toanh, nhánh này lật sang CAS, filter không khớp gì, và lượt duyệt bị bỏ
       // im lặng sau 3 lần thử.
       if (!existing) {
@@ -97,6 +104,6 @@ export const trustRepository = {
     // Hết lượt thử. KHÔNG ném: một nhịp uy tín lệch không đáng để làm hỏng thao tác duyệt tin
     // mà quản trị vừa bấm. Nhưng phải để lại vết — im lặng ở đây là mất dữ liệu không ai biết.
     logger.warn('trust update dropped after CAS retries', { userId: String(userId), approved })
-    return (await readState(userId)) ?? ZERO_TRUST
+    return (await readState(userId)) ?? INITIAL_TRUST
   },
 }

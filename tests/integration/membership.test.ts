@@ -13,6 +13,7 @@ import {
   registerUser,
   startTestDb,
 } from '../helpers/fixtures'
+import { INITIAL_TRUST } from '../../src/features/trust/trust.policy'
 
 let app: Application
 let mongod: MongoMemoryReplSet
@@ -77,7 +78,12 @@ describe('GET /memberships', () => {
     const res = await members(owner.token, SLUG).expect(200)
     const chu = res.body.data.find((m: { name: string }) => m.name === 'Chủ tổ chức')
 
-    expect(chu).toMatchObject({ role: 'admin', unitId: null, trustLevel: 0 })
+    // Tài khoản mới đứng ở bậc trần: danh bạ phải nói đúng thế, không phải bậc 0 của mô hình cũ.
+    expect(chu).toMatchObject({
+      role: 'admin',
+      unitId: null,
+      trustLevel: INITIAL_TRUST.level,
+    })
     expect(chu.userId).toBe(owner.id)
     expect(chu.joinedAt).toEqual(expect.any(String))
   })

@@ -12,6 +12,7 @@ import {
   makeMaster,
   orgAuth,
   registerUser,
+  setTrustLevel,
   seedBannedPhrases,
   startTestDb,
 } from '../helpers/fixtures'
@@ -34,6 +35,9 @@ beforeAll(async () => {
   master = await makeMaster(app)
   await seedBannedPhrases(master.id)
   seller = await registerUser(app, 'seller@machine.local', 'Người bán')
+  // Mặc định giờ là BẬC TRẦN (`INITIAL_TRUST`) — tài khoản mới tự đăng thẳng lên bảng. Hạ bậc
+  // người bán để tin rơi vào hàng đợi, đúng tình huống các ca dưới đây mô tả.
+  await setTrustLevel(seller.id, 0)
 
   // `ownerEmail` đã kèm membership cho seller — không addMember thêm kẻo trùng key.
   const org = await createOrg(app, master.token, {
@@ -169,6 +173,7 @@ describe('Người duyệt máy — vòng đời qua job', () => {
   it('tin của người ngoài (pending_unverified) máy không được đụng tới', async () => {
     // Seller chính đã dính án từ chối nên quota bóp còn 1 chỗ — người này sạch tiểu sử.
     const fresh = await registerUser(app, 'fresh@machine.local', 'Người bán sạch')
+    await setTrustLevel(fresh.id, 0)
     await addMember(fresh.id, orgId)
     const created = await request(app)
       .post('/api/v1/listings')

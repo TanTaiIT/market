@@ -75,6 +75,17 @@ beforeAll(async () => {
   Object.assign(otherOrg, await createOwner('mod-b'))
   Object.assign(member, await joinOrg('mod-a', 'Thành viên', 'member@mod-a.local'))
 
+  /*
+   * Hạ bậc hai người bán của file này xuống 0.
+   *
+   * Mặc định giờ là BẬC TRẦN (`INITIAL_TRUST`) nên tài khoản mới tự đăng thẳng lên bảng, và
+   * hàng đợi duyệt sẽ rỗng — không còn gì cho các ca dưới đây đo. Bậc 0 ở đây đọc là "người
+   * bán đang trong diện phải qua người duyệt". Các ca cần bậc khác tự `raiseTo` lấy.
+   */
+  const { setTrustLevel } = await import('../helpers/fixtures')
+  await setTrustLevel(owner.id, 0)
+  await setTrustLevel(member.id, 0)
+
   listingId = await createListing(owner, 'Đèn học chống cận có kẹp bàn')
 }, 120_000)
 
@@ -409,6 +420,9 @@ describe('Vết quyết định tự đăng', () => {
 describe('Uy tín — thăng bậc qua API', () => {
   it('5 tin được người duyệt thông qua thì lên bậc 1', async () => {
     const climber = await joinOrg(owner.slug, 'Người leo bậc', 'climber@mod-trust.local')
+    // Rơi xuống đáy trước: từ khi mặc định là bậc trần, "leo bậc" chỉ còn nghĩa với người ĐÃ
+    // tụt. Đây đúng là đường một người vi phạm phải đi để lấy lại quyền tự đăng.
+    await raiseTo(climber.id, 0)
     expect(await trustOf(climber.id)).toBe(0)
 
     for (let i = 0; i < 5; i += 1) {
@@ -423,19 +437,48 @@ describe('Uy tín — thăng bậc qua API', () => {
     expect(await trustOf(climber.id)).toBe(1)
   }, 60_000)
 
-  it('từ chối tin của người bậc 0 KHÔNG đẻ ra bản ghi uy tín rỗng', async () => {
+  /**
+   * Người bán chưa có bản ghi uy tín nào giờ đứng ở TRẦN, nên lượt vi phạm đầu tiên phải đẩy
+   * họ rơi xuống — và phải để lại bản ghi, nếu không thì lần sau họ lại về trần như chưa có gì.
+   */
+  it('vi phạm đầu tiên của người chưa có hồ sơ: rơi khỏi trần và ĐƯỢC ghi lại', async () => {
     const rookie = await joinOrg(owner.slug, 'Người mới', 'rookie@mod-trust.local')
-    const id = await createListing(rookie, 'Tin đầu tiên bị từ chối')
+    await raiseTo(rookie.id, 0)
+    await raiseTo(rookie.id, 2)
+    // Xoá hồ sơ để dựng đúng ca "chưa từng bị chấm" — `raiseTo` ở trên chỉ để chắc chắn
+    // không còn vết của lần chạy khác.
+    const { UserTrust } = await import('../../src/features/trust/trust.model')
+    await UserTrust.deleteOne({ userId: rookie.id }).exec()
 
+    const id = await createListing(rookie, 'Tin đầu tiên bị từ chối')
     await request(app)
       .patch(`/api/v1/moderation/listings/${id}`)
       .set(as(owner))
-      .send({ status: 'rejected', reason: 'Ảnh không rõ sản phẩm' })
+      .send({ status: 'rejected', reason: 'Hàng không được phép bán', severity: 'violation' })
       .expect(200)
 
+    expect(await trustOf(rookie.id)).toBe(1)
+    expect(await UserTrust.findOne({ userId: rookie.id }).lean().exec()).not.toBeNull()
+  }, 60_000)
+
+  /** Đáy thang thì không còn gì để trừ — và cũng không được đẻ ra một lượt ghi vô nghĩa. */
+  it('từ chối người đã ở đáy KHÔNG ghi thêm gì', async () => {
+    const floored = await joinOrg(owner.slug, 'Người đã ở đáy', 'floored@mod-trust.local')
+    await raiseTo(floored.id, 0)
+
     const { UserTrust } = await import('../../src/features/trust/trust.model')
-    expect(await UserTrust.findOne({ userId: rookie.id }).lean().exec()).toBeNull()
-    expect(await trustOf(rookie.id)).toBe(0)
+    const before = await UserTrust.findOne({ userId: floored.id }).lean().exec()
+
+    const id = await createListing(floored, 'Tin của người đã ở đáy')
+    await request(app)
+      .patch(`/api/v1/moderation/listings/${id}`)
+      .set(as(owner))
+      .send({ status: 'rejected', reason: 'Hàng không được phép bán', severity: 'violation' })
+      .expect(200)
+
+    const after = await UserTrust.findOne({ userId: floored.id }).lean().exec()
+    expect(after?.level).toBe(0)
+    expect(after?.updatedAt).toEqual(before?.updatedAt)
   }, 60_000)
 })
 

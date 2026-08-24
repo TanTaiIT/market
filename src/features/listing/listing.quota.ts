@@ -10,7 +10,12 @@
  * 2. Người ngoài có bucket riêng, hạn mức cứng, không theo uy tín.
  */
 
-/** Hạn mức tin chờ duyệt theo bậc uy tín. Chỉ số = `trustLevel`, vượt bảng thì lấy bậc cuối. */
+/**
+ * Hạn mức tin chờ duyệt theo bậc uy tín. Chỉ số = `trustLevel`, vượt bảng thì lấy bậc cuối.
+ *
+ * Đọc NGƯỢC so với tên gọi của nó: mặc định là bậc 2 (`INITIAL_TRUST`), nên `10` là hạn mức
+ * BÌNH THƯỜNG, còn `3` và `5` là chỗ người đã vi phạm rơi xuống.
+ */
 export const TRUST_PENDING_LIMITS = [3, 5, 10] as const
 
 export const QUOTA = {
@@ -28,7 +33,14 @@ export const QUOTA = {
   /** Đủ số lần bị từ chối trong cửa sổ → khoá quyền đăng, cần người gỡ tay. */
   REJECTION_BLOCK: 3,
   REJECTION_WINDOW_DAYS: 7,
-  /** Từ bậc này trở lên: tin tự đăng, chỉ hậu kiểm. */
+  /**
+   * Từ bậc này trở lên: tin tự đăng, chỉ hậu kiểm.
+   *
+   * Bằng đúng `INITIAL_TRUST.level`, nên trên thực tế MỌI tài khoản mới đều tự đăng được —
+   * đó là chủ ý. Hàng rào lúc đăng không còn là uy tín mà là cổng nội dung: cụm từ cấm và
+   * `fastPathFlagged` (trùng tiêu đề, giá vượt trần, giá lệch dị thường). Uy tín giờ là hàng
+   * rào HẬU kiểm — nó thu quyền lại sau lần vi phạm đầu tiên.
+   */
   AUTO_APPROVE_TRUST_LEVEL: 2,
 } as const
 

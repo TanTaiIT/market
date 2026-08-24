@@ -13,6 +13,7 @@ import {
   makeMaster,
   orgAuth,
   registerUser,
+  setTrustLevel,
   startTestDb,
 } from '../helpers/fixtures'
 
@@ -137,14 +138,16 @@ describe('Uy tín — nhóm lạ không hạ được vị thế toàn sàn', ()
 })
 
 describe('Uy tín — người bán thấy được vị thế của mình', () => {
-  it('người mới: chưa tự đăng được, biết còn bao nhiêu tin nữa, không bị phạt', async () => {
+  it('người mới: TỰ ĐĂNG ĐƯỢC ngay, không nợ tin nào, không bị phạt', async () => {
     const rookie = await registerUser(app, 'rookie@fair.local', 'Người mới')
 
     const res = await request(app).get('/api/v1/listings/quota').set(bearer(rookie)).expect(200)
 
+    // Sàn tin trước rồi thu lại khi vi phạm (`INITIAL_TRUST`): tài khoản vừa tạo đứng sẵn ở
+    // trần, nên không có gì để "còn bao nhiêu tin nữa" đếm cả.
     expect(res.body.data.standing).toEqual({
-      canSelfPublish: false,
-      cleanApprovalsNeeded: 10,
+      canSelfPublish: true,
+      cleanApprovalsNeeded: 0,
       penalty: null,
     })
     // Cố tình KHÔNG lộ con số bậc — bậc chặn trần nên nó không nói thêm được gì.
@@ -191,6 +194,8 @@ describe('Uy tín — mức độ từ chối quyết định cái giá', () => 
 
   it('từ chối vì SAI SÓT (mặc định): không trừ bậc, không bóp hạn mức', async () => {
     const seller = await freshMember('quality@fair.local')
+    // Xuống diện chờ duyệt thì mới có tin nằm trong hàng đợi để người duyệt từ chối.
+    await setTrustLevel(seller.id, 0)
     const created = await postInOrg(seller, SLUG_A, 'Tin ảnh mờ').expect(201)
 
     // Không gửi `severity` → mặc định `quality`. Người duyệt phải CHỦ ĐỘNG mới trừng phạt.
@@ -198,7 +203,7 @@ describe('Uy tín — mức độ từ chối quyết định cái giá', () => 
       200,
     )
 
-    expect(await trustOf(seller.id)).toBeNull()
+    expect(await trustOf(seller.id)).toMatchObject({ level: 0 })
     const q = await request(app).get('/api/v1/listings/quota').set(bearer(seller)).expect(200)
     expect(q.body.data.standing.penalty).toBeNull()
     expect(q.body.data.limit).toBe(3) // hạn mức bậc 0 nguyên vẹn
@@ -284,6 +289,8 @@ describe('Vị thế — "còn mấy tin nữa" phải đếm cả phần đã �
   it('mỗi tin được duyệt trừ đi đúng một, không đứng yên rồi nhảy 5', async () => {
     const seller = await registerUser(app, 'progress@fair.local', 'Người đang leo')
     await addMember(seller.id, (await orgIdOf(SLUG_A)).toString())
+    // "Còn mấy tin nữa" chỉ có nghĩa với người ĐÃ tụt — người chưa vi phạm vốn đã ở trần.
+    await setTrustLevel(seller.id, 0)
 
     const needed = async () => {
       const res = await request(app).get('/api/v1/listings/quota').set(bearer(seller)).expect(200)
@@ -310,6 +317,7 @@ describe('Vị thế — "còn mấy tin nữa" phải đếm cả phần đã �
   it('tới trần thì về 0 và không âm', async () => {
     const seller = await registerUser(app, 'capped@fair.local', 'Người đã tới trần')
     await addMember(seller.id, (await orgIdOf(SLUG_A)).toString())
+    await setTrustLevel(seller.id, 0)
 
     for (let i = 0; i < 10; i += 1) {
       const created = await postInOrg(seller, SLUG_A, `Tin sạch ${i + 1}`).expect(201)

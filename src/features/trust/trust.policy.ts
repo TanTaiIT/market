@@ -32,8 +32,27 @@ export interface TrustState {
   cleanApprovals: number
 }
 
-/** Đóng băng: đây là giá trị dùng chung, một lần ai đó lỡ tay sửa là sai ở mọi chỗ. */
-export const ZERO_TRUST: TrustState = Object.freeze({ level: 0, cleanApprovals: 0 })
+/**
+ * Trạng thái của người CHƯA có bản ghi uy tín nào — tức là mọi tài khoản vừa tạo.
+ *
+ * Bắt đầu ở TRẦN, không phải ở 0: sàn tin trước, thu lại khi vi phạm. Đây là quyết định sản
+ * phẩm, không phải mặc định kỹ thuật — nó đảo chiều nghĩa của bậc uy tín:
+ *
+ * - Trước: bậc là thứ KIẾM được. Bậc 0 = "chưa ai biết bạn là ai", tin phải qua người duyệt,
+ *   và người bán thật phải đăng 10 tin qua tay người duyệt trước khi được tự đăng.
+ * - Giờ: bậc là thứ MẤT đi. Bậc trần = mặc định; tụt bậc nghĩa là "người này đã vi phạm".
+ *
+ * Hệ quả phải nhìn thẳng: hàng rào lúc đăng không còn là uy tín nữa mà là CỔNG NỘI DUNG —
+ * cụm từ cấm và `fastPathFlagged` (tin trùng tiêu đề, giá vượt trần, giá lệch dị thường).
+ * Đó là toàn bộ thứ đứng giữa một tài khoản vừa đăng ký và bảng tin công khai.
+ *
+ * `cleanApprovals: 0` chứ không phải 10: chuỗi sạch là thứ để LEO LẠI sau khi bị tụt, người
+ * chưa từng bị tụt thì không cần tới nó. Đặt 10 ở đây chỉ tạo ra một con số giả trong hồ sơ.
+ */
+export const INITIAL_TRUST: TrustState = Object.freeze({
+  level: MAX_TRUST_LEVEL,
+  cleanApprovals: 0,
+})
 
 /**
  * Trạng thái sau một lượt duyệt.

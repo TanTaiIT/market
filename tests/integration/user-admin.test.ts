@@ -13,6 +13,7 @@ import {
   registerUser,
   startTestDb,
 } from '../helpers/fixtures'
+import { INITIAL_TRUST } from '../../src/features/trust/trust.policy'
 
 let app: Application
 let mongod: MongoMemoryReplSet
@@ -59,7 +60,7 @@ describe('Bảng người dùng của master', () => {
     const res = await request(app).get('/api/v1/users').set(asMaster()).expect(200)
 
     const spamRow = res.body.data.find((u: { email: string }) => u.email === spammer.email)
-    expect(spamRow).toMatchObject({ isActive: true, trustLevel: 0 })
+    expect(spamRow).toMatchObject({ isActive: true, trustLevel: INITIAL_TRUST.level })
 
     // Fixture có 3 tài khoản, nhưng master KHÔNG nằm trong bảng của chính mình — hai hành động
     // duy nhất ở đây (khoá, xoá) đều từ chối tài khoản master, nên một dòng không bấm được gì

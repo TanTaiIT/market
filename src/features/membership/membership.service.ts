@@ -3,6 +3,7 @@ import { MembershipQuery } from './membership.schema'
 import { toMemberDto } from './membership.types'
 import { userRepository } from '../user/user.repository'
 import { trustRepository } from '../trust/trust.repository'
+import { INITIAL_TRUST } from '../trust/trust.policy'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 
@@ -39,7 +40,7 @@ export const membershipService = {
         toMemberDto(
           m,
           byId.get(m.userId.toString()),
-          trustLevels ? (trustLevels.get(m.userId.toString()) ?? 0) : undefined,
+          trustLevels ? (trustLevels.get(m.userId.toString()) ?? INITIAL_TRUST.level) : undefined,
         ),
       ),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
