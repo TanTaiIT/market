@@ -81,6 +81,29 @@ describe('Auth v2 — tài khoản toàn cục', () => {
 })
 
 /**
+ * Nhánh TẮT của `POST /auth/bootstrap-master`.
+ *
+ * Ở đúng file này vì nó KHÔNG set `MASTER_SETUP_TOKEN` — mà `env` parse `process.env` đúng một
+ * lần lúc `createTestApp()` nạp `src/app`, nên một file test chỉ đo được một trạng thái môi
+ * trường. Nhánh BẬT nằm ở `bootstrap-master.test.ts`.
+ */
+describe('POST /auth/bootstrap-master — môi trường không khai token', () => {
+  it('trả 404 như một path không tồn tại, không phải 401', async () => {
+    const res = await request(app)
+      .post('/api/v1/auth/bootstrap-master')
+      .send({ setupToken: 'x'.repeat(64), email: 'ai-do@example.com', password: PASSWORD })
+
+    // 401 sẽ xác nhận "có endpoint ở đây, chỉ sai token" — biến nó thành đích để dò.
+    expect(res.status).toBe(404)
+  })
+
+  it('không tạo tài khoản nào dù payload hợp lệ', async () => {
+    const { User } = await import('../../src/features/user/user.model')
+    expect(await User.findOne({ email: 'ai-do@example.com' }).exec()).toBeNull()
+  })
+})
+
+/**
  * Kiểm tra HÌNH DẠNG response, không phải nghiệp vụ.
  *
  * `/users/me` từng trả nguyên document trong khi schema OpenAPI vẫn khai `role: string` —

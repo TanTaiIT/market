@@ -174,6 +174,68 @@
           "tokens"
         ]
       },
+      "BootstrapMasterInput": {
+        "type": "object",
+        "properties": {
+          "setupToken": {
+            "type": "string",
+            "minLength": 32,
+            "example": "<MASTER_SETUP_TOKEN của môi trường>"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "tai.nguyen@ahasoft.vn"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 72
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "example": "Tai Nguyen"
+          }
+        },
+        "required": [
+          "setupToken",
+          "email",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "BootstrapMasterResult": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "created": {
+            "type": "boolean",
+            "description": "false = tài khoản đã có, chỉ đặt lại mật khẩu"
+          },
+          "granted": {
+            "type": "boolean",
+            "description": "false = đã có quyền master từ trước"
+          },
+          "totalMasters": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "userId",
+          "email",
+          "created",
+          "granted",
+          "totalMasters"
+        ]
+      },
       "UpdateProfile": {
         "type": "object",
         "properties": {
@@ -3902,6 +3964,86 @@
           },
           "401": {
             "description": "Refresh token hết hạn hoặc không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/bootstrap-master": {
+      "post": {
+        "operationId": "authBootstrapMaster",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Dựng tài khoản master đầu tiên (cần MASTER_SETUP_TOKEN của môi trường)",
+        "description": "Bootstrap thoát bài toán con gà - quả trứng: `POST /role-grants` cấp được master nhưng chỉ master mới gọi được nó. Endpoint mở khoá bằng `MASTER_SETUP_TOKEN` — môi trường không khai biến đó thì mọi lượt gọi nhận 404. Idempotent: email đã có thì đặt lại mật khẩu và bổ sung quyền nếu thiếu. Gỡ biến môi trường sau khi dựng xong.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BootstrapMasterInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Master đã sẵn sàng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/BootstrapMasterResult"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Sai setup token, hoặc môi trường không bật endpoint này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
             "content": {
               "application/json": {
                 "schema": {

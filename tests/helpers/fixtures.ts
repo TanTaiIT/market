@@ -8,7 +8,7 @@ import type { Application } from 'express'
  *
  * Dựng dữ liệu bằng đúng đường mà hệ thống thật đi: đăng ký tài khoản qua API, master tạo org
  * qua API, thành viên vào org qua membership. Chỉ hai chỗ ghi thẳng vào model — grant `master`
- * đầu tiên (không có API bootstrap, giống seed) và việc thêm thành viên hàng loạt (đường mời
+ * đầu tiên (test không đi qua `POST /auth/bootstrap-master` để khỏi phải dựng env token) và việc thêm thành viên hàng loạt (đường mời
  * chưa làm) — và cả hai đều là mô phỏng đúng cách vận hành thật.
  */
 

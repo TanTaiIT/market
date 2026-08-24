@@ -21,4 +21,12 @@ export const authController = {
     const result = await authService.refresh(req.body.refreshToken)
     success(res, { message: 'Token refreshed', data: toAuthResponseDto(result) })
   }),
+
+  // POST /auth/bootstrap-master
+  bootstrapMaster: catchAsync(async (req, res) => {
+    const result = await authService.bootstrapMaster(req.body)
+    // 200 chứ không 201: chạy lại trên email đã có thì không tạo thêm gì, `created` trong body
+    // mới là chỗ nói rõ lượt này đã làm gì.
+    success(res, { message: 'Master ready', data: result })
+  }),
 }
