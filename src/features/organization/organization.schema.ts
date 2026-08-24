@@ -21,7 +21,8 @@ export const organizationSummarySchema = z
     orgType: z.nativeEnum(ORG_TYPES),
     verificationTier: z.nativeEnum(VERIFICATION_TIERS),
     provinceCode: z.string().nullable(),
-    status: z.string(),
+    /** Union thật, không phải `string`: client dựng bộ lọc + nhãn từ đúng tập này. */
+    status: z.nativeEnum(TENANT_STATUS),
   })
   .openapi('Organization')
 
@@ -39,6 +40,22 @@ export const organizationLookupSchema = z
 
 export const organizationLookupQuerySchema = z.object({
   q: z.string().min(2, 'Cần ít nhất 2 ký tự để tra cứu').max(80),
+})
+
+/**
+ * Bảng tổ chức của master. Khác `lookup` ở hai điểm quyết định:
+ *
+ * `lookup` là route CÔNG KHAI nên cố tình không trả `id` — có `id` thì nó thành công cụ liệt kê
+ * khách hàng. Bảng này chỉ master gọi được, và `id` chính là thứ nó tồn tại để trả: master
+ * không thuộc org nào cả, nên đây là nguồn DUY NHẤT để họ chọn org đang thao tác (`X-Org-Slug`).
+ *
+ * `q` không có min 2 ký tự: bỏ trống nghĩa là "liệt kê tất cả", đúng nhu cầu của một bảng quản trị.
+ */
+export const organizationAdminQuerySchema = z.object({
+  q: z.string().max(80).optional(),
+  status: z.nativeEnum(TENANT_STATUS).optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
 })
 
 /**
@@ -163,6 +180,7 @@ export type GrantOrgAdminInput = z.infer<typeof grantOrgAdminSchema>
 export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
 export type OrganizationSummaryDto = z.infer<typeof organizationSummarySchema>
 export type OrganizationLookupDto = z.infer<typeof organizationLookupSchema>
+export type OrganizationAdminQuery = z.infer<typeof organizationAdminQuerySchema>
 
 registry.register('Organization', organizationSummarySchema)
 registry.register('OrganizationLookup', organizationLookupSchema)

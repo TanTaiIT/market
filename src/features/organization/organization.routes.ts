@@ -4,6 +4,7 @@ import { organizationController } from './organization.controller'
 import {
   organizationLookupSchema,
   organizationLookupQuerySchema,
+  organizationAdminQuerySchema,
   organizationParamsSchema,
   organizationCardSchema,
   organizationSummarySchema,
@@ -25,7 +26,14 @@ import {
   requireOrg,
   requireOrgAdmin,
 } from '../../middlewares/auth.middleware'
-import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
+import {
+  registry,
+  bearerAuth,
+  envelope,
+  jsonResponse,
+  errorResponse,
+  paginationMetaSchema,
+} from '../../config/openapi'
 
 const router = Router()
 
@@ -78,6 +86,16 @@ router.patch(
 )
 
 // ── Vận hành hệ thống (master) ──────────────────────────────────────────────
+// Bảng tổ chức toàn hệ thống. KHÔNG có `requireOrg`: master không thuộc org nào, và đây chính
+// là endpoint trả lời "tôi được chọn org nào" cho họ — bắt có scope trước là khoá vòng tròn.
+router.get(
+  '/',
+  authenticate,
+  requireMaster,
+  validate({ query: organizationAdminQuerySchema }),
+  organizationController.listAll,
+)
+
 // Chỉ master tạo được org (quyết định Q2): không có luồng tự phục vụ, nên cũng không có đường
 // "tạo nhóm rồi tự duyệt tin của mình" đi vòng qua trục danh mục.
 router.post(
@@ -182,6 +200,28 @@ registry.registerPath({
     200: jsonResponse('Thẻ nhóm', envelope(organizationCardSchema)),
     404: errorResponse('Không tìm thấy nhóm nào với mã này'),
     429: errorResponse('Quá nhiều request'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/organizations',
+  operationId: 'listOrganizations',
+  tags: ['Organization'],
+  summary: 'Bảng tổ chức toàn hệ thống (chỉ master)',
+  description:
+    'Nguồn của bộ chuyển tổ chức cho MASTER, thay chỗ `/organizations/mine` vốn luôn rỗng với ' +
+    'họ: quyền master là grant `system`, không phải membership. Trả cả org đang bị khoá — đó ' +
+    'chính là thứ master cần xử lý; lọc bằng `status` nếu chỉ muốn org đang chạy.',
+  ...protectedRoute,
+  request: { query: organizationAdminQuerySchema },
+  responses: {
+    200: jsonResponse(
+      'Danh sách tổ chức',
+      envelope(z.array(organizationSummarySchema), paginationMetaSchema),
+    ),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: notMaster,
   },
 })
 

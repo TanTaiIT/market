@@ -1,7 +1,15 @@
 import { Types } from 'mongoose'
 import { clearOrganizationCache, organizationRepository } from './organization.repository'
-import { toMyOrganizationDto, toOrganizationLookupDto } from './organization.types'
-import { CreateOrganizationInput, UpdateOrganizationInput } from './organization.schema'
+import {
+  toMyOrganizationDto,
+  toOrganizationDto,
+  toOrganizationLookupDto,
+} from './organization.types'
+import {
+  CreateOrganizationInput,
+  OrganizationAdminQuery,
+  UpdateOrganizationInput,
+} from './organization.schema'
 import { userRepository } from '../user/user.repository'
 import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
@@ -25,6 +33,7 @@ import {
 import { generateJoinCode, normalizeJoinCode } from '../../common/utils/joinCode'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { notificationService } from '../notification/notification.service'
+import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { logger } from '../../config/logger'
 
 /** Mã lỗi unique index của MongoDB. */
@@ -288,6 +297,30 @@ export const organizationService = {
   async lookup(query: string, limit = LOOKUP_LIMIT) {
     const orgs = await organizationRepository.search(query, limit)
     return orgs.map(toOrganizationLookupDto)
+  },
+
+  /**
+   * Bảng tổ chức TOÀN hệ thống — chỉ master gọi được.
+   *
+   * Tồn tại vì `listMine` luôn rỗng với master: quyền của họ là grant `master/system`, không
+   * phải membership, nên họ cố ý không thuộc org nào. Mà bộ chuyển tổ chức của client lại đọc
+   * `listMine` để biết được phép gửi `X-Org-Slug` nào — kết quả là master không chọn được org
+   * nào và mọi màn org-scoped trả 403 dù họ có thừa quyền vào (`canModerateAnyInOrg` cho master
+   * đi thẳng). Đây là nguồn lấp chỗ đó: chọn một dòng ở đây = chọn org đang thao tác.
+   *
+   * KHÔNG gộp vào `lookup`: `lookup` là route công khai và cố tình không trả `id`, xem
+   * `toOrganizationLookupDto`.
+   */
+  async listAll(query: OrganizationAdminQuery) {
+    const pagination = parsePagination(query)
+    const { items, total } = await organizationRepository.paginateAll(
+      { q: query.q, status: query.status },
+      pagination,
+    )
+    return {
+      items: items.map(toOrganizationDto),
+      meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
+    }
   },
 
   /**

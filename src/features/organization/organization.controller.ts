@@ -53,6 +53,12 @@ export const organizationController = {
     success(res, { message: 'Slug availability', data })
   }),
 
+  // GET /organizations  (master)
+  listAll: catchAsync(async (req, res) => {
+    const { items, meta } = await organizationService.listAll(req.query as never)
+    success(res, { message: 'Tổ chức', data: items, meta })
+  }),
+
   // POST /organizations  (master)
   create: catchAsync(async (req, res) => {
     const org = await organizationService.createByMaster(req.user!.id, req.body)

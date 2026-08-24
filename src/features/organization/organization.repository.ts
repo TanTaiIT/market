@@ -36,6 +36,33 @@ export function clearOrganizationCache(): void {
   cache.clear()
 }
 
+/**
+ * Hai nhánh tìm theo tên, dùng chung cho dropdown công khai và bảng quản trị.
+ *
+ * Cả hai đều là regex NEO ĐẦU trên một field CÓ index, nên mỗi nhánh có bounds thật. Bản cũ
+ * dùng `{ name: { $regex: <người dùng gõ>, $options: 'i' } }`: không neo đầu, `name` không có
+ * index, và trong `$or` thì một nhánh không index kéo cả câu về COLLSCAN.
+ *
+ * Không phải escape regex: `normalizeOrgSlug`/`orgNameTokens` đã slugify nên chuỗi chỉ còn
+ * a-z0-9 — ký tự đặc biệt bị loại từ trước, không phải chặn ở đây.
+ *
+ * Rỗng (hoặc toàn ký tự lạ) → mảng rỗng, và người gọi phải BỎ HẲN `$or` chứ không truyền
+ * `$or: []` — Mongo coi đó là lỗi cú pháp.
+ */
+function nameBranches(query: string): FilterQuery<IOrganizationDocument>[] {
+  const normalized = normalizeOrgSlug(query)
+  const tokens = orgNameTokens(query)
+
+  const branches: FilterQuery<IOrganizationDocument>[] = []
+  if (normalized) branches.push({ slugNormalized: { $regex: `^${normalized}` } })
+  // `$and` chứ không phải một điều kiện: gõ "hung vuong" phải khớp org có CẢ HAI từ, chứ
+  // không phải mọi org có một trong hai.
+  if (tokens.length > 0) {
+    branches.push({ $and: tokens.map((token) => ({ nameTokens: { $regex: `^${token}` } })) })
+  }
+  return branches
+}
+
 const ALIVE = { status: TENANT_STATUS.ACTIVE, deletedAt: null }
 const SUMMARY_FIELDS = '_id slug status'
 
@@ -87,31 +114,33 @@ export const organizationRepository = {
    * dropdown chỉ là một danh sách "Lý Thường Kiệt" giống hệt nhau (§6.2).
    */
   search(query: string, limit: number): Promise<IOrganizationDocument[]> {
-    const normalized = normalizeOrgSlug(query)
-    const tokens = orgNameTokens(query)
-
-    /*
-     * Cả hai nhánh đều là regex NEO ĐẦU trên một field có index, nên mỗi nhánh có bounds thật.
-     * Bản cũ dùng `{ name: { $regex: <người dùng gõ>, $options: 'i' } }`: không neo đầu, `name`
-     * không có index, và trong `$or` thì một nhánh không index kéo cả câu về COLLSCAN.
-     *
-     * Không còn phải escape regex: `normalizeOrgSlug`/`orgNameTokens` đã slugify nên chuỗi chỉ
-     * còn a-z0-9 — ký tự đặc biệt bị loại từ trước, không phải chặn ở đây.
-     */
-    const branches: FilterQuery<IOrganizationDocument>[] = []
-    if (normalized) branches.push({ slugNormalized: { $regex: `^${normalized}` } })
-    if (tokens.length > 0) {
-      // `$and` chứ không phải một điều kiện: gõ "hung vuong" phải khớp org có CẢ HAI từ, chứ
-      // không phải mọi org có một trong hai.
-      branches.push({ $and: tokens.map((token) => ({ nameTokens: { $regex: `^${token}` } })) })
-    }
-
-    // Chuỗi rỗng (hoặc toàn ký tự lạ) → không nhánh nào: trả về danh sách đầu như trước, chứ
-    // `$or: []` là lỗi cú pháp của Mongo.
+    const branches = nameBranches(query)
     return Organization.find(branches.length > 0 ? { ...ALIVE, $or: branches } : ALIVE)
       .sort({ name: 1 })
       .limit(limit)
       .exec()
+  },
+
+  /**
+   * Bảng tổ chức của master. Cố tình KHÔNG lọc `ALIVE`: org đang bị khoá chính là thứ master
+   * cần nhìn thấy để xử lý, giấu nó đi thì bảng quản trị mất đúng phần việc của nó. Chỉ org
+   * đã xoá mềm mới bị loại.
+   */
+  async paginateAll(
+    filters: { q?: string; status?: TenantStatus },
+    { skip, limit }: { skip: number; limit: number },
+  ) {
+    const filter: FilterQuery<IOrganizationDocument> = { deletedAt: null }
+    if (filters.status) filter.status = filters.status
+
+    const branches = filters.q ? nameBranches(filters.q) : []
+    if (branches.length > 0) filter.$or = branches
+
+    const [items, total] = await Promise.all([
+      Organization.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      Organization.countDocuments(filter).exec(),
+    ])
+    return { items, total }
   },
 
   findAliasTarget(slug: string): Promise<Types.ObjectId | null> {
