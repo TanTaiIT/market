@@ -2,9 +2,10 @@ import { Request } from 'express'
 import { verifyAccessToken } from '../common/utils/jwt'
 import { UnauthorizedError, ForbiddenError } from '../common/errors'
 import { catchAsync } from '../common/utils/catchAsync'
-import { currentScope } from '../common/tenant/tenantContext'
+import { currentScope, runWithTenant } from '../common/tenant/tenantContext'
 import { canAdminOrg, canModerateAnyInOrg, isMaster, Grant } from '../common/authz/policy'
 import { roleGrantService } from '../features/role-grant/role-grant.service'
+import { organizationRepository } from '../features/organization/organization.repository'
 
 function extractToken(req: Request): string | null {
   const header = req.headers.authorization ?? ''
@@ -80,6 +81,35 @@ export const requireOrgModerator = catchAsync(async (req, _res, next) => {
     throw new ForbiddenError('Bạn không có quyền duyệt trong tổ chức này')
   }
   next()
+})
+
+/**
+ * Đọc XUYÊN TỔ CHỨC cho master — thay `requireOrg` ở các route CHỈ ĐỌC.
+ *
+ * Master có quyền toàn hệ thống, nhưng "duyệt tin" vẫn là câu hỏi "hàng đợi của ai". Bắt họ
+ * chọn một org trước khi được nhìn là trộn hai chuyện: quyền (họ thừa) với phạm vi (họ chưa
+ * chỉ). Middleware này gỡ đúng chỗ đó — chưa chọn org thì cho đọc TẤT CẢ, chọn rồi thì thu về
+ * đúng org đó như mọi người.
+ *
+ * Nới `readableOrgIds` chứ KHÔNG dùng `runUnscoped`: `tenantPlugin` vẫn lọc như thường, chỉ là
+ * lọc trên một tập rộng hơn. `runUnscoped` thì tắt hẳn cơ chế cách ly — quên một điều kiện ở
+ * repository là dữ liệu tenant khác lọt ra, mà đây là đường chạy trên mọi request đọc.
+ *
+ * `ownOrgId` cố ý để `null`: mọi lượt GHI vẫn hỏng khi chưa chọn org. Ghi thì phải biết ghi vào
+ * đâu, và đó là lúc việc chọn tổ chức có nghĩa thật.
+ */
+export const requireOrgReadOrMaster = catchAsync(async (req, _res, next) => {
+  if (currentScope()?.ownOrgId) return requireOrgModerator(req, _res, next)
+
+  const grants = await loadGrants(req)
+  if (!isMaster(grants)) {
+    throw new ForbiddenError(
+      'Chưa xác định được tổ chức: gửi header X-Org-Slug hoặc truy cập qua subdomain của tổ chức',
+    )
+  }
+
+  const readableOrgIds = await organizationRepository.allActiveIds()
+  runWithTenant({ ownOrgId: null, readableOrgIds, publicAxis: { mode: 'approved' } }, next)
 })
 
 /** Đổi cấu trúc tổ chức (nhóm con, cài đặt): manager org trở lên, staff không đủ. */

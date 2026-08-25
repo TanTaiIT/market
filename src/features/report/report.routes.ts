@@ -9,7 +9,12 @@ import {
   reportResponseSchema,
 } from './report.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate, requireOrg, requireOrgModerator } from '../../middlewares/auth.middleware'
+import {
+  authenticate,
+  requireOrg,
+  requireOrgModerator,
+  requireOrgReadOrMaster,
+} from '../../middlewares/auth.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
   registry,
@@ -30,11 +35,12 @@ router.post(
   validate({ body: createReportSchema }),
   reportController.create,
 )
+// Danh sách báo cáo là truy vấn thuần: master chưa chọn org thì đọc xuyên tất cả. Hai route
+// ghi bên dưới vẫn đòi org — xử một báo cáo là hành động TRONG một tổ chức cụ thể.
 router.get(
   '/',
   authenticate,
-  requireOrg,
-  requireOrgModerator,
+  requireOrgReadOrMaster,
   validate({ query: reportQuerySchema }),
   reportController.list,
 )

@@ -143,6 +143,16 @@ export const organizationRepository = {
     return { items, total }
   },
 
+  /**
+   * Id của mọi org đang hoạt động — tập `readableOrgIds` cho master đọc xuyên tổ chức.
+   *
+   * Chỉ `ACTIVE`: org bị khoá hay chưa có người phụ trách thì nội dung bên trong cũng ngừng
+   * lưu thông, gộp vào đây là master duyệt tin cho một tổ chức đang đóng cửa.
+   */
+  allActiveIds(): Promise<Types.ObjectId[]> {
+    return Organization.distinct('_id', ALIVE).exec()
+  },
+
   findAliasTarget(slug: string): Promise<Types.ObjectId | null> {
     return OrgSlugAlias.findOne({ oldSlug: slug.toLowerCase() })
       .lean<{ organizationId: Types.ObjectId } | null>()

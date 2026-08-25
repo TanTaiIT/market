@@ -18,7 +18,12 @@ import {
 } from './moderation.schema'
 import { listingResponseSchema } from '../listing/listing.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate, requireOrg, requireOrgModerator } from '../../middlewares/auth.middleware'
+import {
+  authenticate,
+  requireOrg,
+  requireOrgModerator,
+  requireOrgReadOrMaster,
+} from '../../middlewares/auth.middleware'
 import {
   registry,
   bearerAuth,
@@ -79,12 +84,23 @@ router.delete(
   moderationController.removeListing,
 )
 
-// Trục ORG: từ đây trở xuống là bàn quản trị của một tổ chức.
-router.use(authenticate, requireOrg, requireOrgModerator)
+// Trục ORG. `overview` đếm thành viên của MỘT tổ chức nên vẫn đòi chọn org; hai route dưới
+// là truy vấn thuần, master chưa chọn org thì đọc xuyên tất cả (`requireOrgReadOrMaster`).
+router.use(authenticate)
 
-router.get('/overview', moderationController.overview)
-router.get('/activity', validate({ query: activityQuerySchema }), moderationController.activity)
-router.get('/listings', validate({ query: modListingQuerySchema }), moderationController.listings)
+router.get('/overview', requireOrg, requireOrgModerator, moderationController.overview)
+router.get(
+  '/activity',
+  requireOrgReadOrMaster,
+  validate({ query: activityQuerySchema }),
+  moderationController.activity,
+)
+router.get(
+  '/listings',
+  requireOrgReadOrMaster,
+  validate({ query: modListingQuerySchema }),
+  moderationController.listings,
+)
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
