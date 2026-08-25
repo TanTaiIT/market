@@ -205,6 +205,15 @@ export const updateOrganizationSchema = z
      * Tắt = nhóm kín, chỉ thành viên đăng được.
      */
     allowOutsiderPosts: z.boolean().optional(),
+    /**
+     * Nội quy nhóm. GỬI CẢ MẢNG, không phải thêm/xoá từng dòng: nội quy là một văn bản ngắn
+     * mà quản trị sửa cả cụm, và API từng-dòng sẽ cần thêm id cho mỗi dòng chỉ để phục vụ một
+     * thao tác mà giao diện không có.
+     *
+     * Mảng rỗng = xoá hết nội quy, hợp lệ. `max(10)` để nó vẫn là nội quy chứ không thành
+     * điều khoản sử dụng; mỗi dòng `max(200)` vì nó hiển thị nguyên văn trên thẻ hồ sơ nhóm.
+     */
+    rules: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
   })
   .strict()
   .openapi('UpdateOrganization')

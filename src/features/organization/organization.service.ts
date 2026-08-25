@@ -234,6 +234,9 @@ export const organizationService = {
     if (input.coverUrl !== undefined) org.coverUrl = input.coverUrl
     if (input.allowJoinRequests !== undefined) org.allowJoinRequests = input.allowJoinRequests
     if (input.allowOutsiderPosts !== undefined) org.allowOutsiderPosts = input.allowOutsiderPosts
+    // Thay CẢ mảng — xem `updateOrganizationSchema.rules`. `[]` là "xoá hết", không phải
+    // "không gửi": `undefined` mới là không gửi, và nhánh này bỏ qua đúng ca đó.
+    if (input.rules !== undefined) org.rules = input.rules
 
     await org.save()
     return org

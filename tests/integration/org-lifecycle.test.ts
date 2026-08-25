@@ -332,6 +332,65 @@ describe('Sửa hồ sơ tổ chức', () => {
     expect(res.status).toBe(400)
   })
 
+  /** Nội quy đọc lại qua hồ sơ nhóm: `PATCH` trả DTO tóm tắt, cố tình không mang `rules`. */
+  const rulesOf = async () => {
+    const res = await request(app).get(`/api/v1/organizations/profile/${slug}`).expect(200)
+    return res.body.data.rules as string[]
+  }
+
+  it('sửa được nội quy nhóm — thay CẢ mảng', async () => {
+    await request(app)
+      .patch('/api/v1/organizations/current')
+      .set(orgAuth(schoolOwner.token, slug))
+      .send({ rules: ['Không bán hàng giả', 'Ghi rõ tình trạng sản phẩm'] })
+      .expect(200)
+
+    expect(await rulesOf()).toEqual(['Không bán hàng giả', 'Ghi rõ tình trạng sản phẩm'])
+  })
+
+  it('mảng rỗng là XOÁ HẾT nội quy, khác với không gửi field', async () => {
+    await request(app)
+      .patch('/api/v1/organizations/current')
+      .set(orgAuth(schoolOwner.token, slug))
+      .send({ rules: [] })
+      .expect(200)
+    expect(await rulesOf()).toEqual([])
+
+    await request(app)
+      .patch('/api/v1/organizations/current')
+      .set(orgAuth(schoolOwner.token, slug))
+      .send({ rules: ['Chỉ một dòng'] })
+      .expect(200)
+    expect(await rulesOf()).toEqual(['Chỉ một dòng'])
+
+    // Không gửi `rules` thì nó phải ở NGUYÊN TRẠNG — đây là chỗ dễ viết thành `|| []` rồi
+    // xoá sạch nội quy của nhóm mỗi lần ai đó chỉ sửa mô tả.
+    await request(app)
+      .patch('/api/v1/organizations/current')
+      .set(orgAuth(schoolOwner.token, slug))
+      .send({ description: 'Chỉ sửa mô tả' })
+      .expect(200)
+    expect(await rulesOf()).toEqual(['Chỉ một dòng'])
+  })
+
+  it('quá 10 dòng nội quy thì từ chối', async () => {
+    const res = await request(app)
+      .patch('/api/v1/organizations/current')
+      .set(orgAuth(schoolOwner.token, slug))
+      .send({ rules: Array.from({ length: 11 }, (_, n) => `Điều ${n + 1}`) })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('dòng nội quy rỗng bị từ chối — không để nhóm có một gạch đầu dòng trống', async () => {
+    const res = await request(app)
+      .patch('/api/v1/organizations/current')
+      .set(orgAuth(schoolOwner.token, slug))
+      .send({ rules: ['Điều hợp lệ', '   '] })
+
+    expect(res.status).toBe(400)
+  })
+
   it('thành viên thường không sửa được hồ sơ nhóm', async () => {
     const res = await request(app)
       .patch('/api/v1/organizations/current')
