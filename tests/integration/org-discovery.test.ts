@@ -184,3 +184,55 @@ describe('Gõ MÃ vào ô tìm — lối tắt vào thẳng nhóm', () => {
     expect(slugs(byName.body)).not.toContain(SECRET)
   })
 })
+
+describe('Hai lỗi thật gặp lúc dùng', () => {
+  /**
+   * Org tạo TRƯỚC khi `isPublic` ra đời không có field đó. `default: true` của mongoose chỉ áp
+   * cho document MỚI, còn filter chạy dưới MongoDB — nên `{ isPublic: true }` trượt sạch dữ
+   * liệu cũ và mọi nhóm đang có biến mất khỏi tìm kiếm lẫn hồ sơ.
+   *
+   * Test tự ghi thẳng vào collection để dựng lại đúng hình dạng đó: đi qua `Organization.create`
+   * là mongoose điền default vào, và bài test sẽ xanh trong khi production đỏ.
+   */
+  it('org tạo trước khi có field `isPublic` vẫn được coi là công khai', async () => {
+    await mongoose.connection.db!.collection('organizations').insertOne({
+      name: 'Nhóm Đời Cũ',
+      slug: 'nhom-doi-cu',
+      slugNormalized: 'nhomdoicu',
+      nameTokens: ['nhom', 'doi', 'cu'],
+      joinCode: 'OLD777',
+      status: 'active',
+      deletedAt: null,
+      allowJoinRequests: true,
+      allowOutsiderPosts: true,
+      rules: [],
+    })
+
+    const found = await request(app).get('/api/v1/organizations/lookup?q=nhom doi cu').expect(200)
+    expect(slugs(found.body)).toContain('nhom-doi-cu')
+
+    await request(app).get('/api/v1/organizations/profile/nhom-doi-cu').expect(200)
+  })
+
+  /**
+   * Quản trị của một nhóm RIÊNG TƯ mở hồ sơ nhóm mình. Lọc `isPublic` ở repository thì chính
+   * người đang quản nhóm cũng nhận 404 — vô lý với người dùng và không bảo vệ được gì.
+   */
+  it('thành viên nhóm RIÊNG TƯ mở được hồ sơ nhóm mình', async () => {
+    const res = await request(app)
+      .get(`/api/v1/organizations/profile/${SECRET}`)
+      .set(bearer(owner))
+      .expect(200)
+
+    expect(res.body.data).toMatchObject({ slug: SECRET, joined: true })
+  })
+
+  /** Vế đối xứng: người NGOÀI vẫn không thấy gì, nếu không thì chốt riêng tư mất tác dụng. */
+  it('người ngoài vẫn nhận 404 trên hồ sơ nhóm riêng tư', async () => {
+    const nobody = await registerUser(app, 'khong-lien-quan@example.com', 'Không liên quan')
+    const res = await request(app)
+      .get(`/api/v1/organizations/profile/${SECRET}`)
+      .set(bearer(nobody))
+    expect(res.status).toBe(404)
+  })
+})

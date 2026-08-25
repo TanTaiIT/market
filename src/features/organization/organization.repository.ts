@@ -63,6 +63,12 @@ function nameBranches(query: string): FilterQuery<IOrganizationDocument>[] {
   return branches
 }
 
+/*
+ * `$ne: false` chứ KHÔNG phải `true`: org tạo trước khi `isPublic` ra đời không có field đó,
+ * mà `default: true` của mongoose chỉ áp cho document MỚI — filter thì chạy dưới MongoDB nên
+ * `{ isPublic: true }` trượt sạch dữ liệu cũ. Thiếu field = công khai, đúng nghĩa cái default.
+ */
+const PUBLIC = { isPublic: { $ne: false } }
 const ALIVE = { status: TENANT_STATUS.ACTIVE, deletedAt: null }
 const SUMMARY_FIELDS = '_id slug status'
 
@@ -132,16 +138,29 @@ export const organizationRepository = {
    */
   searchPublic(query: string, limit: number): Promise<IOrganizationDocument[]> {
     const branches = nameBranches(query)
-    const base = { ...ALIVE, isPublic: true }
+    const base = { ...ALIVE, ...PUBLIC }
     return Organization.find(branches.length > 0 ? { ...base, $or: branches } : base)
       .sort({ name: 1 })
       .limit(limit)
       .exec()
   },
 
-  /** Hồ sơ nhóm công khai. Nhóm riêng tư trả `null` — người ngoài không phân biệt được với không tồn tại. */
+  /**
+   * Nhóm CÔNG KHAI theo slug. Nhóm riêng tư trả `null` — dùng cho đường xin vào, nơi người
+   * gọi chưa có quan hệ nào với nhóm.
+   */
   findPublicBySlug(slug: string): Promise<IOrganizationDocument | null> {
-    return Organization.findOne({ slug: slug.toLowerCase(), isPublic: true, ...ALIVE }).exec()
+    return Organization.findOne({ slug: slug.toLowerCase(), ...PUBLIC, ...ALIVE }).exec()
+  },
+
+  /**
+   * Nhóm theo slug, KHÔNG lọc riêng tư — người gọi tự quyết định ai được xem.
+   *
+   * Tồn tại vì thành viên của một nhóm kín vẫn phải mở được hồ sơ nhóm mình: lọc `isPublic`
+   * ngay ở đây thì chính quản trị nhóm cũng nhận 404 trên nhóm họ đang quản.
+   */
+  findAliveBySlug(slug: string): Promise<IOrganizationDocument | null> {
+    return Organization.findOne({ slug: slug.toLowerCase(), ...ALIVE }).exec()
   },
 
   /**

@@ -367,7 +367,7 @@ export const organizationService = {
    * xem", đủ để dò ra danh sách nhóm kín bằng cách quét slug.
    */
   async publicProfile(slug: string, viewerId: string | null) {
-    const org = await organizationRepository.findPublicBySlug(slug)
+    const org = await organizationRepository.findAliveBySlug(slug)
     if (!org) throw new NotFoundError('Không tìm thấy nhóm này')
 
     const [memberCount, postsThisWeek, membership] = await Promise.all([
@@ -375,6 +375,17 @@ export const organizationService = {
       listingRepository.countCreatedSinceForOrg(org._id, WEEK_AGO()),
       viewerId ? membershipRepository.findActive(viewerId, org._id) : Promise.resolve(null),
     ])
+
+    /*
+     * Nhóm RIÊNG TƯ chỉ thành viên mới xem được hồ sơ. Lọc ở repository thì chính quản trị
+     * nhóm cũng nhận 404 trên nhóm họ đang quản — nên chốt phải nằm ở đây, chỗ biết được
+     * người đang xem là ai.
+     *
+     * Vẫn 404 chứ không 403: 403 xác nhận "có nhóm ở slug này", đủ để quét ra danh sách nhóm kín.
+     */
+    if (org.isPublic === false && !membership) {
+      throw new NotFoundError('Không tìm thấy nhóm này')
+    }
 
     return toOrganizationProfileDto(org, {
       memberCount,
