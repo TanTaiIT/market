@@ -547,6 +547,16 @@
           "slug": {
             "type": "string"
           },
+          "joinCode": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "memberCount": {
+            "type": "number"
+          },
           "district": {
             "type": "string",
             "nullable": true
@@ -565,10 +575,79 @@
         "required": [
           "name",
           "slug",
+          "joinCode",
+          "avatarUrl",
+          "memberCount",
           "district",
           "provinceCode",
           "allowJoinRequests",
           "allowOutsiderPosts"
+        ]
+      },
+      "OrganizationProfile": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "joinCode": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "district": {
+            "type": "string",
+            "nullable": true
+          },
+          "memberCount": {
+            "type": "number"
+          },
+          "postsThisWeek": {
+            "type": "number"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowJoinRequests": {
+            "type": "boolean"
+          },
+          "joined": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "slug",
+          "joinCode",
+          "avatarUrl",
+          "coverUrl",
+          "description",
+          "provinceCode",
+          "district",
+          "memberCount",
+          "postsThisWeek",
+          "rules",
+          "allowJoinRequests",
+          "joined"
         ]
       },
       "MyOrganization": {
@@ -1600,6 +1679,11 @@
             "minLength": 4,
             "maxLength": 16
           },
+          "slug": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 40
+          },
           "claimedName": {
             "type": "string",
             "minLength": 1,
@@ -1617,7 +1701,6 @@
           }
         },
         "required": [
-          "code",
           "claimedName"
         ],
         "additionalProperties": false
@@ -6702,22 +6785,95 @@
         }
       }
     },
+    "/organizations/profile/{slug}": {
+      "get": {
+        "operationId": "organizationPublicProfile",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Hồ sơ nhóm công khai (không cần đăng nhập)",
+        "description": "Chỉ nhóm `isPublic`. Nhóm riêng tư trả 404 — không phân biệt được với slug không tồn tại, nên không quét ra được danh sách nhóm kín. Đăng nhập rồi thì có thêm cờ `joined`.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 40,
+              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+            },
+            "required": true,
+            "name": "slug",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hồ sơ nhóm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/OrganizationProfile"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy nhóm công khai nào ở slug này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Tra cứu quá nhiều lần",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/organizations/lookup": {
       "get": {
         "operationId": "organizationLookup",
         "tags": [
           "Organization"
         ],
-        "summary": "Dropdown chọn tổ chức theo tên hoặc slug",
-        "description": "Trả DANH SÁCH để người dùng tự xác nhận. Client không được tự lấy phần tử đầu tiên khi có nhiều kết quả: chọn nhầm org là tin chạy vào hàng đợi của tổ chức khác.",
+        "summary": "Tìm nhóm công khai theo tên hoặc slug",
+        "description": "CHỈ nhóm `isPublic` — nhóm riêng tư không lộ ra ở đây kể cả khi gõ đúng tên, cách vào duy nhất vẫn là mã. Bỏ trống `q` để lấy danh sách gợi ý. Trả DANH SÁCH để người dùng tự xác nhận: chọn nhầm nhóm là tin chạy vào hàng đợi của tổ chức khác.",
         "parameters": [
           {
             "schema": {
               "type": "string",
-              "minLength": 2,
               "maxLength": 80
             },
-            "required": true,
+            "required": false,
             "name": "q",
             "in": "query"
           }

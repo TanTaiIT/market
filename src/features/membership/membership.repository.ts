@@ -36,6 +36,19 @@ export const membershipRepository = {
     return { items, total }
   },
 
+  /**
+   * Đếm thành viên của NHIỀU org trong một lượt — danh sách nhóm cần con số cho từng dòng.
+   * Đếm lẻ từng org là N+1 ngay giữa đường người dùng đang gõ tìm kiếm.
+   */
+  async countActiveByOrganizations(ids: Types.ObjectId[]): Promise<Map<string, number>> {
+    if (ids.length === 0) return new Map()
+    const rows = await Membership.aggregate<{ _id: Types.ObjectId; n: number }>([
+      { $match: { organizationId: { $in: ids }, ...ACTIVE } },
+      { $group: { _id: '$organizationId', n: { $sum: 1 } } },
+    ]).exec()
+    return new Map(rows.map((r) => [r._id.toString(), r.n]))
+  },
+
   countActiveByOrganization(organizationId: Id) {
     return Membership.countDocuments({ organizationId, ...ACTIVE }).exec()
   },

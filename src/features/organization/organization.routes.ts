@@ -6,6 +6,8 @@ import {
   organizationLookupQuerySchema,
   organizationAdminQuerySchema,
   organizationParamsSchema,
+  orgSlugParamsSchema,
+  organizationProfileSchema,
   organizationCardSchema,
   organizationSummarySchema,
   myOrganizationSchema,
@@ -22,6 +24,7 @@ import { validate } from '../../middlewares/validate.middleware'
 import { lookupLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
   authenticate,
+  optionalAuth,
   requireMaster,
   requireOrg,
   requireOrgAdmin,
@@ -56,6 +59,24 @@ router.get(
 
 // Người cầm mã xem thẻ nhóm trước khi bấm xin vào. Công khai như `lookup`, và dùng chung
 // rate-limit với nó: dò mã bừa cũng là một kiểu quét.
+/*
+ * Hồ sơ nhóm CÔNG KHAI, mở theo slug. Không đòi đăng nhập — người ta phải đọc được nhóm
+ * trước khi quyết định có xin vào hay không, và bắt đăng nhập để xem là một cánh cửa nữa
+ * trước cánh cửa xin vào.
+ *
+ * `optionalAuth` chứ không `authenticate`: khách chưa đăng nhập vẫn đọc được, còn người đã
+ * đăng nhập thì được đọc `req.user` để service trả thêm cờ `joined` — nút hiện đúng "Đã
+ * tham gia" thay vì mời họ vào lại. Bỏ hẳn middleware auth thì `req.user` không bao giờ có,
+ * và cờ đó vĩnh viễn là `false`.
+ */
+router.get(
+  '/profile/:slug',
+  lookupLimiter,
+  optionalAuth,
+  validate({ params: orgSlugParamsSchema }),
+  organizationController.publicProfile,
+)
+
 router.get(
   '/by-code/:code',
   lookupLimiter,
@@ -301,13 +322,31 @@ registry.registerPath({
 
 registry.registerPath({
   method: 'get',
+  path: '/organizations/profile/{slug}',
+  operationId: 'organizationPublicProfile',
+  tags: ['Organization'],
+  summary: 'Hồ sơ nhóm công khai (không cần đăng nhập)',
+  description:
+    'Chỉ nhóm `isPublic`. Nhóm riêng tư trả 404 — không phân biệt được với slug không tồn ' +
+    'tại, nên không quét ra được danh sách nhóm kín. Đăng nhập rồi thì có thêm cờ `joined`.',
+  request: { params: orgSlugParamsSchema },
+  responses: {
+    200: jsonResponse('Hồ sơ nhóm', envelope(organizationProfileSchema)),
+    404: errorResponse('Không tìm thấy nhóm công khai nào ở slug này'),
+    429: errorResponse('Tra cứu quá nhiều lần'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
   path: '/organizations/lookup',
   operationId: 'organizationLookup',
   tags: ['Organization'],
-  summary: 'Dropdown chọn tổ chức theo tên hoặc slug',
+  summary: 'Tìm nhóm công khai theo tên hoặc slug',
   description:
-    'Trả DANH SÁCH để người dùng tự xác nhận. Client không được tự lấy phần tử đầu tiên khi ' +
-    'có nhiều kết quả: chọn nhầm org là tin chạy vào hàng đợi của tổ chức khác.',
+    'CHỈ nhóm `isPublic` — nhóm riêng tư không lộ ra ở đây kể cả khi gõ đúng tên, cách vào ' +
+    'duy nhất vẫn là mã. Bỏ trống `q` để lấy danh sách gợi ý. Trả DANH SÁCH để người dùng tự ' +
+    'xác nhận: chọn nhầm nhóm là tin chạy vào hàng đợi của tổ chức khác.',
   request: { query: organizationLookupQuerySchema },
   responses: {
     200: jsonResponse('Danh sách tổ chức khớp', envelope(z.array(organizationLookupSchema))),

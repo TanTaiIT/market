@@ -1,6 +1,10 @@
 import { Types } from 'mongoose'
 import { IOrganizationDocument } from './organization.model'
-import { OrganizationSummaryDto, OrganizationLookupDto } from './organization.schema'
+import {
+  OrganizationSummaryDto,
+  OrganizationLookupDto,
+  OrganizationProfileDto,
+} from './organization.schema'
 
 export function toOrganizationDto(org: IOrganizationDocument): OrganizationSummaryDto {
   return {
@@ -52,17 +56,49 @@ export function toMyOrganizationDto(row: {
 }
 
 /**
- * Dòng trong dropdown chọn org. PHẢI đủ để phân biệt hai org trùng tên bằng mắt — "THPT Lý
+ * Một dòng trong danh sách nhóm. PHẢI đủ để phân biệt hai nhóm trùng tên bằng mắt — "THPT Lý
  * Thường Kiệt — Quận Tân Bình, TP.HCM" chứ không phải mỗi cái tên (§6.2). Cố tình không mang
- * `id`: người dùng chọn bằng slug, và API này là công khai.
+ * `id`: người dùng đi tiếp bằng slug, và API này là công khai.
+ *
+ * `memberCount` do người gọi đếm theo lô rồi truyền vào — đếm từng nhóm một ở đây là N+1
+ * ngay giữa đường tìm kiếm.
  */
-export function toOrganizationLookupDto(org: IOrganizationDocument): OrganizationLookupDto {
+export function toOrganizationLookupDto(
+  org: IOrganizationDocument,
+  memberCount: number,
+): OrganizationLookupDto {
   return {
     name: org.name,
     slug: org.slug,
+    joinCode: org.joinCode,
+    avatarUrl: org.avatarUrl,
+    memberCount,
     district: org.district,
     provinceCode: org.provinceCode,
     allowJoinRequests: org.allowJoinRequests,
     allowOutsiderPosts: org.allowOutsiderPosts,
+  }
+}
+
+/**
+ * Hồ sơ nhóm công khai. `joined` và hai con số đếm đến từ NGOÀI document: chúng thuộc về
+ * người đang xem và về dữ liệu ở collection khác, không phải thuộc tính của tổ chức.
+ */
+export function toOrganizationProfileDto(
+  org: IOrganizationDocument,
+  extra: { memberCount: number; postsThisWeek: number; joined: boolean },
+): OrganizationProfileDto {
+  return {
+    name: org.name,
+    slug: org.slug,
+    joinCode: org.joinCode,
+    avatarUrl: org.avatarUrl,
+    coverUrl: org.coverUrl,
+    description: org.description,
+    provinceCode: org.provinceCode,
+    district: org.district,
+    rules: org.rules,
+    allowJoinRequests: org.allowJoinRequests,
+    ...extra,
   }
 }

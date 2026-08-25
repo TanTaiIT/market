@@ -38,9 +38,16 @@ export const organizationController = {
     success(res, { message: 'Tổ chức của tôi', data })
   }),
 
+  // GET /organizations/profile/:slug  (công khai)
+  publicProfile: catchAsync(async (req, res) => {
+    // `req.user` có thể vắng: route công khai, khách chưa đăng nhập vẫn xem được hồ sơ.
+    const data = await organizationService.publicProfile(req.params.slug, req.user?.id ?? null)
+    success(res, { message: 'Hồ sơ nhóm', data })
+  }),
+
   // GET /organizations/lookup?q=
   lookup: catchAsync(async (req, res) => {
-    const data = await organizationService.lookup(String(req.query.q))
+    const data = await organizationService.discover(String(req.query.q ?? ''))
     success(res, { message: 'Organization lookup', data })
   }),
 

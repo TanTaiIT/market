@@ -11,14 +11,27 @@ const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
  * người được đưa mới có, và đổi được khi rò — hai tính chất mà slug không thể có, vì nó nằm
  * trong mọi đường dẫn đã phát ra ngoài.
  */
+/**
+ * Hai đường vào nhóm, và chúng KHÔNG tương đương:
+ *
+ * - `code`: đường cũ, dùng được với MỌI nhóm. Mã do nhóm phát ra nên nhóm kiểm soát được ai
+ *   đủ điều kiện gõ cửa, và xoay lại được khi mã lọt ra ngoài.
+ * - `slug`: chỉ dùng được với nhóm `isPublic`. Nhóm công khai vốn đã cho duyệt và cho xem
+ *   hồ sơ, nên bắt thêm một cái mã ở bước cuối chỉ là thủ tục thừa.
+ *
+ * Nhóm RIÊNG TƯ gửi bằng slug sẽ nhận 404 y như slug không tồn tại — nếu không, đường này
+ * thành máy dò: gửi thử slug rồi đọc mã lỗi là biết nhóm nào có thật.
+ */
 export const createJoinRequestSchema = z
   .object({
-    code: z.string().min(4).max(16),
+    code: z.string().min(4).max(16).optional(),
+    slug: z.string().min(3).max(40).optional(),
     claimedName: z.string().min(1).max(100).openapi({ example: 'Nguyễn Văn A' }),
     claimedUnit: z.string().max(100).optional().openapi({ example: '10A1' }),
     note: z.string().max(500).optional(),
   })
   .strict()
+  .refine((v) => Boolean(v.code) !== Boolean(v.slug), 'Gửi đúng một trong hai: code hoặc slug')
   .openapi('CreateJoinRequest')
 
 export const joinRequestParamsSchema = z.object({ id: objectId })

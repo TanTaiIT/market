@@ -1,9 +1,11 @@
 import { Types } from 'mongoose'
 import { clearOrganizationCache, organizationRepository } from './organization.repository'
+import { listingRepository } from '../listing/listing.repository'
 import {
   toMyOrganizationDto,
   toOrganizationDto,
   toOrganizationLookupDto,
+  toOrganizationProfileDto,
 } from './organization.types'
 import {
   CreateOrganizationInput,
@@ -67,6 +69,9 @@ async function withUniqueJoinCode<T>(write: (joinCode: string) => Promise<T>): P
 
 /** Trần dropdown: đủ để chọn, không đủ để dùng API này liệt kê danh sách khách hàng. */
 const LOOKUP_LIMIT = 10
+
+/** Mốc 7 ngày cho `postsThisWeek` — tính lúc gọi, không phải hằng số dựng sẵn lúc nạp module. */
+const WEEK_AGO = () => new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
 /** Lý do slug bị từ chối — client hiển thị thông điệp tương ứng, không tự đoán theo chuỗi. */
 export const SLUG_REJECTION = {
@@ -321,6 +326,61 @@ export const organizationService = {
       items: items.map(toOrganizationDto),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
+  },
+
+  /**
+   * Danh sách nhóm cho màn khám phá — kết quả tìm, và khi từ khoá rỗng là khối "Gợi ý cho bạn".
+   *
+   * CHỈ nhóm công khai (`searchPublic`). Nhóm riêng tư không lộ ra ở đây, kể cả khi gõ đúng tên:
+   * cách duy nhất vào nhóm riêng tư vẫn là cầm mã, y như trước.
+   *
+   * Đếm thành viên theo LÔ chứ không từng nhóm một — mười dòng kết quả mà đếm lẻ là mười lượt
+   * truy vấn nữa trên đúng đường người dùng đang gõ.
+   */
+  async discover(query: string, limit = LOOKUP_LIMIT) {
+    /*
+     * Gõ đúng MỘT MÃ thì trả đúng nhóm đó — kể cả nhóm RIÊNG TƯ.
+     *
+     * Không phải lỗ hổng: cầm được mã vốn đã là điều kiện vào nhóm kín, và `GET
+     * /organizations/by-code` đã cho tra đúng như vậy từ trước, sau cùng một `lookupLimiter`.
+     * Khác biệt duy nhất là người dùng không phải đoán mình đang cầm tên hay cầm mã — một ô
+     * nhập, hai loại dữ liệu, đúng như dòng gợi ý trên màn hình hứa.
+     *
+     * Tra theo mã TRƯỚC và trả ngay: lẫn nó vào kết quả tìm tên là người vừa dán mã phải đi
+     * tìm nhóm mình trong một danh sách.
+     */
+    const byCode = await organizationRepository.findActiveByJoinCode(normalizeJoinCode(query))
+    if (byCode) {
+      const count = await membershipRepository.countActiveByOrganization(byCode._id)
+      return [toOrganizationLookupDto(byCode, count)]
+    }
+
+    const orgs = await organizationRepository.searchPublic(query, limit)
+    const counts = await membershipRepository.countActiveByOrganizations(orgs.map((o) => o._id))
+    return orgs.map((org) => toOrganizationLookupDto(org, counts.get(org._id.toString()) ?? 0))
+  },
+
+  /**
+   * Hồ sơ nhóm công khai, đọc theo slug — thứ người dùng xem TRƯỚC khi bấm xin vào.
+   *
+   * Nhóm riêng tư trả 404 chứ không 403: 403 xác nhận "có nhóm ở slug này, chỉ là không cho
+   * xem", đủ để dò ra danh sách nhóm kín bằng cách quét slug.
+   */
+  async publicProfile(slug: string, viewerId: string | null) {
+    const org = await organizationRepository.findPublicBySlug(slug)
+    if (!org) throw new NotFoundError('Không tìm thấy nhóm này')
+
+    const [memberCount, postsThisWeek, membership] = await Promise.all([
+      membershipRepository.countActiveByOrganization(org._id),
+      listingRepository.countCreatedSinceForOrg(org._id, WEEK_AGO()),
+      viewerId ? membershipRepository.findActive(viewerId, org._id) : Promise.resolve(null),
+    ])
+
+    return toOrganizationProfileDto(org, {
+      memberCount,
+      postsThisWeek,
+      joined: Boolean(membership),
+    })
   },
 
   /**

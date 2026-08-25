@@ -367,6 +367,27 @@ export const listingRepository = {
   },
 
   /**
+   * Số tin nhóm đăng kể từ mốc `since` — nhịp sống hiện trên hồ sơ nhóm công khai.
+   *
+   * ⚠️ `runUnscoped` MỚI trong luồng request (convention §6.4 xếp vào diện phải hỏi trước).
+   * Lý do phải mở: hồ sơ nhóm là route CÔNG KHAI nên scope của request là `publicOnly`, mà
+   * `Listing` có `tenantPlugin` — đếm dưới scope đó chỉ ra tin công khai đã duyệt, tức con số
+   * luôn sai và luôn nhỏ hơn sự thật.
+   *
+   * Thu hẹp hết mức để đánh đổi này chỉ đúng một dòng: khoá cứng vào MỘT `organizationId` mà
+   * người gọi đã nêu tên, và trả về một CON SỐ chứ không phải bản ghi nào. Không có đường nào
+   * từ đây đọc ra nội dung tin của org khác.
+   *
+   * Người gọi phải tự chắc org đó `isPublic` — `organizationService.publicProfile` là call site
+   * duy nhất, và nó lấy org qua `findPublicBySlug`.
+   */
+  countCreatedSinceForOrg(organizationId: Types.ObjectId, since: Date): Promise<number> {
+    return runUnscoped('đếm nhịp đăng tin của MỘT nhóm công khai cho hồ sơ công khai', () =>
+      Listing.countDocuments({ organizationId, createdAt: { $gte: since } }).exec(),
+    )
+  },
+
+  /**
    * Ghi phán quyết máy, có chốt race: điều kiện `status: PENDING` làm người duyệt tay thắng —
    * họ bấm trước thì lệnh này match 0 document và trả `null`, máy lặng lẽ bỏ qua. Không cần
    * lock hay lease, và cũng vì thế chạy 2 instance không xử trùng.

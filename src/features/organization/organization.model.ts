@@ -38,6 +38,19 @@ export interface IOrganization {
   avatarUrl: string | null
   coverUrl: string | null
   description: string
+  /**
+   * Nhóm có được LIỆT KÊ và xin vào tự do không.
+   *
+   * `true` (mặc định): hiện ở gợi ý, mở được hồ sơ theo slug, bấm là gửi đơn — không cần mã.
+   * `false`: không xuất hiện ở bất kỳ danh sách công khai nào, chỉ vào được bằng `joinCode`.
+   *
+   * Tách khỏi `allowJoinRequests` vì hai câu hỏi khác nhau: cái này là "ai TÌM THẤY nhóm",
+   * cái kia là "nhóm còn NHẬN đơn không". Một nhóm công khai vẫn có thể tạm đóng cửa nhận
+   * đơn giữa mùa nhập học mà không phải biến mất khỏi kết quả tìm.
+   */
+  isPublic: boolean
+  /** Nội quy nhóm, do admin nhóm tự soạn. Hiện trên hồ sơ nhóm cho người chưa vào đọc trước. */
+  rules: string[]
   allowJoinRequests: boolean
   /**
    * Nhóm có nhận tin từ người KHÔNG phải thành viên không.
@@ -94,6 +107,8 @@ const organizationSchema = new Schema<IOrganizationDocument>(
     coverUrl: { type: String, default: null },
     description: { type: String, default: '', trim: true, maxlength: 500 },
 
+    isPublic: { type: Boolean, default: true },
+    rules: { type: [String], default: [] },
     allowJoinRequests: { type: Boolean, default: true },
     allowOutsiderPosts: { type: Boolean, default: true },
 

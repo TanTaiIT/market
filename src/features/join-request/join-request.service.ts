@@ -28,8 +28,19 @@ export const joinRequestService = {
    * org đến từ slug người dùng đã xác nhận trên dropdown.
    */
   async create(actorId: string, input: CreateJoinRequestInput) {
-    const full = await organizationRepository.findActiveByJoinCode(normalizeJoinCode(input.code))
-    if (!full) throw new NotFoundError('Không tìm thấy nhóm nào với mã này')
+    /*
+     * `findPublicBySlug` chứ không `findActiveBySlug`: đường slug CHỈ mở cho nhóm công khai.
+     * Dùng bản không lọc `isPublic` ở đây là mở lại đúng bề mặt spam mà cái mã sinh ra để
+     * chặn — ai đoán ra slug của một nhóm kín cũng gửi được đơn vào đó.
+     */
+    const full = input.code
+      ? await organizationRepository.findActiveByJoinCode(normalizeJoinCode(input.code))
+      : await organizationRepository.findPublicBySlug(input.slug!)
+    if (!full) {
+      throw new NotFoundError(
+        input.code ? 'Không tìm thấy nhóm nào với mã này' : 'Không tìm thấy nhóm công khai này',
+      )
+    }
     const org = { _id: full._id }
 
     if (!full.allowJoinRequests) {

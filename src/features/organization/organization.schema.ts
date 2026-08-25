@@ -26,11 +26,22 @@ export const organizationSummarySchema = z
   })
   .openapi('Organization')
 
-/** Một dòng dropdown — xem `toOrganizationLookupDto` về việc vì sao không có `id`. */
+/**
+ * Một dòng trong danh sách nhóm — kết quả tìm và khối "Gợi ý cho bạn".
+ *
+ * CHỈ nhóm `isPublic` mới lọt vào đây, nên trả `joinCode` là hợp lệ: nhóm công khai vốn xin vào
+ * được bằng slug, cái mã lúc đó chỉ còn là lối tắt gõ nhanh chứ không còn là cổng chặn. Nhóm
+ * riêng tư không bao giờ xuất hiện ở route này, mã của họ vẫn kín.
+ *
+ * Vẫn KHÔNG có `id` — xem `toOrganizationLookupDto`. Slug đủ để mở hồ sơ nhóm.
+ */
 export const organizationLookupSchema = z
   .object({
     name: z.string(),
     slug: z.string(),
+    joinCode: z.string(),
+    avatarUrl: z.string().nullable(),
+    memberCount: z.number(),
     district: z.string().nullable(),
     provinceCode: z.string().nullable(),
     allowJoinRequests: z.boolean(),
@@ -38,8 +49,39 @@ export const organizationLookupSchema = z
   })
   .openapi('OrganizationLookup')
 
+/**
+ * Hồ sơ nhóm công khai, mở theo slug — màn người dùng đọc TRƯỚC khi bấm xin vào.
+ *
+ * Khác `OrganizationCard` (tra bằng mã) ở chỗ có `slug`: card sinh ra cho người đã cầm mã và cố
+ * tình không cho lần ngược ra định danh, còn ở đây nhóm vốn đã công khai nên giấu slug là giấu
+ * chính cái địa chỉ vừa dùng để tới.
+ */
+export const organizationProfileSchema = z
+  .object({
+    name: z.string(),
+    slug: z.string(),
+    joinCode: z.string(),
+    avatarUrl: z.string().nullable(),
+    coverUrl: z.string().nullable(),
+    description: z.string(),
+    provinceCode: z.string().nullable(),
+    district: z.string().nullable(),
+    memberCount: z.number(),
+    /** Số tin đăng trong 7 ngày qua — nhịp sống của nhóm, thứ quyết định có đáng vào hay không. */
+    postsThisWeek: z.number(),
+    rules: z.array(z.string()),
+    allowJoinRequests: z.boolean(),
+    /** Người đang xem đã là thành viên chưa — quyết định nút hiện "Tham gia" hay "Đã tham gia". */
+    joined: z.boolean(),
+  })
+  .openapi('OrganizationProfile')
+
+/**
+ * `q` TUỲ CHỌN: bỏ trống nghĩa là "gợi ý cho tôi", đúng trạng thái đầu của màn khám phá nhóm.
+ * Bỏ mức tối thiểu 2 ký tự cùng lý do — không còn là dropdown tra cứu mà là một danh sách.
+ */
 export const organizationLookupQuerySchema = z.object({
-  q: z.string().min(2, 'Cần ít nhất 2 ký tự để tra cứu').max(80),
+  q: z.string().max(80).optional(),
 })
 
 /**
@@ -101,6 +143,8 @@ export const organizationCardSchema = z
     allowJoinRequests: z.boolean(),
   })
   .openapi('OrganizationCard')
+
+export const orgSlugParamsSchema = z.object({ slug: organizationSlugSchema })
 
 export const joinCodeParamsSchema = z.object({
   code: z.string().min(4).max(16),
@@ -180,10 +224,12 @@ export type GrantOrgAdminInput = z.infer<typeof grantOrgAdminSchema>
 export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
 export type OrganizationSummaryDto = z.infer<typeof organizationSummarySchema>
 export type OrganizationLookupDto = z.infer<typeof organizationLookupSchema>
+export type OrganizationProfileDto = z.infer<typeof organizationProfileSchema>
 export type OrganizationAdminQuery = z.infer<typeof organizationAdminQuerySchema>
 
 registry.register('Organization', organizationSummarySchema)
 registry.register('OrganizationLookup', organizationLookupSchema)
+registry.register('OrganizationProfile', organizationProfileSchema)
 registry.register('MyOrganization', myOrganizationSchema)
 registry.register('UpdateOrganization', updateOrganizationSchema)
 registry.register('OrganizationCard', organizationCardSchema)

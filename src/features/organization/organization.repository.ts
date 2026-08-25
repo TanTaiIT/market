@@ -122,6 +122,29 @@ export const organizationRepository = {
   },
 
   /**
+   * Nhóm CÔNG KHAI khớp từ khoá — nguồn của kết quả tìm và khối gợi ý.
+   *
+   * `isPublic: true` là chốt duy nhất tách hai chế độ: nhóm riêng tư không bao giờ lọt vào bất
+   * kỳ danh sách nào, chỉ vào được bằng mã. Đặt ở repository chứ không ở service để mọi đường
+   * đọc công khai đều đi qua cùng một điều kiện.
+   *
+   * Từ khoá rỗng = trả nhóm đầu danh sách, đúng nhu cầu "Gợi ý cho bạn" lúc chưa gõ gì.
+   */
+  searchPublic(query: string, limit: number): Promise<IOrganizationDocument[]> {
+    const branches = nameBranches(query)
+    const base = { ...ALIVE, isPublic: true }
+    return Organization.find(branches.length > 0 ? { ...base, $or: branches } : base)
+      .sort({ name: 1 })
+      .limit(limit)
+      .exec()
+  },
+
+  /** Hồ sơ nhóm công khai. Nhóm riêng tư trả `null` — người ngoài không phân biệt được với không tồn tại. */
+  findPublicBySlug(slug: string): Promise<IOrganizationDocument | null> {
+    return Organization.findOne({ slug: slug.toLowerCase(), isPublic: true, ...ALIVE }).exec()
+  },
+
+  /**
    * Bảng tổ chức của master. Cố tình KHÔNG lọc `ALIVE`: org đang bị khoá chính là thứ master
    * cần nhìn thấy để xử lý, giấu nó đi thì bảng quản trị mất đúng phần việc của nó. Chỉ org
    * đã xoá mềm mới bị loại.
