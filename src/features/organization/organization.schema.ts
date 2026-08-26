@@ -70,6 +70,11 @@ export const organizationProfileSchema = z
     /** Số tin đăng trong 7 ngày qua — nhịp sống của nhóm, thứ quyết định có đáng vào hay không. */
     postsThisWeek: z.number(),
     rules: z.array(z.string()),
+    /**
+     * Kiểu bày bảng tin của nhóm. Trả ở hồ sơ chứ không bắt client tra từ `/organizations/mine`:
+     * đó là thuộc tính của chính nhóm, và tra chéo chỉ chạy được với người ĐÃ là thành viên.
+     */
+    feedLayout: z.nativeEnum(FEED_LAYOUTS),
     allowJoinRequests: z.boolean(),
     /** Người đang xem đã là thành viên chưa — quyết định nút hiện "Tham gia" hay "Đã tham gia". */
     joined: z.boolean(),
@@ -218,7 +223,9 @@ export const updateOrganizationSchema = z
      * Model đã có field từ trước và hồ sơ nhóm đã trả nó ra, nhưng đường GHI thì chưa mở:
      * client sinh SDK từ một spec cũ hơn nên gửi `rules` lên và ăn 400 vì `.strict()`.
      */
-    rules: z.array(z.string().min(1).max(200)).max(10).optional(),
+    // `.trim()` TRƯỚC `.min(1)`: không có nó thì "   " đi lọt và nhóm hiện một gạch đầu
+    // dòng trắng. Zod chạy theo thứ tự khai, nên đảo hai vế là mất chốt.
+    rules: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
     /** Bảng tin bày một tin một dòng (`feed`) hay hai tin một dòng (`grid`). */
     feedLayout: z.nativeEnum(FEED_LAYOUTS).optional(),
   })

@@ -99,6 +99,7 @@ export function toOrganizationProfileDto(
     provinceCode: org.provinceCode,
     district: org.district,
     rules: org.rules,
+    feedLayout: org.feedLayout,
     allowJoinRequests: org.allowJoinRequests,
     ...extra,
   }

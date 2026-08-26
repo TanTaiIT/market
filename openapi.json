@@ -627,6 +627,13 @@
               "type": "string"
             }
           },
+          "feedLayout": {
+            "type": "string",
+            "enum": [
+              "feed",
+              "grid"
+            ]
+          },
           "allowJoinRequests": {
             "type": "boolean"
           },
@@ -646,6 +653,7 @@
           "memberCount",
           "postsThisWeek",
           "rules",
+          "feedLayout",
           "allowJoinRequests",
           "joined"
         ]
