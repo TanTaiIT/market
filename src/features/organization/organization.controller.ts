@@ -78,6 +78,15 @@ export const organizationController = {
     success(res, { message: 'Đã cập nhật trạng thái', data: toOrganizationDto(org) })
   }),
 
+  // PATCH /organizations/:organizationId/visibility  (master)
+  setVisibility: catchAsync(async (req, res) => {
+    const org = await organizationService.setVisibility(
+      req.params.organizationId,
+      req.body.isPublic,
+    )
+    success(res, { message: 'Đã đổi chế độ hiển thị', data: toOrganizationDto(org) })
+  }),
+
   // PATCH /organizations/:organizationId/slug  (master)
   changeSlug: catchAsync(async (req, res) => {
     const org = await organizationService.changeSlug(req.params.organizationId, req.body.slug)

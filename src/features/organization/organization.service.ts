@@ -455,6 +455,19 @@ export const organizationService = {
     return updated
   },
 
+  /**
+   * Công khai ↔ riêng tư — quyền MASTER, xem `setOrgVisibilitySchema`.
+   *
+   * Chuyển sang riêng tư có hiệu lực NGAY và có hậu quả thật: nhóm rơi khỏi tìm kiếm, hồ sơ
+   * trả 404 cho mọi người ngoài, và mọi link đã phát ra ngoài chết theo. Đường vào duy nhất
+   * còn lại là mã tham gia.
+   */
+  async setVisibility(organizationId: string, isPublic: boolean) {
+    const org = await organizationRepository.updateById(organizationId, { isPublic })
+    if (!org) throw new NotFoundError('Organization not found')
+    return org
+  },
+
   async setStatus(organizationId: string, status: TenantStatus) {
     const org = await organizationRepository.updateById(organizationId, { status })
     if (!org) throw new NotFoundError('Organization not found')

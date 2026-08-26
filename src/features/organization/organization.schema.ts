@@ -23,6 +23,14 @@ export const organizationSummarySchema = z
     provinceCode: z.string().nullable(),
     /** Union thật, không phải `string`: client dựng bộ lọc + nhãn từ đúng tập này. */
     status: z.nativeEnum(TENANT_STATUS),
+    /**
+     * Nhóm có lộ ra ngoài không. `false` = riêng tư: không vào tìm kiếm, hồ sơ trả 404 cho
+     * người ngoài, và chỉ xin vào được bằng MÃ chứ không bằng slug.
+     *
+     * Trả ở DTO này vì đây là bảng của master — nơi duy nhất đổi được nó. Hồ sơ công khai KHÔNG
+     * cần: nhóm riêng tư vốn đã 404 ở đó, nên trả thêm một cờ chỉ để nói "đúng, nó riêng tư".
+     */
+    isPublic: z.boolean(),
   })
   .openapi('Organization')
 
@@ -76,6 +84,14 @@ export const organizationProfileSchema = z
      */
     feedLayout: z.nativeEnum(FEED_LAYOUTS),
     allowJoinRequests: z.boolean(),
+    /**
+     * Nhóm có nhận tin từ người KHÔNG phải thành viên không.
+     *
+     * Trả ở hồ sơ vì client phải quyết định có vẽ nút "Đăng tin vào nhóm" cho người ngoài hay
+     * không — cùng lý do `allowJoinRequests` nằm đây. Vẽ nút khi nhóm đã đóng cửa là dẫn thẳng
+     * người dùng tới một lỗi 400 từ `routeListing`.
+     */
+    allowOutsiderPosts: z.boolean(),
     /** Người đang xem đã là thành viên chưa — quyết định nút hiện "Tham gia" hay "Đã tham gia". */
     joined: z.boolean(),
   })
@@ -237,6 +253,19 @@ export const setOrgStatusSchema = z
   .strict()
   .openapi('SetOrganizationStatus')
 
+/**
+ * Đổi chế độ hiển thị của nhóm — quyền MASTER.
+ *
+ * Cố tình KHÔNG gộp vào `updateOrganizationSchema`: route đó gác bằng `requireOrgAdmin`, nên
+ * gộp là trao cho quản trị nhóm quyền tự rút nhóm mình khỏi sàn. Khả năng khám phá là chuyện
+ * của cả sàn, không phải quyền tự trị của một nhóm — vì vậy nó đi cùng họ với `/status` và
+ * `/slug`, những thao tác master khác cũng khoá theo `:organizationId`.
+ */
+export const setOrgVisibilitySchema = z
+  .object({ isPublic: z.boolean() })
+  .strict()
+  .openapi('SetOrgVisibility')
+
 export const changeOrgSlugSchema = z
   .object({ slug: organizationSlugSchema })
   .strict()
@@ -249,6 +278,7 @@ export type OrganizationSummaryDto = z.infer<typeof organizationSummarySchema>
 export type OrganizationLookupDto = z.infer<typeof organizationLookupSchema>
 export type OrganizationProfileDto = z.infer<typeof organizationProfileSchema>
 export type OrganizationAdminQuery = z.infer<typeof organizationAdminQuerySchema>
+export type SetOrgVisibilityInput = z.infer<typeof setOrgVisibilitySchema>
 
 registry.register('Organization', organizationSummarySchema)
 registry.register('OrganizationLookup', organizationLookupSchema)

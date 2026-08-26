@@ -15,6 +15,7 @@ import {
   grantOrgAdminSchema,
   joinCodeParamsSchema,
   setOrgStatusSchema,
+  setOrgVisibilitySchema,
   updateOrganizationSchema,
   changeOrgSlugSchema,
   slugAvailabilityQuerySchema,
@@ -140,6 +141,13 @@ router.patch(
   requireMaster,
   validate({ params: organizationParamsSchema, body: setOrgStatusSchema }),
   organizationController.setStatus,
+)
+router.patch(
+  '/:organizationId/visibility',
+  authenticate,
+  requireMaster,
+  validate({ params: organizationParamsSchema, body: setOrgVisibilitySchema }),
+  organizationController.setVisibility,
 )
 router.patch(
   '/:organizationId/slug',
@@ -300,6 +308,27 @@ registry.registerPath({
     body: { content: { 'application/json': { schema: setOrgStatusSchema } } },
   },
   responses: { 200: jsonResponse('Đã cập nhật', orgResponse), 403: notMaster },
+})
+
+registry.registerPath({
+  method: 'patch',
+  path: '/organizations/{organizationId}/visibility',
+  operationId: 'setOrganizationVisibility',
+  tags: ['Organization'],
+  summary: 'Công khai ↔ riêng tư (master)',
+  description:
+    'Riêng tư = rơi khỏi tìm kiếm, hồ sơ trả 404 cho người ngoài, và chỉ xin vào được bằng ' +
+    'MÃ chứ không bằng slug. Có hiệu lực ngay; mọi link đã phát ra ngoài chết theo.',
+  ...protectedRoute,
+  request: {
+    params: organizationParamsSchema,
+    body: { content: { 'application/json': { schema: setOrgVisibilitySchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã cập nhật', orgResponse),
+    403: notMaster,
+    404: errorResponse('Không tìm thấy tổ chức'),
+  },
 })
 
 registry.registerPath({
