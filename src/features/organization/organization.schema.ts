@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { ORG_TYPES, TENANT_STATUS, VERIFICATION_TIERS } from '../../common/constants'
+import { FEED_LAYOUTS, ORG_TYPES, TENANT_STATUS, VERIFICATION_TIERS } from '../../common/constants'
 import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 
 export const organizationSlugSchema = z
@@ -128,6 +128,12 @@ export const myOrganizationSchema = z
     provinceCode: z.string().nullable(),
     role: z.string(),
     unitId: z.string().nullable(),
+    /**
+     * Kiểu bày bảng tin của org này. Trả ở ĐÂY chứ không ở một endpoint cấu hình riêng: client
+     * đã gọi `/organizations/mine` để dựng bộ chuyển tổ chức, nên nó có sẵn layout của mọi org
+     * mình thuộc về mà không tốn thêm lượt nào lúc đổi org.
+     */
+    feedLayout: z.nativeEnum(FEED_LAYOUTS),
   })
   .openapi('MyOrganization')
 
@@ -205,6 +211,16 @@ export const updateOrganizationSchema = z
      * Tắt = nhóm kín, chỉ thành viên đăng được.
      */
     allowOutsiderPosts: z.boolean().optional(),
+    /**
+     * Nội quy nhóm. Mảng RỖNG nghĩa là xoá hết, khác hẳn không gửi field (giữ nguyên) —
+     * thiếu phân biệt đó thì không có cách nào gỡ nội quy cuối cùng.
+     *
+     * Model đã có field từ trước và hồ sơ nhóm đã trả nó ra, nhưng đường GHI thì chưa mở:
+     * client sinh SDK từ một spec cũ hơn nên gửi `rules` lên và ăn 400 vì `.strict()`.
+     */
+    rules: z.array(z.string().min(1).max(200)).max(10).optional(),
+    /** Bảng tin bày một tin một dòng (`feed`) hay hai tin một dòng (`grid`). */
+    feedLayout: z.nativeEnum(FEED_LAYOUTS).optional(),
   })
   .strict()
   .openapi('UpdateOrganization')

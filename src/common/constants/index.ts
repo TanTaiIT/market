@@ -166,6 +166,23 @@ export const ORG_CAPABILITY_PRESETS: Record<OrgType, OrgCapabilities> = {
 }
 
 /**
+ * Bảng tin của một nhóm bày theo kiểu nào.
+ *
+ * `feed` — mỗi tin một dòng, đọc được cả mô tả và ảnh lớn mà không phải mở ra. Hợp với nhóm
+ *   ít tin, nơi mỗi tin đáng dừng lại đọc.
+ * `grid` — hai tin một dòng, chỉ ảnh + tên + giá. Hợp với nhóm nhiều tin, nơi người ta lướt
+ *   tìm bằng mắt chứ không đọc.
+ *
+ * Đây là lựa chọn của QUẢN TRỊ NHÓM, không phải của từng người xem: bảng tin là không gian
+ * chung của trường, và người dựng nó biết nhóm mình đang ở dạng nào.
+ */
+export const FEED_LAYOUTS = {
+  FEED: 'feed',
+  GRID: 'grid',
+} as const
+export type FeedLayout = (typeof FEED_LAYOUTS)[keyof typeof FEED_LAYOUTS]
+
+/**
  * Tin hiển thị ở đâu — và từ v2, đây cũng là KHOÁ ĐỊNH TUYẾN hàng đợi duyệt.
  *
  * Quyết định Q3 chọn "giới hạn hiển thị": tin muốn ra trang công khai phải qua manager danh

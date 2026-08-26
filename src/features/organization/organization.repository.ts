@@ -101,6 +101,20 @@ export const organizationRepository = {
     return Organization.create([data], { session })
   },
 
+  /**
+   * Nhiều org trong MỘT lượt — đầu vào của mọi chỗ phải ghép org vào một danh sách.
+   *
+   * Không đi qua `memo` như `findActiveById`: cache đó theo từng id, gọi lô sẽ vừa trượt
+   * cache vừa phải ghép lại — mà một `$in` trên `_id` thì đã là truy vấn rẻ nhất có thể.
+   *
+   * Giữ nguyên `deletedAt: null` chứ không lọc `ACTIVE`: người gọi cần phân biệt "org bị
+   * khoá" với "org không còn", và bản thân danh sách trả về đã cho họ làm việc đó.
+   */
+  findByIds(ids: Types.ObjectId[]): Promise<IOrganizationDocument[]> {
+    if (ids.length === 0) return Promise.resolve([])
+    return Organization.find({ _id: { $in: ids }, deletedAt: null }).exec()
+  },
+
   findById(id: string | Types.ObjectId): Promise<IOrganizationDocument | null> {
     return Organization.findOne({ _id: id, deletedAt: null }).exec()
   },

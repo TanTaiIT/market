@@ -123,12 +123,14 @@ export const inviteService = {
     await inviteRepository.expireStale(new Date())
     const rows = await inviteRepository.listPendingForUser(userId)
 
-    const orgs = await Promise.all(
-      rows.map((row) => organizationRepository.findById(row.organizationId)),
-    )
+    // Một lượt cho cả hộp thư, không phải một truy vấn mỗi lời mời.
+    const orgs = await organizationRepository.findByIds(rows.map((row) => row.organizationId))
+    const byId = new Map(orgs.map((org) => [org._id.toString(), org]))
+
+    // Lời mời trỏ vào org đã xoá thì bỏ đi: người nhận bấm vào cũng không tới đâu.
     return rows
-      .map((row, index) => {
-        const org = orgs[index]
+      .map((row) => {
+        const org = byId.get(row.organizationId.toString())
         return org ? toMyInviteDto(row, org) : null
       })
       .filter((row) => row !== null)

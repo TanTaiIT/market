@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
 import {
+  FEED_LAYOUTS,
+  FeedLayout,
   ORG_TYPES,
   ORG_CAPABILITY_PRESETS,
   OrgCapabilities,
@@ -51,6 +53,8 @@ export interface IOrganization {
   isPublic: boolean
   /** Nội quy nhóm, do admin nhóm tự soạn. Hiện trên hồ sơ nhóm cho người chưa vào đọc trước. */
   rules: string[]
+  /** Bảng tin bày một tin một dòng hay hai tin một dòng — xem `FEED_LAYOUTS`. */
+  feedLayout: FeedLayout
   allowJoinRequests: boolean
   /**
    * Nhóm có nhận tin từ người KHÔNG phải thành viên không.
@@ -109,6 +113,11 @@ const organizationSchema = new Schema<IOrganizationDocument>(
 
     isPublic: { type: Boolean, default: true },
     rules: { type: [String], default: [] },
+    feedLayout: {
+      type: String,
+      enum: Object.values(FEED_LAYOUTS),
+      default: FEED_LAYOUTS.FEED,
+    },
     allowJoinRequests: { type: Boolean, default: true },
     allowOutsiderPosts: { type: Boolean, default: true },
 

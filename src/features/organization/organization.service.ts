@@ -234,6 +234,8 @@ export const organizationService = {
     if (input.coverUrl !== undefined) org.coverUrl = input.coverUrl
     if (input.allowJoinRequests !== undefined) org.allowJoinRequests = input.allowJoinRequests
     if (input.allowOutsiderPosts !== undefined) org.allowOutsiderPosts = input.allowOutsiderPosts
+    if (input.rules !== undefined) org.rules = input.rules
+    if (input.feedLayout !== undefined) org.feedLayout = input.feedLayout
 
     await org.save()
     return org
@@ -282,16 +284,20 @@ export const organizationService = {
   async listMine(userId: string) {
     const memberships = await membershipRepository.listActiveByUser(userId)
 
-    const rows = await Promise.all(
-      memberships.map(async (m) => {
-        const org = await organizationRepository.findById(m.organizationId)
-        return org ? { org, membership: m } : null
-      }),
-    )
+    // Nạp một lượt rồi ghép trong bộ nhớ: bản cũ bắn một truy vấn CHO MỖI org người dùng
+    // thuộc về, và đây là đường chạy mỗi lần mở app.
+    const orgs = await organizationRepository.findByIds(memberships.map((m) => m.organizationId))
+    const byId = new Map(orgs.map((org) => [org._id.toString(), org]))
 
-    // Org đã bị xoá mềm thì bỏ khỏi danh sách thay vì trả một dòng rỗng: người dùng không chọn
-    // được nó, hiện ra chỉ để họ bấm vào rồi ăn lỗi.
-    return rows.filter((row) => row !== null).map(toMyOrganizationDto)
+    // Org đã bị xoá mềm thì vắng khỏi `byId` và bị bỏ khỏi danh sách, thay vì trả một dòng
+    // rỗng: người dùng không chọn được nó, hiện ra chỉ để họ bấm vào rồi ăn lỗi.
+    return memberships
+      .map((membership) => {
+        const org = byId.get(membership.organizationId.toString())
+        return org ? { org, membership } : null
+      })
+      .filter((row) => row !== null)
+      .map(toMyOrganizationDto)
   },
 
   /**

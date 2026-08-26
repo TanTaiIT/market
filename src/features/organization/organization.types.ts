@@ -52,6 +52,7 @@ export function toMyOrganizationDto(row: {
     provinceCode: row.org.provinceCode,
     role: row.membership.role,
     unitId: row.membership.unitId?.toString() ?? null,
+    feedLayout: row.org.feedLayout,
   }
 }
 
