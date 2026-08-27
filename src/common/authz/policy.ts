@@ -22,6 +22,8 @@ export interface Grant {
   categoryId?: string | null
   /** Rỗng hoặc `null` = TOÀN QUỐC. Không phải "không tỉnh nào". */
   provinceCodes?: string[] | null
+  /** Phường/xã của scope `category_ward`; đi kèm ĐÚNG một tỉnh trong `provinceCodes`. */
+  wardCodes?: string[] | null
 }
 
 /** Tin ở trục org: `unitId` là nhóm con của người đăng, `null` khi org phẳng. */
@@ -30,10 +32,14 @@ export interface OrgTarget {
   unitId?: string | null
 }
 
-/** Tin ở trục danh mục: luôn có đủ cả hai, `province` là snapshot cứng trên bản ghi tin. */
+/**
+ * Ô của một tin ở trục danh mục — `province`/`ward` là snapshot cứng trên bản ghi tin.
+ * `wardCode: null` = tin công khai CŨ trước migration ward-axis, chỉ tầng tỉnh đỡ được.
+ */
 export interface CategoryTarget {
   categoryId: string
   provinceCode: string
+  wardCode: string | null
 }
 
 function sameId(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -110,18 +116,31 @@ export function canModerateAnyInOrg(grants: Grant[], orgId: string): boolean {
 }
 
 /**
- * Duyệt tin ở TRỤC DANH MỤC. Hai trục không giao nhau: hàm này không bao giờ nhìn tới `orgId`,
- * và `canModerateOrg` không bao giờ nhìn tới `categoryId`.
+ * Duyệt tin ở TRỤC DANH MỤC — hai tầng, tỉnh phủ trên phường.
+ *
+ * Hai trục không giao nhau: hàm này không bao giờ nhìn tới `orgId`, và `canModerateOrg` không
+ * bao giờ nhìn tới `categoryId`. Trong trục này thì grant cấp tỉnh phủ MỌI phường của tỉnh đó
+ * (kể cả phường tách ra sau này) — nhờ vậy ô phường chưa có ai vẫn có người đỡ trước khi rơi
+ * xuống master, thay vì 3.321 phường × N danh mục đổ hết về một người.
  */
 export function canModerateCategory(grants: Grant[], target: CategoryTarget): boolean {
   if (isMaster(grants)) return true
 
-  return grants.some(
-    (g) =>
-      g.scopeType === SCOPE_TYPES.CATEGORY_PROVINCE &&
-      sameId(g.categoryId, target.categoryId) &&
-      coversProvince(g, target.provinceCode),
-  )
+  return grants.some((g) => {
+    if (!sameId(g.categoryId, target.categoryId)) return false
+
+    if (g.scopeType === SCOPE_TYPES.CATEGORY_PROVINCE) {
+      return coversProvince(g, target.provinceCode)
+    }
+    if (g.scopeType === SCOPE_TYPES.CATEGORY_WARD) {
+      return (
+        target.wardCode !== null &&
+        (g.provinceCodes ?? []).includes(target.provinceCode) &&
+        (g.wardCodes ?? []).includes(target.wardCode)
+      )
+    }
+    return false
+  })
 }
 
 /**
@@ -134,6 +153,7 @@ export interface ListingTarget {
   unitId: string | null
   categoryId: string
   provinceCode: string | null
+  wardCode: string | null
 }
 
 /**
@@ -148,6 +168,7 @@ export function canModerateListing(grants: Grant[], listing: ListingTarget): boo
       // `''` không khớp tỉnh nào, nhưng grant toàn quốc (`provinceCodes` rỗng) vẫn phủ được —
       // đúng ý: tin công khai thiếu tỉnh chỉ master và người phụ trách toàn quốc mới đụng.
       provinceCode: listing.provinceCode ?? '',
+      wardCode: listing.wardCode,
     })
   }
   return canModerateOrg(grants, {
@@ -163,14 +184,32 @@ function covers(outer: Grant, inner: Grant): boolean {
     if (inner.scopeType === SCOPE_TYPES.ORG_UNIT) return sameId(outer.orgId, inner.orgId)
     return false
   }
+
+  const geoScopes: ScopeType[] = [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]
+  if (!geoScopes.includes(outer.scopeType)) return false
+  // Cùng danh mục là điều kiện cần của cả hai tầng: phạm vi địa lý chỉ có nghĩa bên trong một
+  // danh mục, phủ tỉnh của danh mục khác không cho quyền gì ở đây.
+  if (!sameId(outer.categoryId, inner.categoryId)) return false
+
   if (outer.scopeType === SCOPE_TYPES.CATEGORY_PROVINCE) {
-    return (
-      inner.scopeType === SCOPE_TYPES.CATEGORY_PROVINCE &&
-      sameId(outer.categoryId, inner.categoryId) &&
-      coversProvinces(outer, inner)
-    )
+    if (inner.scopeType === SCOPE_TYPES.CATEGORY_PROVINCE) return coversProvinces(outer, inner)
+    // Cấp xuống tầng phường: người phụ trách tỉnh chia tải cho từng phường trong tỉnh mình.
+    if (inner.scopeType === SCOPE_TYPES.CATEGORY_WARD) {
+      const provinces = inner.provinceCodes ?? []
+      return provinces.length > 0 && provinces.every((p) => coversProvince(outer, p))
+    }
+    return false
   }
-  return false
+
+  // Người phụ trách phường chỉ cấp lại được TRONG chính những phường mình giữ.
+  if (inner.scopeType !== SCOPE_TYPES.CATEGORY_WARD) return false
+  const outerWards = outer.wardCodes ?? []
+  const innerWards = inner.wardCodes ?? []
+  return (
+    (inner.provinceCodes ?? []).every((p) => (outer.provinceCodes ?? []).includes(p)) &&
+    innerWards.length > 0 &&
+    innerWards.every((w) => outerWards.includes(w))
+  )
 }
 
 /**

@@ -20,6 +20,7 @@ import {
   ListingStatus,
   MASTER_DISPLAY_NAME,
   MODERATION_QUEUE,
+  SCOPE_TYPES,
   ModerationQueue,
   VN_PROVINCE_NAMES,
 } from '../../common/constants'
@@ -256,6 +257,41 @@ export const moderationService = {
     }
   },
 
+  /**
+   * Tổng quan của TRỤC DANH MỤC — bản đối xứng của `overview` cho ô (danh mục × phường).
+   *
+   * KHÔNG có `users`/`openReports`: cả hai là số của MỘT tổ chức (`memberships` và `reports` đều
+   * là collection có tenant), còn trục danh mục không có khái niệm thành viên. Số tin thì đi đúng
+   * đường `overview` đang đi — `moderationStats` chạy qua `tenantPlugin`, nên scope do
+   * `requireCategoryModerator` dựng đã cắt sẵn theo ô của người gọi; service KHÔNG lọc lần nữa,
+   * lọc ở hai nơi là mở đường cho hai kết quả khác nhau.
+   */
+  async publicOverview() {
+    const [stats, categories] = await Promise.all([
+      listingService.moderationStats(TREND_DAYS),
+      categoryService.list({ includeInactive: true }),
+    ])
+
+    const countOf = (status: string) => stats.byStatus.find((row) => row._id === status)?.count ?? 0
+    const nameOf = (id: string) => categories.find((c) => c.id === id)?.name ?? 'Khác'
+
+    return {
+      pending: countOf(LISTING_STATUS.PENDING),
+      live: countOf(LISTING_STATUS.ACTIVE),
+      hidden: countOf(LISTING_STATUS.HIDDEN),
+      rejected: countOf(LISTING_STATUS.REJECTED),
+      trend: stats.byDay.map((row) => ({
+        day: row._id,
+        approved: row.approved,
+        pending: row.pending,
+      })),
+      categories: stats.byCategory.map((row) => ({
+        categoryId: row._id.toString(),
+        name: nameOf(row._id.toString()),
+        count: row.count,
+      })),
+    }
+  },
   async listings(query: ModListingQuery) {
     const pagination = parsePagination(query)
     const { items, total } = await listingService.listForModeration(query.status, pagination)
@@ -359,19 +395,36 @@ export const moderationService = {
 
     // Một query cho MỌI danh mục rồi nhóm trong bộ nhớ. Hỏi từng danh mục một là N+1 ngay trên
     // màn hình mà master mở thường xuyên nhất.
-    const grants = await roleGrantRepository.listCategoryProvinceGrants()
-    const byCategory = new Map<string, { nationwide: boolean; covered: Set<string> }>()
+    const grants = await roleGrantRepository.listCategoryAxisGrants()
+    const byCategory = new Map<
+      string,
+      { nationwide: boolean; covered: Set<string>; partial: Set<string> }
+    >()
     for (const grant of grants) {
       const key = grant.categoryId!.toString()
-      const entry = byCategory.get(key) ?? { nationwide: false, covered: new Set<string>() }
-      if (grant.provinceCodes.length === 0) entry.nationwide = true
-      grant.provinceCodes.forEach((code) => entry.covered.add(code))
+      const entry = byCategory.get(key) ?? {
+        nationwide: false,
+        covered: new Set<string>(),
+        partial: new Set<string>(),
+      }
+      // Grant cấp PHƯỜNG chỉ phủ MỘT PHẦN tỉnh. Gộp nó vào `covered` là báo với master rằng tỉnh
+      // đó đã có người lo — sai đúng chiều nguy hiểm: master thôi không tuyển thêm ai nữa.
+      if (grant.scopeType === SCOPE_TYPES.CATEGORY_WARD) {
+        grant.provinceCodes.forEach((code) => entry.partial.add(code))
+      } else {
+        if (grant.provinceCodes.length === 0) entry.nationwide = true
+        grant.provinceCodes.forEach((code) => entry.covered.add(code))
+      }
       byCategory.set(key, entry)
     }
 
     const cells = []
     for (const category of categories) {
-      const { nationwide = false, covered = new Set<string>() } = byCategory.get(category.id) ?? {}
+      const {
+        nationwide = false,
+        covered = new Set<string>(),
+        partial = new Set<string>(),
+      } = byCategory.get(category.id) ?? {}
 
       for (const province of VN_PROVINCE_NAMES) {
         const hasModerator = nationwide || covered.has(province)
@@ -383,6 +436,7 @@ export const moderationService = {
           categoryName: category.name,
           provinceCode: province,
           hasModerator,
+          partialByWard: !hasModerator && partial.has(province),
           pending,
         })
       }

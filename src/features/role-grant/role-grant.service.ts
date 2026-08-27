@@ -3,18 +3,21 @@ import { roleGrantRepository } from './role-grant.repository'
 import { toPolicyGrant, toRoleGrantDto } from './role-grant.types'
 import { userRepository } from '../user/user.repository'
 import { Grant, canGrant, canRevoke } from '../../common/authz/policy'
-import { SystemRole, ScopeType } from '../../common/constants'
-import { ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
+import { SCOPE_TYPES, SystemRole, ScopeType } from '../../common/constants'
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { logger } from '../../config/logger'
 
 export interface GrantInput {
-  userId: string
+  /** Đúng một trong hai — `createRoleGrantSchema` chốt, `resolveRecipientId` quy về id. */
+  userId?: string
+  userEmail?: string
   role: SystemRole
   scopeType: ScopeType
   orgId?: string | null
   unitId?: string | null
   categoryId?: string | null
   provinceCodes?: string[]
+  wardCodes?: string[]
 }
 
 /**
@@ -47,7 +50,33 @@ function asPolicyGrant(input: GrantInput): Grant {
     unitId: input.unitId ?? null,
     categoryId: input.categoryId ?? null,
     provinceCodes: input.provinceCodes ?? [],
+    wardCodes: input.wardCodes ?? [],
   }
+}
+
+/**
+ * Quy người nhận về `userId`.
+ *
+ * Email tồn tại vì không phải người cấp nào cũng có danh bạ để chọn ra id: manager trục
+ * (danh mục × tỉnh) không thuộc tổ chức nào, mà email là thứ họ thật sự biết về người mình
+ * định giao việc. Cùng đường `organization.grantAdmin` đã đi cho người phụ trách org — và
+ * cũng cùng giới hạn: người nhận phải CÓ TÀI KHOẢN trước, đây không phải đường mời người mới.
+ *
+ * Quy đổi trước khi `canGrant` chạy, nên email không nới thêm một chút thẩm quyền nào: vẫn
+ * đúng luật `covers()` như khi truyền id.
+ */
+async function resolveRecipientId(input: GrantInput): Promise<string> {
+  if (input.userId) return input.userId
+  // Zod đã chặn ca thiếu cả hai; giữ nhánh này để service còn đúng khi được gọi ngoài route.
+  if (!input.userEmail) throw new BadRequestError('Cần userId hoặc userEmail')
+
+  const user = await userRepository.findByEmail(input.userEmail)
+  if (!user) {
+    throw new NotFoundError(
+      `Chưa có tài khoản nào dùng email ${input.userEmail} — người nhận phải đăng ký trước`,
+    )
+  }
+  return user._id.toString()
 }
 
 export const roleGrantService = {
@@ -58,28 +87,38 @@ export const roleGrantService = {
   },
 
   async grant(actorId: string, input: GrantInput) {
+    const userId = await resolveRecipientId(input)
     const actorGrants = await this.grantsOf(actorId)
     const grant = asPolicyGrant(input)
 
-    if (!canGrant({ userId: actorId, grants: actorGrants }, { userId: input.userId, grant })) {
+    if (!canGrant({ userId: actorId, grants: actorGrants }, { userId, grant })) {
       throw new ForbiddenError('Không đủ thẩm quyền để cấp quyền này')
     }
 
     try {
       const doc = await roleGrantRepository.create({
-        userId: new Types.ObjectId(input.userId),
+        userId: new Types.ObjectId(userId),
         role: input.role,
         scopeType: input.scopeType,
         orgId: toId(input.orgId),
         unitId: toId(input.unitId),
         categoryId: toId(input.categoryId),
         provinceCodes: input.provinceCodes ?? [],
+        wardCodes: input.wardCodes ?? [],
         grantedBy: new Types.ObjectId(actorId),
       })
-      logger.info('role-grant granted', { actorId, targetUserId: input.userId, ...grant })
+      logger.info('role-grant granted', { actorId, targetUserId: userId, ...grant })
       return toRoleGrantDto(doc)
     } catch (err) {
       if ((err as { code?: number }).code === 11000) {
+        // Index unique không phân biệt danh sách phường, nên grant phường thứ hai trong cùng
+        // danh mục đụng nó. Bảng này APPEND-ONLY: sửa `wardCodes` tại chỗ là xoá vết "ai cho
+        // quyền gì, lúc nào", nên đường đúng là thu hồi rồi cấp lại với đủ danh sách.
+        if (input.scopeType === SCOPE_TYPES.CATEGORY_WARD) {
+          throw new ConflictError(
+            'Người này đã có quyền phường trong danh mục đó — thu hồi rồi cấp lại với đủ danh sách phường',
+          )
+        }
         throw new ConflictError('Người này đã có đúng quyền đó')
       }
       throw err

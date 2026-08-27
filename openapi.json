@@ -2120,6 +2120,11 @@
             "type": "string",
             "pattern": "^[0-9a-fA-F]{24}$"
           },
+          "userEmail": {
+            "type": "string",
+            "maxLength": 160,
+            "format": "email"
+          },
           "role": {
             "type": "string",
             "enum": [
@@ -2134,7 +2139,8 @@
               "system",
               "org",
               "org_unit",
-              "category_province"
+              "category_province",
+              "category_ward"
             ]
           },
           "orgId": {
@@ -2157,10 +2163,18 @@
               "maxLength": 60
             },
             "maxItems": 40
+          },
+          "wardCodes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            },
+            "maxItems": 200
           }
         },
         "required": [
-          "userId",
           "role",
           "scopeType"
         ],
@@ -2191,7 +2205,8 @@
               "system",
               "org",
               "org_unit",
-              "category_province"
+              "category_province",
+              "category_ward"
             ]
           },
           "orgId": {
@@ -2210,6 +2225,12 @@
             "pattern": "^[0-9a-fA-F]{24}$"
           },
           "provinceCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "wardCodes": {
             "type": "array",
             "items": {
               "type": "string"
@@ -2234,6 +2255,7 @@
           "unitId",
           "categoryId",
           "provinceCodes",
+          "wardCodes",
           "grantedBy",
           "grantedAt"
         ]
@@ -3064,6 +3086,9 @@
                 "hasModerator": {
                   "type": "boolean"
                 },
+                "partialByWard": {
+                  "type": "boolean"
+                },
                 "pending": {
                   "type": "number"
                 }
@@ -3073,6 +3098,7 @@
                 "categoryName",
                 "provinceCode",
                 "hasModerator",
+                "partialByWard",
                 "pending"
               ]
             }
@@ -3139,10 +3165,82 @@
           "rejected": {
             "type": "number"
           },
+          "trend": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "day": {
+                  "type": "string"
+                },
+                "approved": {
+                  "type": "number"
+                },
+                "pending": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "day",
+                "approved",
+                "pending"
+              ]
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "categoryId": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{24}$"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "count": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "categoryId",
+                "name",
+                "count"
+              ]
+            }
+          },
           "users": {
             "type": "number"
           },
           "openReports": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "pending",
+          "live",
+          "hidden",
+          "rejected",
+          "trend",
+          "categories",
+          "users",
+          "openReports"
+        ]
+      },
+      "PublicAxisOverview": {
+        "type": "object",
+        "properties": {
+          "pending": {
+            "type": "number"
+          },
+          "live": {
+            "type": "number"
+          },
+          "hidden": {
+            "type": "number"
+          },
+          "rejected": {
             "type": "number"
           },
           "trend": {
@@ -3196,8 +3294,6 @@
           "live",
           "hidden",
           "rejected",
-          "users",
-          "openReports",
           "trend",
           "categories"
         ]
@@ -8424,7 +8520,7 @@
           "RoleGrant"
         ],
         "summary": "Cấp quyền cho một người",
-        "description": "Master cấp được `manager` (cả hai loại scope) và `staff`. Manager chỉ cấp được `staff` trong đúng scope của mình. Không ai tự cấp quyền cho chính mình.",
+        "description": "Master cấp được `manager` (cả hai loại scope) và `staff`. Manager chỉ cấp được `staff` trong đúng scope của mình. Không ai tự cấp quyền cho chính mình. Người nhận đi bằng `userId` (chọn từ danh bạ) hoặc `userEmail` — đúng một trong hai; người phụ trách trục danh mục không thuộc tổ chức nào nên không có danh bạ nào tra ra `userId`.",
         "security": [
           {
             "bearerAuth": []
@@ -8471,6 +8567,16 @@
           },
           "403": {
             "description": "Không đủ thẩm quyền để cấp quyền này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Chưa có tài khoản nào dùng email đó",
             "content": {
               "application/json": {
                 "schema": {
@@ -10939,6 +11045,72 @@
                     "message",
                     "data"
                   ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không phụ trách danh mục nào",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/moderation/public-overview": {
+      "get": {
+        "operationId": "moderationPublicOverview",
+        "tags": [
+          "Moderation"
+        ],
+        "summary": "Thẻ số + biểu đồ 14 ngày cho ô (danh mục × phường) của chính mình",
+        "description": "Bản đối xứng của `/moderation/overview` ở trục danh mục. Phạm vi lấy từ role_grants của người gọi và áp ở tầng scope, không phải bộ lọc trên giao diện. Không có `users`/`openReports` — hai số đó chỉ tồn tại trong một tổ chức.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Số liệu trục danh mục",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PublicAxisOverview"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }

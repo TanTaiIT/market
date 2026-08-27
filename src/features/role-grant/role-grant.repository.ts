@@ -75,21 +75,35 @@ export const roleGrantRepository = {
   },
 
   /** Toàn bộ grant của trục danh mục, một lượt — dashboard phủ sóng tự nhóm lấy. */
-  listCategoryProvinceGrants() {
-    return RoleGrant.find({ scopeType: 'category_province', ...ACTIVE }).exec()
+  /** Grant còn hiệu lực của CẢ HAI tầng trục danh mục — ma trận phủ sóng của master. */
+  listCategoryAxisGrants() {
+    return RoleGrant.find({
+      scopeType: { $in: [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD] },
+      ...ACTIVE,
+    }).exec()
   },
 
   /**
-   * Ai đang phụ trách một ô (danh mục × tỉnh). `provinceCodes` rỗng = toàn quốc nên phải nằm
-   * trong điều kiện `$or`, không lọc bằng `$in` suông — bỏ sót nó là bỏ sót đúng nhóm manager
-   * bao phủ rộng nhất.
+   * Ai đang phụ trách một ô (danh mục × tỉnh × phường) — hỏi CẢ HAI tầng một lượt.
+   *
+   * Tầng tỉnh: `provinceCodes` rỗng = toàn quốc nên phải nằm trong `$or`, không lọc `$in` suông
+   * — bỏ sót nó là bỏ sót đúng nhóm bao phủ rộng nhất. Tầng phường: khớp đúng cặp (tỉnh, phường).
+   * Tin cũ chưa có phường (`ward = null`) chỉ còn tầng tỉnh đỡ, đúng thứ tự phân cấp.
    */
-  listByCategoryProvince(categoryId: string | Types.ObjectId, provinceCode: string) {
+  listByCategoryCell(categoryId: string | Types.ObjectId, province: string, ward: string | null) {
+    const provinceTier = {
+      scopeType: SCOPE_TYPES.CATEGORY_PROVINCE,
+      $or: [{ provinceCodes: { $size: 0 } }, { provinceCodes: province }],
+    }
+    const wardTier = {
+      scopeType: SCOPE_TYPES.CATEGORY_WARD,
+      provinceCodes: province,
+      wardCodes: ward,
+    }
     return RoleGrant.find({
-      scopeType: 'category_province',
       categoryId,
       ...ACTIVE,
-      $or: [{ provinceCodes: { $size: 0 } }, { provinceCodes: provinceCode }],
+      $or: ward ? [provinceTier, wardTier] : [provinceTier],
     }).exec()
   },
 }

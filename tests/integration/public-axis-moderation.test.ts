@@ -202,3 +202,176 @@ describe('Trục công khai — phạm vi KHÔNG được nới rộng', () => {
     expect((await statusOf(created.body.data._id))?.status).toBe('pending')
   }, 60_000)
 })
+
+/**
+ * §5.3 nói manager danh mục chia tải bằng cách cấp `staff` trong scope của mình — nhưng người
+ * họ định giao việc thường chẳng thuộc tổ chức nào, nên không có danh bạ nào tra ra `userId`.
+ * `userEmail` là đường duy nhất còn lại, và nó phải chịu đúng luật `covers()` như `userId`.
+ */
+describe('Trục công khai — manager danh mục cấp staff bằng email', () => {
+  /** Người sắp được giao việc — cố tình KHÔNG thuộc nhóm nào, đúng ca danh bạ không có ai. */
+  let helper: TestUser
+
+  beforeAll(async () => {
+    helper = await registerUser(app, 'helper@pub.local', 'Trợ lý duyệt tin')
+  })
+
+  const grant = (who: TestUser, body: Record<string, unknown>) =>
+    request(app).post('/api/v1/role-grants').set(bearer(who)).send(body)
+
+  it('cấp staff cho đúng ô của mình, chỉ bằng email', async () => {
+    const res = await grant(catManager, {
+      userEmail: helper.email,
+      role: 'staff',
+      scopeType: 'category_province',
+      categoryId: jobs,
+      provinceCodes: [HCM],
+    }).expect(201)
+
+    expect(res.body.data.userId).toBe(helper.id)
+    expect(res.body.data.categoryId).toBe(jobs)
+  }, 60_000)
+
+  it('email chưa có tài khoản → 404, không tạo grant treo', async () => {
+    await grant(catManager, {
+      userEmail: 'khong-ton-tai@pub.local',
+      role: 'staff',
+      scopeType: 'category_province',
+      categoryId: jobs,
+      provinceCodes: [HCM],
+    }).expect(404)
+  }, 60_000)
+
+  it('sang danh mục khác vẫn 403 — email không nới được phạm vi', async () => {
+    await grant(catManager, {
+      userEmail: helper.email,
+      role: 'staff',
+      scopeType: 'category_province',
+      categoryId: phones,
+      provinceCodes: [HCM],
+    }).expect(403)
+  }, 60_000)
+
+  it('gửi cả userId lẫn userEmail → 400: hai định danh có thể trỏ hai người', async () => {
+    await grant(catManager, {
+      userId: helper.id,
+      userEmail: 'khac@pub.local',
+      role: 'staff',
+      scopeType: 'category_province',
+      categoryId: jobs,
+      provinceCodes: [HCM],
+    }).expect(400)
+  }, 60_000)
+})
+
+/**
+ * Tầng phường end-to-end: master cấp ô (danh mục × phường), người được cấp chỉ thấy đúng ô đó.
+ *
+ * Dùng Lâm Đồng vì hai phường trong ví dụ nghiệp vụ — La Gi và Phước Hội — thật sự thuộc tỉnh
+ * này sau sáp nhập 01/07/2025. Test bám dữ liệu thật để không hợp lệ hoá một cặp (tỉnh, phường)
+ * không tồn tại; `isWardOfProvince` sẽ chặn ngay nếu cặp sai.
+ */
+describe('Trục công khai — tầng phường', () => {
+  const LAMDONG = 'Lâm Đồng'
+  const LAGI = 'Phường La Gi'
+  const PHUOCHOI = 'Phường Phước Hội'
+
+  let wardManager: TestUser
+  /** Người bán riêng cho nhóm test này: bậc 1 = hạn mức 5 tin chờ, đủ cho 5 lượt đăng dưới đây. */
+  let seller: TestUser
+
+  beforeAll(async () => {
+    wardManager = await registerUser(app, 'ward@pub.local', 'Phụ trách La Gi')
+    seller = await registerUser(app, 'ld-seller@pub.local', 'Người bán Lâm Đồng')
+    await setTrustLevel(seller.id, 1)
+    await grantRole({
+      userId: wardManager.id,
+      role: 'manager',
+      scopeType: 'category_ward',
+      categoryId: jobs,
+      provinceCodes: [LAMDONG],
+      wardCodes: [LAGI],
+    })
+  })
+
+  const postIn = (ward: string, title: string) =>
+    request(app)
+      .post('/api/v1/listings')
+      .set(bearer(seller))
+      .send({
+        ...listingPayload(title, jobs),
+        visibility: 'public',
+        provinceCode: LAMDONG,
+        location: { province: LAMDONG, ward },
+      })
+
+  it('chỉ thấy tin của phường mình, không thấy phường khác CÙNG tỉnh', async () => {
+    const mine = await postIn(LAGI, 'Tuyển thợ ở La Gi').expect(201)
+    const other = await postIn(PHUOCHOI, 'Tuyển thợ ở Phước Hội').expect(201)
+
+    const queue = await request(app)
+      .get('/api/v1/moderation/public-queue')
+      .set(bearer(wardManager))
+      .expect(200)
+
+    const ids = queue.body.data.map((l: { _id: string }) => l._id)
+    expect(ids).toContain(mine.body.data._id)
+    expect(ids).not.toContain(other.body.data._id)
+  }, 60_000)
+
+  it('duyệt được tin phường mình, 403 với phường khác', async () => {
+    const mine = await postIn(LAGI, 'Tin La Gi sẽ duyệt').expect(201)
+    const other = await postIn(PHUOCHOI, 'Tin Phước Hội ngoài ô').expect(201)
+
+    await request(app)
+      .patch(`/api/v1/moderation/listings/${mine.body.data._id}`)
+      .set(bearer(wardManager))
+      .send({ status: 'active' })
+      .expect(200)
+
+    await request(app)
+      .patch(`/api/v1/moderation/listings/${other.body.data._id}`)
+      .set(bearer(wardManager))
+      .send({ status: 'active' })
+      .expect(403)
+  }, 60_000)
+
+  it('tin công khai THIẾU phường bị chặn ngay lúc đăng', async () => {
+    await request(app)
+      .post('/api/v1/listings')
+      .set(bearer(seller))
+      .send({
+        title: 'Tin thiếu phường xã',
+        description: 'Mô tả đủ dài cho validation',
+        price: 1_000_000,
+        categoryId: jobs,
+        images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
+        visibility: 'public',
+        provinceCode: LAMDONG,
+      })
+      .expect(400)
+  }, 60_000)
+
+  it('master vẫn duyệt được mọi phường — fallback của ô chưa có ai phụ trách', async () => {
+    const other = await postIn(PHUOCHOI, 'Tin Phước Hội cho master').expect(201)
+
+    await request(app)
+      .patch(`/api/v1/moderation/listings/${other.body.data._id}`)
+      .set(bearer(master))
+      .send({ status: 'active' })
+      .expect(200)
+  }, 60_000)
+
+  it('tổng quan trục danh mục đếm theo đúng ô của mình', async () => {
+    const res = await request(app)
+      .get('/api/v1/moderation/public-overview')
+      .set(bearer(wardManager))
+      .expect(200)
+
+    // Không so số tuyệt đối: các nhóm test trên cùng file đã tạo/duyệt tin trong ô này, nên số
+    // đúng là số đang thay đổi. Điều cần chốt là endpoint mở được và trả đúng hình dạng.
+    expect(res.body.data).toHaveProperty('pending')
+    expect(res.body.data).toHaveProperty('trend')
+    expect(Array.isArray(res.body.data.trend)).toBe(true)
+  }, 60_000)
+})

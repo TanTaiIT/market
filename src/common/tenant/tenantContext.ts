@@ -12,8 +12,17 @@ import { TenantScopeMissingError } from './tenant.errors'
 export type PublicAxisScope =
   /** Ai cũng có: chỉ thấy tin công khai ĐÃ duyệt. */
   | { mode: 'approved' }
-  /** Manager/staff danh mục: thấy cả tin chưa duyệt, nhưng chỉ trong ô (danh mục × tỉnh) của mình. */
-  | { mode: 'moderator'; categoryIds: Types.ObjectId[]; provinceCodes: string[] | null }
+  /**
+   * Manager/staff trục danh mục: thấy cả tin chưa duyệt, nhưng chỉ trong ô của mình.
+   *
+   * `cells: null` = không giới hạn địa lý (master, hoặc grant cấp tỉnh toàn quốc). Mỗi ô:
+   * `wards: null` = cả tỉnh (grant cấp tỉnh), mảng = đúng những phường được cấp.
+   */
+  | {
+      mode: 'moderator'
+      categoryIds: Types.ObjectId[]
+      cells: { province: string; wards: string[] | null }[] | null
+    }
 
 export interface TenantScope {
   /** Org của chính request. Mọi thao tác GHI trục org luôn bị ép về đúng org này. */

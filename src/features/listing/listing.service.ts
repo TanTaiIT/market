@@ -39,6 +39,7 @@ import {
   ListingStatus,
   MODERATION_QUEUE,
   POST_VISIBILITY,
+  isWardOfProvince,
   type RejectionSeverity,
 } from '../../common/constants'
 import { slugifyWithSuffix } from '../../common/utils/slugify'
@@ -84,6 +85,7 @@ export function assertCanModerateListing(listing: IListingDocument, grants: Gran
     unitId: listing.unitId?.toString() ?? null,
     categoryId: listing.category.toString(),
     provinceCode: listing.provinceCode,
+    wardCode: listing.wardCode,
   })
   if (allowed) return
 
@@ -132,6 +134,7 @@ function toListingDoc(
   poster: { name: string; contact: string; avatar: string },
   routed: RoutingResult,
   provinceCode: string | null,
+  wardCode: string | null,
   validated: ValidatedForCategory,
 ): Partial<IListing> {
   const expiresAt = new Date(Date.now() + LISTING_TTL_DAYS * 24 * 60 * 60 * 1000)
@@ -161,6 +164,7 @@ function toListingDoc(
     // Bốn field dưới đây do thuật toán định tuyến quyết định, không do client gửi lên.
     visibility: input.visibility ?? POST_VISIBILITY.ORG_INTERNAL,
     provinceCode,
+    wardCode,
     organizationId: routed.organizationId ? new Types.ObjectId(routed.organizationId) : null,
     unitId: routed.unitId ? new Types.ObjectId(routed.unitId) : null,
     status: routed.status,
@@ -194,6 +198,31 @@ async function resolveProvinceCode(
   return null
 }
 
+/**
+ * `wardCode` là cấp thứ hai của khoá định tuyến. Nguồn DUY NHẤT là `location.ward` — không có
+ * fallback theo org như tỉnh: org có địa chỉ, nhưng "phường của org" không nói được tin này nằm
+ * ở phường nào, mà đó mới là thứ quyết định ai duyệt.
+ */
+function resolveWardCode(
+  input: CreateListingInput,
+  provinceCode: string | null,
+  visibility: string,
+): string | null {
+  const ward = input.location?.ward?.trim() ?? ''
+  if (!ward) {
+    if (visibility === POST_VISIBILITY.PUBLIC) {
+      throw new BadRequestError('Thiếu phường/xã: tin công khai cần phường để xác định người duyệt')
+    }
+    return null
+  }
+
+  // Cặp phải khớp: `provinceCode` có thể do người đăng gửi tường minh và khác tỉnh trong
+  // `location` — lúc đó (tỉnh, phường) là một ô không tồn tại, không ai duyệt được tin.
+  if (provinceCode && !isWardOfProvince(provinceCode, ward)) {
+    throw new BadRequestError(`"${ward}" không thuộc ${provinceCode}`)
+  }
+  return ward
+}
 interface TargetOrg {
   orgId: string | null
   /** Tư cách thành viên tại ĐÚNG org đích, không phải org đang nằm trong scope. */
@@ -243,8 +272,12 @@ async function resolveTargetOrg(
   }
 }
 
-async function hasCategoryModerator(categoryId: string, provinceCode: string): Promise<boolean> {
-  const grants = await roleGrantRepository.listByCategoryProvince(categoryId, provinceCode)
+async function hasCategoryModerator(
+  categoryId: string,
+  provinceCode: string,
+  wardCode: string | null,
+): Promise<boolean> {
+  const grants = await roleGrantRepository.listByCategoryCell(categoryId, provinceCode, wardCode)
   return grants.length > 0
 }
 
@@ -377,6 +410,7 @@ export const listingService = {
     const visibility = input.visibility ?? POST_VISIBILITY.ORG_INTERNAL
     const target = await resolveTargetOrg(input, author)
     const provinceCode = await resolveProvinceCode(input, target.orgId, visibility)
+    const wardCode = resolveWardCode(input, provinceCode, visibility)
     const sellerId = new Types.ObjectId(author.id)
     const categoryId = new Types.ObjectId(input.categoryId)
 
@@ -407,7 +441,7 @@ export const listingService = {
       allowOutsiderPosts: target.allowOutsiderPosts,
       hasCategoryModerator:
         visibility === POST_VISIBILITY.PUBLIC
-          ? await hasCategoryModerator(input.categoryId, provinceCode!)
+          ? await hasCategoryModerator(input.categoryId, provinceCode!, wardCode)
           : false,
       unitId: author.unitId,
       // Cờ của danh mục là phủ quyết, đứng SAU phép tính uy tín; và cổng nội dung phủ quyết
@@ -461,6 +495,7 @@ export const listingService = {
       },
       routed,
       provinceCode,
+      wardCode,
       validated,
     )
     doc.autoApproval = autoApproval

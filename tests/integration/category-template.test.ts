@@ -262,6 +262,8 @@ describe('GET /listings?attrs=', () => {
           title: `Máy hãng ${brand} bộ nhớ ${storage}`,
           visibility: 'public',
           provinceCode: 'Hồ Chí Minh',
+          // Tin công khai bắt buộc có phường (khoá định tuyến tầng dưới), xem `resolveWardCode`.
+          location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
         })
         .expect(201)
       await publishListing(res.body.data._id)

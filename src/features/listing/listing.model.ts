@@ -43,6 +43,12 @@ export interface IListing {
    * đăng chuyển tổ chức sẽ làm tin cũ nhảy hàng đợi.
    */
   provinceCode: string | null
+  /**
+   * Cấp thứ hai của khoá định tuyến: phường quyết định NGƯỜI PHỤ TRÁCH HẸP NHẤT được duyệt tin
+   * này. Snapshot cứng như `provinceCode`. `null` = tin nội bộ, hoặc tin công khai CŨ trước
+   * migration ward-axis — những tin đó chỉ còn tầng tỉnh đỡ.
+   */
+  wardCode: string | null
   /** Nhóm con của người đăng lúc đăng — staff nhóm con duyệt theo field này. */
   unitId: Types.ObjectId | null
   title: string
@@ -178,6 +184,21 @@ const listingSchema = new Schema<IListingDocument>(
       default: null,
       trim: true,
       enum: [...VN_PROVINCE_NAMES, null],
+      required(this: { visibility?: string }) {
+        return this.visibility === POST_VISIBILITY.PUBLIC
+      },
+    },
+    /*
+     * Bắt buộc với tin công khai như `provinceCode`, cùng một lý do: thiếu nó thì không biết
+     * PHƯỜNG nào duyệt. Không `enum` 3.321 phường — cặp (tỉnh, phường) đã có `isWardOfProvince`
+     * chốt ở `listing.schema.ts` và `resolveWardCode`, nhồi enum vào đây là luật thứ hai để lệch.
+     * Update validator của Mongoose chỉ chạy trên path CÓ trong update, nên tin công khai cũ
+     * (`wardCode` null) vẫn sửa/duyệt được sau migration.
+     */
+    wardCode: {
+      type: String,
+      default: null,
+      trim: true,
       required(this: { visibility?: string }) {
         return this.visibility === POST_VISIBILITY.PUBLIC
       },
@@ -355,7 +376,16 @@ listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, rankAt: 
 // Trục danh mục: bảng tin công khai (visibility + status) và hàng đợi của manager danh mục
 // (visibility + category + tỉnh).
 listingSchema.index({ visibility: 1, status: 1, rankAt: -1 })
-listingSchema.index({ visibility: 1, category: 1, provinceCode: 1, status: 1, rankAt: -1 })
+// Ô của trục danh mục là (danh mục × tỉnh × phường) nên `wardCode` đứng ngay sau `provinceCode`:
+// grant cấp tỉnh chỉ dùng tới tiền tố `…provinceCode` và vẫn khớp chính index này.
+listingSchema.index({
+  visibility: 1,
+  category: 1,
+  provinceCode: 1,
+  wardCode: 1,
+  status: 1,
+  rankAt: -1,
+})
 listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, rankAt: -1 })
 
 /*

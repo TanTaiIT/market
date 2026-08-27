@@ -36,12 +36,15 @@ registry.registerPath({
   summary: 'Cấp quyền cho một người',
   description:
     'Master cấp được `manager` (cả hai loại scope) và `staff`. Manager chỉ cấp được `staff` ' +
-    'trong đúng scope của mình. Không ai tự cấp quyền cho chính mình.',
+    'trong đúng scope của mình. Không ai tự cấp quyền cho chính mình. Người nhận đi bằng ' +
+    '`userId` (chọn từ danh bạ) hoặc `userEmail` — đúng một trong hai; người phụ trách trục ' +
+    'danh mục không thuộc tổ chức nào nên không có danh bạ nào tra ra `userId`.',
   ...protectedRoute,
   request: { body: { content: { 'application/json': { schema: createRoleGrantSchema } } } },
   responses: {
     201: jsonResponse('Đã cấp quyền', grantResponse),
     403: errorResponse('Không đủ thẩm quyền để cấp quyền này'),
+    404: errorResponse('Chưa có tài khoản nào dùng email đó'),
     409: errorResponse('Người này đã có đúng quyền đó'),
   },
 })

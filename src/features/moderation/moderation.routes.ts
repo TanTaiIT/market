@@ -15,6 +15,7 @@ import {
   setListingStatusSchema,
   auditEventSchema,
   overviewResponseSchema,
+  publicOverviewResponseSchema,
 } from './moderation.schema'
 import { listingResponseSchema } from '../listing/listing.schema'
 import { validate } from '../../middlewares/validate.middleware'
@@ -52,6 +53,13 @@ router.get(
   validate({ query: modListingQuerySchema }),
   moderationController.publicQueue,
 )
+router.get(
+  '/public-overview',
+  authenticate,
+  requireCategoryModerator,
+  moderationController.publicOverview,
+)
+
 router.get('/coverage', authenticate, requireMasterPublicAxis, moderationController.coverage)
 router.patch(
   '/listings/:id/route',
@@ -211,6 +219,23 @@ registry.registerPath({
   },
 })
 
+registry.registerPath({
+  method: 'get',
+  path: '/moderation/public-overview',
+  operationId: 'moderationPublicOverview',
+  tags: ['Moderation'],
+  summary: 'Thẻ số + biểu đồ 14 ngày cho ô (danh mục × phường) của chính mình',
+  description:
+    'Bản đối xứng của `/moderation/overview` ở trục danh mục. Phạm vi lấy từ role_grants của ' +
+    'người gọi và áp ở tầng scope, không phải bộ lọc trên giao diện. Không có `users`/' +
+    '`openReports` — hai số đó chỉ tồn tại trong một tổ chức.',
+  ...protectedRoute,
+  responses: {
+    200: jsonResponse('Số liệu trục danh mục', envelope(publicOverviewResponseSchema)),
+    401: unauthorized,
+    403: errorResponse('Không phụ trách danh mục nào'),
+  },
+})
 registry.registerPath({
   method: 'get',
   path: '/moderation/coverage',

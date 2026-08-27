@@ -53,12 +53,23 @@ function publicPredicate(scope: TenantScope): FilterQuery<unknown> | null {
     return { visibility: POST_VISIBILITY.PUBLIC, status: { $in: PUBLIC_LISTING_STATUSES } }
   }
 
-  // Người duyệt thấy cả tin CHƯA duyệt, nhưng chỉ trong ô của mình.
-  // Mảng RỖNG = không giới hạn (master), `null` ở tỉnh = toàn quốc. Cả hai đều phải là "bỏ
-  // điều kiện", không phải `$in: []` — cái đó khoá sạch chính người có quyền rộng nhất.
+  // Người duyệt thấy cả tin CHƯA duyệt, nhưng chỉ trong ô của mình. `categoryIds` rỗng và
+  // `cells: null` đều là "bỏ điều kiện" (master) — không phải `$in: []`, cái đó khoá sạch chính
+  // người có quyền rộng nhất.
   const filter: FilterQuery<unknown> = { visibility: POST_VISIBILITY.PUBLIC }
   if (axis.categoryIds.length > 0) filter.category = { $in: axis.categoryIds }
-  if (axis.provinceCodes) filter.provinceCode = { $in: axis.provinceCodes }
+  if (axis.cells) {
+    // Mỗi ô một vế: grant cấp tỉnh khớp cả tỉnh, grant cấp phường chỉ khớp đúng phường của tỉnh
+    // đó. Mảng ô RỖNG nghĩa là không được đọc ô nào -> `_id: null`, chứ không phải bỏ điều kiện:
+    // `$or: []` là query không hợp lệ, còn bỏ filter thì mở cả trục cho người không có ô nào.
+    filter.$or = axis.cells.length
+      ? axis.cells.map((cell) =>
+          cell.wards
+            ? { provinceCode: cell.province, wardCode: { $in: cell.wards } }
+            : { provinceCode: cell.province },
+        )
+      : [{ _id: null }]
+  }
   return filter
 }
 

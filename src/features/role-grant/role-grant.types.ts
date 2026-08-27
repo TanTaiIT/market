@@ -13,6 +13,7 @@ export function toPolicyGrant(doc: IRoleGrantDocument): Grant {
     unitId: doc.unitId?.toString() ?? null,
     categoryId: doc.categoryId?.toString() ?? null,
     provinceCodes: doc.provinceCodes,
+    wardCodes: doc.wardCodes,
   }
 }
 
@@ -26,6 +27,7 @@ export function toRoleGrantDto(doc: IRoleGrantDocument) {
     unitId: doc.unitId?.toString() ?? null,
     categoryId: doc.categoryId?.toString() ?? null,
     provinceCodes: doc.provinceCodes,
+    wardCodes: doc.wardCodes,
     grantedBy: doc.grantedBy?.toString() ?? null,
     grantedAt: doc.grantedAt.toISOString(),
   }

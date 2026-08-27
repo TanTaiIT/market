@@ -39,6 +39,7 @@ export const coverageSchema = z
         categoryName: z.string(),
         provinceCode: z.string(),
         hasModerator: z.boolean(),
+        partialByWard: z.boolean(),
         pending: z.number(),
       }),
     ),
@@ -81,18 +82,32 @@ export const auditEventSchema = z
   })
   .openapi('AuditEvent')
 
+/**
+ * Sáu field số dùng chung cho hai trục. Hai trục đếm cùng một thứ về TIN, chỉ khác ở chỗ trục
+ * org còn đếm được thành viên và báo cáo — nên phần chung tách ra thay vì chép hai lần.
+ */
+const overviewCountsShape = {
+  pending: z.number(),
+  live: z.number(),
+  hidden: z.number(),
+  rejected: z.number(),
+  trend: z.array(z.object({ day: z.string(), approved: z.number(), pending: z.number() })),
+  categories: z.array(z.object({ categoryId: objectId, name: z.string(), count: z.number() })),
+}
+
 export const overviewResponseSchema = z
   .object({
-    pending: z.number(),
-    live: z.number(),
-    hidden: z.number(),
-    rejected: z.number(),
+    ...overviewCountsShape,
+    /** Hai số chỉ có nghĩa trong MỘT tổ chức: `memberships` và `reports` đều có tenant. */
     users: z.number(),
     openReports: z.number(),
-    trend: z.array(z.object({ day: z.string(), approved: z.number(), pending: z.number() })),
-    categories: z.array(z.object({ categoryId: objectId, name: z.string(), count: z.number() })),
   })
   .openapi('ModerationOverview')
+
+/** Bản của TRỤC DANH MỤC: cùng số tin, bỏ hai số chỉ tồn tại trong một tổ chức. */
+export const publicOverviewResponseSchema = z
+  .object(overviewCountsShape)
+  .openapi('PublicAxisOverview')
 
 export type ModListingQuery = z.infer<typeof modListingQuerySchema>
 export type ActivityQuery = z.infer<typeof activityQuerySchema>
@@ -103,3 +118,4 @@ registry.register('RerouteListing', rerouteListingSchema)
 registry.register('CoverageMatrix', coverageSchema)
 registry.register('AuditEvent', auditEventSchema)
 registry.register('ModerationOverview', overviewResponseSchema)
+registry.register('PublicAxisOverview', publicOverviewResponseSchema)

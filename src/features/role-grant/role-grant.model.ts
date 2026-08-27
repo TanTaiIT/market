@@ -1,5 +1,11 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
-import { SYSTEM_ROLES, SCOPE_TYPES, SystemRole, ScopeType } from '../../common/constants'
+import {
+  SYSTEM_ROLES,
+  SCOPE_TYPES,
+  SystemRole,
+  ScopeType,
+  isWardOfProvince,
+} from '../../common/constants'
 
 /**
  * Một lần cấp quyền = một bản ghi. Không có cột `role` trên `users`: một người vừa có thể là
@@ -18,6 +24,14 @@ export interface IRoleGrant {
   categoryId: Types.ObjectId | null
   /** Rỗng = TOÀN QUỐC (chỉ có nghĩa với `category_province`). */
   provinceCodes: string[]
+  /**
+   * Phường/xã của scope `category_ward`, kèm ĐÚNG một tỉnh trong `provinceCodes`.
+   *
+   * Vì sao phải đi cặp: tên phường không unique toàn quốc — 243 tên lặp giữa các tỉnh, "Xã Tân
+   * Tiến" có 7 nơi — nên một mình tên phường không định danh được ô nào. Muốn hai tỉnh thì cấp
+   * hai lần; một grant là MỘT lần cấp quyền, không phải một cái giỏ.
+   */
+  wardCodes: string[]
   /** `null` = seed/migration dựng, không phải người thật cấp. */
   grantedBy: Types.ObjectId | null
   grantedAt: Date
@@ -32,10 +46,19 @@ export interface IRoleGrantDocument extends IRoleGrant, Document {
 /** Role nào đi được với scope nào. Sai cặp = quyền không có nghĩa, chặn ngay ở model. */
 const ROLE_SCOPES: Record<SystemRole, ScopeType[]> = {
   [SYSTEM_ROLES.MASTER]: [SCOPE_TYPES.SYSTEM],
-  [SYSTEM_ROLES.MANAGER]: [SCOPE_TYPES.ORG, SCOPE_TYPES.CATEGORY_PROVINCE],
+  [SYSTEM_ROLES.MANAGER]: [
+    SCOPE_TYPES.ORG,
+    SCOPE_TYPES.CATEGORY_PROVINCE,
+    SCOPE_TYPES.CATEGORY_WARD,
+  ],
   // staff ở `category_province` là cách manager danh mục chia tải: §5.3 nói manager cấp staff
   // trong scope của mình, mà scope của họ là (danh mục × tỉnh).
-  [SYSTEM_ROLES.STAFF]: [SCOPE_TYPES.ORG, SCOPE_TYPES.ORG_UNIT, SCOPE_TYPES.CATEGORY_PROVINCE],
+  [SYSTEM_ROLES.STAFF]: [
+    SCOPE_TYPES.ORG,
+    SCOPE_TYPES.ORG_UNIT,
+    SCOPE_TYPES.CATEGORY_PROVINCE,
+    SCOPE_TYPES.CATEGORY_WARD,
+  ],
 }
 
 /** Field nào BẮT BUỘC có và field nào BẮT BUỘC rỗng, theo từng scope. */
@@ -44,6 +67,9 @@ const SCOPE_SHAPE: Record<ScopeType, { required: (keyof IRoleGrant)[] }> = {
   [SCOPE_TYPES.ORG]: { required: ['orgId'] },
   [SCOPE_TYPES.ORG_UNIT]: { required: ['orgId', 'unitId'] },
   [SCOPE_TYPES.CATEGORY_PROVINCE]: { required: ['categoryId'] },
+  // Tỉnh + phường không nằm trong `required` vì chúng là ARRAY: `!this.get(field)` không bắt
+  // được mảng rỗng. Hình dạng của chúng do khối kiểm riêng dưới `enforceScopeShape` lo.
+  [SCOPE_TYPES.CATEGORY_WARD]: { required: ['categoryId'] },
 }
 
 const SCOPE_FIELDS = ['orgId', 'unitId', 'categoryId'] as const
@@ -58,6 +84,7 @@ const roleGrantSchema = new Schema<IRoleGrantDocument>(
     unitId: { type: Schema.Types.ObjectId, ref: 'OrgUnit', default: null },
     categoryId: { type: Schema.Types.ObjectId, ref: 'Category', default: null },
     provinceCodes: { type: [String], default: [] },
+    wardCodes: { type: [String], default: [] },
 
     grantedBy: { type: Schema.Types.ObjectId, ref: 'User', default: null },
     grantedAt: { type: Date, default: () => new Date() },
@@ -84,8 +111,24 @@ roleGrantSchema.pre('validate', function enforceScopeShape(next) {
       return next(new Error(`scope "${this.scopeType}" không được mang ${field}`))
     }
   }
-  if (this.scopeType !== SCOPE_TYPES.CATEGORY_PROVINCE && this.provinceCodes.length > 0) {
-    return next(new Error('provinceCodes chỉ có nghĩa với scope category_province'))
+  const geoScopes: ScopeType[] = [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]
+  if (!geoScopes.includes(this.scopeType) && this.provinceCodes.length > 0) {
+    return next(new Error('provinceCodes chỉ có nghĩa với scope trục danh mục'))
+  }
+
+  if (this.scopeType === SCOPE_TYPES.CATEGORY_WARD) {
+    // Đúng một tỉnh: cặp (tỉnh, phường) là thứ duy nhất định danh được ô — xem `wardCodes`.
+    if (this.provinceCodes.length !== 1) {
+      return next(new Error('scope category_ward cần đúng một tỉnh trong provinceCodes'))
+    }
+    if (this.wardCodes.length === 0) {
+      return next(new Error('scope category_ward cần ít nhất một phường'))
+    }
+    const province = this.provinceCodes[0]
+    const stray = this.wardCodes.find((ward) => !isWardOfProvince(province, ward))
+    if (stray) return next(new Error(`"${stray}" không thuộc ${province}`))
+  } else if (this.wardCodes.length > 0) {
+    return next(new Error('wardCodes chỉ có nghĩa với scope category_ward'))
   }
   next()
 })

@@ -139,6 +139,7 @@ export async function grantRole(input: {
   unitId?: string
   categoryId?: string
   provinceCodes?: string[]
+  wardCodes?: string[]
 }) {
   const { RoleGrant } = await import('../../src/features/role-grant/role-grant.model')
   return RoleGrant.create(input)

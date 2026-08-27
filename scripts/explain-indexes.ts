@@ -263,17 +263,17 @@ function memberScope(orgId: Types.ObjectId): TenantScope {
 }
 
 /**
- * Người duyệt trục danh mục: thấy cả tin CHƯA duyệt. `categoryIds` rỗng / `provinceCodes` null
- * = master (không giới hạn ô) — đúng như `publicPredicate` diễn giải.
+ * Người duyệt trục danh mục: thấy cả tin CHƯA duyệt. `categoryIds` rỗng / `cells` null = master
+ * (không giới hạn ô) — đúng như `publicPredicate` diễn giải.
  */
 function moderatorScope(
   categoryIds: Types.ObjectId[],
-  provinceCodes: string[] | null,
+  cells: { province: string; wards: string[] | null }[] | null,
 ): TenantScope {
   return {
     ownOrgId: null,
     readableOrgIds: [],
-    publicAxis: { mode: 'moderator', categoryIds, provinceCodes },
+    publicAxis: { mode: 'moderator', categoryIds, cells },
   }
 }
 
@@ -432,13 +432,13 @@ const CASES: Case[] = [
   {
     id: 'listing/moderation-queue',
     label: 'Hàng đợi duyệt của manager danh mục',
-    ref: 'nền — kỳ vọng {visibility, category, provinceCode, status, createdAt}',
+    ref: 'nền — kỳ vọng {visibility, category, provinceCode, wardCode, status, createdAt}',
     model: Listing,
     needs: ['categoryId'],
     scope: (ctx) =>
       moderatorScope(
         [req(ctx.categoryId, 'categoryId')],
-        ctx.provinceCode ? [ctx.provinceCode] : null,
+        ctx.provinceCode ? [{ province: ctx.provinceCode, wards: null }] : null,
       ),
     build: () =>
       Listing.find({ status: { $in: [...MODERATABLE_STATUSES] } })

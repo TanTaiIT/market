@@ -123,6 +123,11 @@ export const SCOPE_TYPES = {
   ORG: 'org',
   ORG_UNIT: 'org_unit',
   CATEGORY_PROVINCE: 'category_province',
+  /**
+   * Ô hẹp hơn một bậc: (danh mục × PHƯỜNG). Tầng dưới của `category_province` — grant cấp tỉnh
+   * phủ mọi phường trong tỉnh, phường chưa có ai thì tin rơi lên tỉnh rồi mới tới master.
+   */
+  CATEGORY_WARD: 'category_ward',
 } as const
 export type ScopeType = (typeof SCOPE_TYPES)[keyof typeof SCOPE_TYPES]
 

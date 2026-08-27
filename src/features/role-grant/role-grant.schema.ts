@@ -9,10 +9,16 @@ export const roleGrantParamsSchema = z.object({ id: objectId })
 /**
  * Hình dạng scope (field nào bắt buộc theo `scopeType`) do MODEL kiểm, không lặp lại ở đây:
  * một luật nằm ở hai chỗ là một luật sẽ lệch. Zod chỉ lo kiểu và giới hạn.
+ *
+ * Người nhận tới bằng `userId` khi người cấp chọn được từ danh bạ, bằng `userEmail` khi không:
+ * manager trục (danh mục × tỉnh) thường chẳng thuộc tổ chức nào, mà `GET /memberships` đòi
+ * `requireMembership` — với họ danh bạ vĩnh viễn rỗng. Đúng MỘT trong hai, vì hai định danh
+ * gửi cùng lúc có thể trỏ hai người khác nhau và không có luật nào nói cái nào thắng.
  */
 export const createRoleGrantSchema = z
   .object({
-    userId: objectId,
+    userId: objectId.optional(),
+    userEmail: z.string().trim().email().max(160).optional(),
     role: z.nativeEnum(SYSTEM_ROLES),
     scopeType: z.nativeEnum(SCOPE_TYPES),
     orgId: objectId.optional(),
@@ -20,8 +26,19 @@ export const createRoleGrantSchema = z
     categoryId: objectId.optional(),
     /** Rỗng/bỏ trống = toàn quốc. Chỉ có nghĩa với scope `category_province`. */
     provinceCodes: z.array(z.string().min(1).max(60)).max(40).optional(),
+    /** Chỉ có nghĩa với scope `category_ward`; đi kèm đúng một tỉnh ở `provinceCodes`. */
+    wardCodes: z.array(z.string().min(1).max(120)).max(200).optional(),
   })
   .strict()
+  .superRefine((input, ctx) => {
+    if (Boolean(input.userId) === Boolean(input.userEmail)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['userId'],
+        message: 'Cần đúng một trong hai: userId hoặc userEmail',
+      })
+    }
+  })
   .openapi('CreateRoleGrant')
 
 export const roleGrantResponseSchema = z
@@ -34,6 +51,7 @@ export const roleGrantResponseSchema = z
     unitId: objectId.nullable(),
     categoryId: objectId.nullable(),
     provinceCodes: z.array(z.string()),
+    wardCodes: z.array(z.string()),
     grantedBy: objectId.nullable(),
     grantedAt: z.string().datetime(),
   })

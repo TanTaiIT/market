@@ -10,6 +10,11 @@ export const moderationController = {
     success(res, { message: 'Hàng đợi trục danh mục', data: items, meta })
   }),
 
+  // GET /moderation/public-overview
+  publicOverview: catchAsync(async (_req, res) => {
+    const data = await moderationService.publicOverview()
+    success(res, { message: 'Tổng quan trục danh mục', data })
+  }),
   // GET /moderation/coverage
   coverage: catchAsync(async (_req, res) => {
     const data = await moderationService.coverage()
