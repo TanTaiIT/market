@@ -45,15 +45,26 @@ beforeAll(async () => {
     slug: OPEN,
     ownerEmail: owner.email,
   })
-  await createOrg(app, master.token, {
-    name: 'Đồ điện tử sinh viên',
-    slug: SECRET,
-    ownerEmail: owner.email,
-  })
+  const secretId = (
+    await createOrg(app, master.token, {
+      name: 'Đồ điện tử sinh viên',
+      slug: SECRET,
+      ownerEmail: owner.email,
+    })
+  ).id
 
-  // Nhóm thứ hai chuyển sang RIÊNG TƯ — trạng thái mà cả tính năng này phải tôn trọng.
-  const { Organization } = await import('../../src/features/organization/organization.model')
-  await Organization.updateOne({ slug: SECRET }, { isPublic: false }).exec()
+  /*
+   * Nhóm thứ hai chuyển sang RIÊNG TƯ — trạng thái mà cả tính năng này phải tôn trọng.
+   *
+   * Đi qua ĐÚNG endpoint master thay vì ghi thẳng Mongo như bản trước: bối cảnh dựng bằng
+   * cùng con đường mà sản phẩm thật dùng, nên nếu route hỏng thì mọi ca dưới đây đỏ ngay chứ
+   * không lặng lẽ test một trạng thái không ai tạo ra được.
+   */
+  await request(app)
+    .patch(`/api/v1/organizations/${secretId}/visibility`)
+    .set(bearer(master))
+    .send({ isPublic: false })
+    .expect(200)
 }, 120_000)
 
 afterAll(async () => {
@@ -235,4 +246,71 @@ describe('Hai lỗi thật gặp lúc dùng', () => {
       .set(bearer(nobody))
     expect(res.status).toBe(404)
   })
+})
+
+/**
+ * Công tắc công khai ↔ riêng tư.
+ *
+ * Trước đây `isPublic` chỉ tồn tại trong model: bốn nhánh xử lý nhóm kín ở trên đều đúng,
+ * nhưng KHÔNG API nào đặt được cờ đó, nên chúng là code chết. Nhóm dựng ra là công khai vĩnh viễn.
+ */
+describe('Master đổi chế độ hiển thị của nhóm', () => {
+  let openId = ''
+
+  beforeAll(async () => {
+    const res = await request(app)
+      .get('/api/v1/organizations?q=Hùng Vương')
+      .set(bearer(master))
+      .expect(200)
+    openId = res.body.data.find((o: { slug: string }) => o.slug === OPEN).id
+  }, 60_000)
+
+  it('gạt sang riêng tư: rơi khỏi tìm kiếm, hồ sơ 404 với người ngoài, slug hết xin vào được', async () => {
+    await request(app)
+      .patch(`/api/v1/organizations/${openId}/visibility`)
+      .set(bearer(master))
+      .send({ isPublic: false })
+      .expect(200)
+
+    const found = await request(app).get('/api/v1/organizations/lookup?q=Hùng').expect(200)
+    expect(found.body.data.map((o: { slug: string }) => o.slug)).not.toContain(OPEN)
+
+    await request(app).get(`/api/v1/organizations/profile/${OPEN}`).expect(404)
+
+    // Xin vào bằng slug là đặc quyền của nhóm công khai — nhóm kín chỉ còn đường mã.
+    const bySlug = await request(app)
+      .post('/api/v1/join-requests')
+      .set(bearer(seeker))
+      .send({ slug: OPEN, claimedName: 'Người tìm nhóm' })
+    expect(bySlug.status).toBe(404)
+
+    // Và gạt ngược lại thì mọi thứ trở về — không có đường một chiều nào ở đây.
+    await request(app)
+      .patch(`/api/v1/organizations/${openId}/visibility`)
+      .set(bearer(master))
+      .send({ isPublic: true })
+      .expect(200)
+
+    const back = await request(app).get('/api/v1/organizations/lookup?q=Hùng').expect(200)
+    expect(back.body.data.map((o: { slug: string }) => o.slug)).toContain(OPEN)
+  }, 60_000)
+
+  it('chủ nhóm KHÔNG tự rút nhóm mình khỏi sàn được', async () => {
+    // Khả năng khám phá là chuyện của cả sàn, không phải quyền tự trị của một nhóm — nên nó
+    // nằm ở họ route master, không nằm trong `PATCH /organizations/current`.
+    await request(app)
+      .patch(`/api/v1/organizations/${openId}/visibility`)
+      .set(bearer(owner))
+      .send({ isPublic: false })
+      .expect(403)
+  }, 60_000)
+
+  it('không sửa được qua đường hồ sơ nhóm — body lạ bị chặn ở schema', async () => {
+    const res = await request(app)
+      .patch('/api/v1/organizations/current')
+      .set({ Authorization: `Bearer ${owner.token}`, 'X-Org-Slug': OPEN })
+      .send({ isPublic: false })
+
+    expect(res.status).toBe(400)
+  }, 60_000)
 })

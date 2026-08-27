@@ -18,6 +18,9 @@ export function toOrganizationDto(org: IOrganizationDocument): OrganizationSumma
     verificationTier: org.verificationTier,
     provinceCode: org.provinceCode,
     status: org.status,
+    // Thiếu field = nhóm tạo trước khi `isPublic` ra đời, và mặc định của nó là công khai —
+    // cùng lập luận với `PUBLIC = { isPublic: { $ne: false } }` bên repository.
+    isPublic: org.isPublic !== false,
   }
 }
 
@@ -99,6 +102,7 @@ export function toOrganizationProfileDto(
     provinceCode: org.provinceCode,
     district: org.district,
     rules: org.rules,
+    allowOutsiderPosts: org.allowOutsiderPosts,
     feedLayout: org.feedLayout,
     allowJoinRequests: org.allowJoinRequests,
     ...extra,

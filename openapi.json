@@ -523,6 +523,9 @@
               "suspended",
               "pending_admin"
             ]
+          },
+          "isPublic": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -535,7 +538,8 @@
           "orgType",
           "verificationTier",
           "provinceCode",
-          "status"
+          "status",
+          "isPublic"
         ]
       },
       "OrganizationLookup": {
@@ -637,6 +641,9 @@
           "allowJoinRequests": {
             "type": "boolean"
           },
+          "allowOutsiderPosts": {
+            "type": "boolean"
+          },
           "joined": {
             "type": "boolean"
           }
@@ -655,6 +662,7 @@
           "rules",
           "feedLayout",
           "allowJoinRequests",
+          "allowOutsiderPosts",
           "joined"
         ]
       },
@@ -3641,6 +3649,18 @@
         },
         "required": [
           "email"
+        ],
+        "additionalProperties": false
+      },
+      "SetOrgVisibility": {
+        "type": "object",
+        "properties": {
+          "isPublic": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "isPublic"
         ],
         "additionalProperties": false
       },
@@ -6817,6 +6837,92 @@
           },
           "403": {
             "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organizationId}/visibility": {
+      "patch": {
+        "operationId": "setOrganizationVisibility",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Công khai ↔ riêng tư (master)",
+        "description": "Riêng tư = rơi khỏi tìm kiếm, hồ sơ trả 404 cho người ngoài, và chỉ xin vào được bằng MÃ chứ không bằng slug. Có hiệu lực ngay; mọi link đã phát ra ngoài chết theo.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "organizationId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetOrgVisibility"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã cập nhật",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Organization"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy tổ chức",
             "content": {
               "application/json": {
                 "schema": {
