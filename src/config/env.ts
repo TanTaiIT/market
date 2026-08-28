@@ -41,6 +41,19 @@ const envSchema = z.object({
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
 
+  /**
+   * Ép danh sách DNS server cho resolver NỘI BỘ của Node (c-ares), phân tách bằng dấu phẩy.
+   * Bỏ trống ở mọi môi trường bình thường — đây là van xả cho một lỗi của máy, không phải cấu hình.
+   *
+   * Vì sao cần tới nó: `mongodb+srv://` buộc phải tra SRV + TXT, mà `dns.resolveSrv` đi qua
+   * c-ares chứ không qua getaddrinfo của OS. Trên vài máy Windows (nhiều adapter ảo
+   * WSL/Hyper-V/ICS), c-ares đọc hụt cấu hình DNS của hệ thống rồi rơi về `127.0.0.1` — nơi
+   * không có ai trả lời. Hệ quả rất dễ chẩn đoán nhầm: `nslookup` và trình duyệt vẫn chạy
+   * (chúng dùng getaddrinfo), chỉ Node là ECONNREFUSED sau ~20ms. Đặt DNS tĩnh trong Windows
+   * KHÔNG chữa được, vì c-ares không đọc tới đó.
+   */
+  DNS_SERVERS: z.string().optional(),
+
   // Nhịp quét của người duyệt máy (cú pháp human-interval của Agenda: '2 minutes', '30 seconds').
   MACHINE_REVIEW_EVERY: z.string().default('2 minutes'),
 

@@ -1,8 +1,18 @@
 import { Router } from 'express'
 import { membershipController } from './membership.controller'
-import { membershipQuerySchema, memberResponseSchema } from './membership.schema'
+import {
+  memberParamsSchema,
+  membershipQuerySchema,
+  memberResponseSchema,
+  moveMemberSchema,
+} from './membership.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate, requireMembership, requireOrg } from '../../middlewares/auth.middleware'
+import {
+  authenticate,
+  requireMembership,
+  requireOrg,
+  requireOrgAdmin,
+} from '../../middlewares/auth.middleware'
 import { z } from 'zod'
 import {
   registry,
@@ -24,6 +34,29 @@ router.get(
   requireMembership,
   validate({ query: membershipQuerySchema }),
   membershipController.list,
+)
+
+/*
+ * GHI — quản trị nhóm (`requireOrgAdmin`), không phải người duyệt tin.
+ *
+ * Gỡ một người khỏi nhóm cắt quyền đọc tin nội bộ của họ ngay lập tức; đó là thao tác về CƠ CẤU
+ * tổ chức, cùng hạng với sửa nhóm con — không phải việc của người chỉ được giao duyệt tin.
+ */
+router.delete(
+  '/:userId',
+  authenticate,
+  requireOrg,
+  requireOrgAdmin,
+  validate({ params: memberParamsSchema }),
+  membershipController.remove,
+)
+router.patch(
+  '/:userId',
+  authenticate,
+  requireOrg,
+  requireOrgAdmin,
+  validate({ params: memberParamsSchema, body: moveMemberSchema }),
+  membershipController.move,
 )
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
@@ -50,3 +83,46 @@ registry.registerPath({
 })
 
 export default router
+
+registry.registerPath({
+  method: 'delete',
+  path: '/memberships/{userId}',
+  operationId: 'membershipRemove',
+  tags: ['Membership'],
+  summary: 'Gỡ một người khỏi tổ chức (quản trị nhóm)',
+  description:
+    'Lưu trữ tư cách thành viên chứ không xoá bản ghi — danh bạ cũ là dữ liệu của tổ chức. ' +
+    'KHÔNG gỡ được chính mình, và không gỡ được người cũng đang giữ quyền quản trị tổ chức ' +
+    '(cần master), nếu không hai quản trị sẽ gỡ lẫn nhau.',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { params: memberParamsSchema },
+  responses: {
+    200: jsonResponse('Đã gỡ', envelope(z.null())),
+    400: errorResponse('Tự gỡ mình — dùng chức năng rời nhóm'),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền quản trị tổ chức, hoặc mục tiêu cũng là quản trị'),
+    404: errorResponse('Người này không còn trong nhóm'),
+  },
+})
+
+registry.registerPath({
+  method: 'patch',
+  path: '/memberships/{userId}',
+  operationId: 'membershipMove',
+  tags: ['Membership'],
+  summary: 'Chuyển thành viên sang nhóm con khác (quản trị nhóm)',
+  description:
+    'KHÔNG đụng tới quyền: nhóm con chỉ nói người này thuộc lớp/phòng ban nào. Grant phạm vi ' +
+    '`org_unit` của họ vẫn trỏ vào nhóm con cũ — đó là việc của màn Phân quyền.',
+  security: [{ [bearerAuth.name]: [] }],
+  request: {
+    params: memberParamsSchema,
+    body: { content: { 'application/json': { schema: moveMemberSchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã chuyển', envelope(memberResponseSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền quản trị tổ chức'),
+    404: errorResponse('Người này không còn trong nhóm'),
+  },
+})
