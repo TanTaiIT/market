@@ -163,6 +163,11 @@ export const templateVersionParamsSchema = z.object({
   version: z.coerce.number().int().positive(),
 })
 
+/** Mẫu mặc định không thuộc danh mục nào, nên đường dẫn của nó chỉ mang `version`. */
+export const defaultTemplateVersionParamsSchema = z.object({
+  version: z.coerce.number().int().positive(),
+})
+
 export const fieldDefinitionSchema = z
   .object({
     key: z.string(),

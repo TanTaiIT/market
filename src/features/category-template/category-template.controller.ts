@@ -35,6 +35,34 @@ export const categoryTemplateController = {
     success(res, { message: 'Template published', data })
   }),
 
+  // GET /default-template
+  getFallback: catchAsync(async (req, res) => {
+    const { version } = req.query as TemplateQuery
+    const data = await categoryTemplateService.getFallback(version)
+    success(res, { message: 'Default template', data })
+  }),
+
+  // POST /default-template
+  createFallbackDraft: catchAsync(async (req, res) => {
+    const data = await categoryTemplateService.createFallbackDraft(req.body)
+    created(res, { message: 'Default template draft created', data })
+  }),
+
+  // PATCH /default-template/:version
+  updateFallbackDraft: catchAsync(async (req, res) => {
+    const data = await categoryTemplateService.updateFallbackDraft(
+      Number(req.params.version),
+      req.body,
+    )
+    success(res, { message: 'Default template draft updated', data })
+  }),
+
+  // POST /default-template/:version/publish
+  publishFallback: catchAsync(async (req, res) => {
+    const data = await categoryTemplateService.publishFallback(Number(req.params.version))
+    success(res, { message: 'Default template published', data })
+  }),
+
   // GET /categories/:id/template
   getForCategory: catchAsync(async (req, res) => {
     const { version } = req.query as TemplateQuery

@@ -76,7 +76,7 @@ Bỏ: `chains`, `platform_admins`.
 
 ---
 
-## 2b. Tiến độ (cập nhật 2026-08-16)
+## 2b. Tiến độ (cập nhật 2026-08-28)
 
 | Bước | Trạng thái | Bằng chứng |
 |---|---|---|
@@ -87,6 +87,7 @@ Bỏ: `chains`, `platform_admins`.
 | Phase 4 — posts hai trục | ✅ xong | `dualAxis` trong tenantPlugin, `listing.routing.ts` thuần + 10 test, `two-axis.test.ts` 12 test |
 | Phase 5 — quota + trust | ✅ xong | `listing.quota.ts` thuần + 10 test, 3 bucket, reject counter xuyên trục, uy tín tách trục |
 | Phase 6 — màn quản trị | ✅ xong | hàng đợi trục danh mục, ma trận phủ sóng, đổi ô (reassign) |
+| Phase 7 — tầng phường | ✅ xong | `SCOPE_TYPES.CATEGORY_WARD` + `RoleGrant.wardCodes` + `Listing.wardCode`; phân cấp phường → tỉnh → master trong `canModerateCategory`/`covers`; `publicAxis.cells` thay `provinceCodes`; `GET /moderation/public-overview`; `POST /role-grants` nhận `userEmail`; 6 test policy + 5 test integration |
 
 Gate sau Phase 6: `typecheck` sạch · `oxlint` sạch · `prettier` sạch · **171 test pass** ·
 `openapi:export` ra 45 path / 60 operation.
@@ -119,6 +120,11 @@ Gate sau Phase 6: `typecheck` sạch · `oxlint` sạch · `prettier` sạch · 
 | Chưa có màn "2 tab" tách người ngoài | Dữ liệu đã tách (`pending_unverified` + hàng đợi `org_outsider`); còn thiếu endpoint lọc sẵn theo tab để client khỏi tự ghép. |
 | Gỡ khoá quyền đăng sau khi bị chặn | Bị chặn vì 3 tin từ chối/7 ngày thì hiện phải chờ hết cửa sổ; chưa có thao tác quản trị để gỡ sớm. |
 | Đường mời / roster / SSO | `joinedVia` đã chừa chỗ, nhưng ba cơ chế join của §7.4 vẫn là vòng sau. |
+| `Report` chưa dual-axis | Báo cáo về tin trục công khai bị đóng dấu org của **người báo cáo**, nên chỉ master xử được — dù `report.service.resolve` đã hai trục. Kèm một lỗi thật: người không thuộc org nào hiện KHÔNG tạo được báo cáo (`requireOrgId` → `CrossTenantWriteError` → 500). Cần `{ dualAxis: true }` + service khai `organizationId` tường minh + nhánh đọc theo ô + migration. |
+| Theo dõi danh mục | "Gửi thông báo cho người theo dõi danh mục" chưa có model nào đỡ: không có khái niệm follow/subscription trong BE, `notification` chỉ gửi theo org + nhóm con. |
+| Cụm từ cấm theo danh mục | `BannedPhrase` không có field danh mục nên không mở được cho admin danh mục "thêm từ riêng". |
+| Cây danh mục | `Category` không có `parent` — mọi ý tưởng "nhánh danh mục của mình" phải chờ cái này trước. |
+| Chuyển ô tin cho người phụ trách | Hiện `requireMasterPublicAxis`. Người duyệt gặp tin sai ô chỉ còn cách từ chối — phạt người bán vì lỗi phân loại. Mở cho họ chuyển RA KHỎI ô mình giữ không mạnh hơn quyền từ chối đã có. |
 
 ### Quyết định kỹ thuật phát sinh trong Phase 3
 
@@ -147,6 +153,115 @@ Gate sau Phase 6: `typecheck` sạch · `oxlint` sạch · `prettier` sạch · 
 | Mọi route nghiệp vụ của org | Cần header `X-Org-Slug` (hoặc subdomain) trừ khi user chỉ thuộc một org |
 | JWT | Payload chỉ còn `sub` — token cũ vô hiệu |
 | Socket.IO handshake | Thêm `auth.organizationId` (bỏ qua được nếu chỉ thuộc một org); server đối chiếu membership |
+
+## 2c. Bảng quyền: menu × vai — **thực thi hiện tại**
+
+Bảng này chép lại **thứ code đang chốt**, không phải thứ mong muốn. Cột `Gate BE` là phần quan
+trọng nhất chứ không phải mấy dấu ✅: đổi gate mà không sửa bảng thì bảng sai, và đối chiếu được
+bằng một lần grep tên middleware.
+
+Hai luật để đọc bảng cho đúng:
+
+1. **Mở được MÀN ≠ thấy cùng DỮ LIỆU.** Middleware ở tầng route cố tình rộng (§0.2), phạm vi
+   thật do `policy.ts` + `tenantPlugin` cắt. Hai staff cùng mở một màn có thể thấy hai tập tin
+   khác nhau — đó là thiết kế, không phải lỗi.
+2. **Hai trục không giao nhau.** `canModerateOrg` không bao giờ đọc `categoryId`,
+   `canModerateCategory` không bao giờ đọc `orgId`. Cột trục org và cột trục danh mục vì vậy
+   gần như loại trừ nhau; ô ✅ ở cả hai cột nghĩa là người đó giữ hai grant khác nhau.
+
+Viết tắt: **S-org** = staff grant `org`/`org_unit` · **M-org** = manager grant `org` ·
+**S-dm** = staff grant `category_province`/`category_ward` · **M-tỉnh** = manager
+`category_province` · **M-phường** = manager `category_ward`.
+
+### Trục tổ chức — mọi màn đọc `X-Org-Slug`, mỗi lượt đúng một tổ chức
+
+| Menu | Gate BE | S-org | M-org | S-dm | M-tỉnh | M-phường | Master |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Tổng quan | `requireOrg` + `requireOrgModerator` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Duyệt tin | đọc `requireOrgReadOrMaster` · ghi `requireAnyModerator` + `assertCanModerateListing` | ✅¹ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Báo cáo | đọc `requireOrgReadOrMaster` · xử `requireOrg` + `requireOrgModerator` | ✅ | ✅ | ❌² | ❌² | ❌² | ✅ |
+| Tin đăng | `requireOrgReadOrMaster` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Gửi thông báo | `requireOrg` + `requireOrgModerator` | ✅ | ✅ | ❌³ | ❌³ | ❌³ | ✅ |
+| Đơn xin gia nhập | `requireOrg` + `requireOrgModerator` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Nhóm con | đọc `requireMembership` · ghi `requireOrgAdmin` | 👁 đọc | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Cách bày bảng tin | `requireOrgAdmin` | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ |
+
+### Trục danh mục — phạm vi từ `role_grants`, KHÔNG đọc `X-Org-Slug`
+
+| Menu | Gate BE | S-org | M-org | S-dm | M-tỉnh | M-phường | Master |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Tổng quan trục | `requireCategoryModerator` | ❌ | ❌ | ✅ | ✅ | ✅ | ✅⁴ |
+| Hàng đợi công khai | `requireCategoryModerator` · ghi `requireAnyModerator` | ❌ | ❌ | ✅ | ✅ | ✅ | ✅⁴ |
+| Chuyển ô tin (reassign) | `requireMasterPublicAxis` | ❌ | ❌ | ❌ | ❌⁵ | ❌⁵ | ✅ |
+
+### Cắt ngang cả hai trục
+
+| Menu | Gate BE | S-org | M-org | S-dm | M-tỉnh | M-phường | Master |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Phân quyền — xem quyền của mình | `authenticate` (`GET /role-grants/mine`) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| Phân quyền — cấp cho người khác | `canGrant` + `covers` | ❌ | ✅⁶ | ❌ | ✅⁶ | ✅⁶ | ✅ |
+
+### Vận hành hệ thống — master-only, không có ngoại lệ
+
+| Menu | Gate BE |
+| --- | --- |
+| Tổ chức · Người dùng · Danh mục · Mẫu thuộc tính · Cụm từ cấm · Gói tin | `requireMaster` (gói tin: `router.use(authenticate, requireMaster)` cho cả nhánh) |
+| Số liệu đăng tin | `requireMaster` (`GET /listings/posting-stats`) |
+| Phủ sóng | `requireMasterPublicAxis` |
+
+### Sáu chú thích — chỗ bảng nói không đủ
+
+1. **`org_unit` staff mở được màn duyệt nhưng chỉ GHI được tin của nhóm mình.** `canModerateOrg`
+   đòi khớp `unitId`; tin không ghi `unitId` (org phẳng, hoặc người đăng chưa được gán nhóm) nằm
+   ngoài tầm với của họ và phải đẩy lên manager org. Đó là lý do route dùng
+   `canModerateAnyInOrg` (mở màn) chứ không phải `canModerateOrg` (duyệt đúng tin).
+2. **Báo cáo đóng với trục danh mục vì DỮ LIỆU, không vì quyền.** `Report` gắn `tenantPlugin`
+   **không** `dualAxis` → `organizationId` bắt buộc non-null, nên báo cáo về tin trục công khai bị
+   đóng dấu org của *người báo cáo*. Tầng service thì đã sẵn sàng: `report.service.resolve` gọi
+   `listingService.setModerationStatus(..., actor.grants)` và phép kiểm đó đã hai trục. Mở ô này =
+   đổi model + migration, xem §2b "Còn nợ".
+3. **"Gửi thông báo cho người theo dõi danh mục" chưa có gì để dựa vào.** Không có khái niệm theo
+   dõi/đăng ký trong BE (grep `follow|subscriber|subscription` = rỗng); `notification` chỉ gửi
+   theo org + nhóm con. Đây là tính năng, không phải ô phân quyền.
+4. **Master trong hai màn trục danh mục không phải "quyền cao nhất" mà là FALLBACK.** Ô (danh mục ×
+   phường) chưa có ai phụ trách thì `routeListing` đẩy tin vào hàng đợi của master — nên master
+   phải thấy toàn trục, nếu không thì đúng người phải dọn hàng tồn lại là người không thấy nó.
+5. **Chuyển ô tin master-only là điểm ma sát đã biết.** Người duyệt gặp tin đăng sai danh
+   mục/phường hằng ngày mà công cụ duy nhất là *từ chối* — phạt người bán vì lỗi phân loại. Cho họ
+   chuyển tin RA KHỎI ô mình phụ trách không mạnh hơn quyền từ chối họ đã có; chưa mở vì chưa
+   chốt, không vì rủi ro.
+6. **Manager cấp quyền theo `covers()`, và ba tầng phủ khác nhau**: M-org cấp `staff` phạm vi
+   `org`/`org_unit` **trong org của mình**; M-tỉnh cấp `staff` phạm vi `category_province` (tỉnh
+   con của tỉnh mình) hoặc `category_ward` (phường thuộc tỉnh mình); M-phường chỉ cấp `staff`
+   `category_ward` **trong đúng những phường mình giữ**. Không ai cấp được `manager` — chỉ master.
+   Và `master` thì **không ai cấp được**, kể cả master (`canGrant` chặn ngay dòng đầu).
+
+### Bốn ô đã BỎ khỏi bảng — vì chúng là tính năng, không phải quyền
+
+Đề xuất ban đầu có bốn ô cho admin danh mục mà **đổi gate không làm được**. Để chúng trong bảng
+quyền là khiến người đọc tưởng chỉ cần mở cửa; chúng đã chuyển sang §2b "Còn nợ":
+
+| Ô bị bỏ | Thiếu cái gì |
+| --- | --- |
+| Báo cáo *(lọc theo danh mục)* | `Report` dual-axis + migration + nhánh đọc theo ô |
+| Gửi thông báo *(người theo dõi danh mục)* | Cả cơ chế theo dõi danh mục — model + API + UI |
+| Danh mục *(chỉ nhánh của mình)* | `Category` **không có `parent`** — danh mục đang phẳng, "nhánh" chưa tồn tại |
+| Cụm từ cấm *(thêm từ riêng)* | `BannedPhrase` không có field danh mục + lọc theo ô |
+
+Riêng ô **Tin đăng *(chỉ đọc)*** thì bỏ vì **trùng**: màn Hàng đợi công khai đã có ba tab trạng
+thái cắt theo ô của chính họ, làm thêm một màn "chỉ đọc" là hai đường cho cùng một câu hỏi.
+
+### Một cảnh báo thiết kế: trục danh mục là trục TOÀN CỤC
+
+Đề xuất ban đầu cho admin danh mục "quyền mạnh nhất" trên **Mẫu thuộc tính**. Cần thấy rõ hệ quả
+trước khi mở: "Điện thoại" là danh mục của cả hệ thống, không của trường nào — một người sửa
+template là đổi hình dạng form đăng tin của **mọi tổ chức** trong danh mục đó, và vì
+`templateVersion` được snapshot vào từng tin nên hai thế hệ tin cùng tồn tại song song. Đó là
+quyền hệ thống, không phải quyền duyệt tin.
+
+Nếu vẫn muốn mở: tách làm **hai vai riêng** — *người duyệt ô* (danh mục × phường) và *người giữ
+từ điển danh mục* — đừng gộp vào một cái tên "admin danh mục". Gộp lại thì mọi lần cấp quyền
+duyệt tin cho một phường là vô tình trao luôn quyền đổi từ điển toàn hệ thống.
 
 ## 3. Sáu phase
 

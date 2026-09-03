@@ -73,6 +73,16 @@ export const categoryTemplateRepository = {
     return CategoryTemplate.findOne({ categoryId }).sort({ version: -1 }).exec()
   },
 
+  /**
+   * Bản chung mới nhất, KHÔNG lọc trạng thái — chỉ để đánh số cho bản nháp kế tiếp.
+   *
+   * Khác `findPublishedFallback` (bản đang phục vụ): ở đây một bản nháp đang mở cũng phải tính,
+   * nếu không thì lượt tạo nháp thứ hai sẽ trùng version với lượt thứ nhất và đụng unique index.
+   */
+  findLatestFallback() {
+    return CategoryTemplate.findOne({ isFallback: true }).sort({ version: -1 }).exec()
+  },
+
   createTemplate(data: Partial<ICategoryTemplate>) {
     return CategoryTemplate.create(data)
   },

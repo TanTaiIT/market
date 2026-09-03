@@ -10,6 +10,23 @@ export const categorySlugSchema = z
   .max(60)
   .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Slug chỉ gồm a-z, 0-9 và dấu gạch ngang')
 
+/**
+ * Biểu tượng danh mục — BẮT BUỘC khi tạo.
+ *
+ * Bộ icon chuẩn nằm bên app (`CategoryIconPicker`), KHÔNG whitelist ở đây: khoá cứng danh sách
+ * emoji vào schema nghĩa là thêm một icon phải deploy BE, và danh sách sẽ tồn tại hai bản ở hai
+ * repo rồi lệch nhau. Chỗ này chỉ chốt điều BE thật sự bảo được: danh mục không được ra đời
+ * trống biểu tượng — mọi bề mặt của app đều bày danh mục icon trước, tên sau.
+ *
+ * `max(8)` khớp `maxlength` của model: đủ cho emoji ghép ZWJ mà không thành chỗ nhét chuỗi.
+ */
+export const categoryIconSchema = z
+  .string()
+  .trim()
+  .min(1, 'Danh mục phải có biểu tượng')
+  .max(8)
+  .openapi({ example: '📚' })
+
 export const categoryQuerySchema = z.object({
   // Mặc định chỉ trả danh mục đang bật: app người dùng dựng chip lọc từ đây, danh mục đã
   // tắt hiện lên sẽ dẫn tới màn rỗng. Bàn quản trị mới cần thấy cả hai.
@@ -26,7 +43,7 @@ export const createCategorySchema = z
     name: z.string().min(2).max(60).openapi({ example: 'Sách vở' }),
     // Bỏ trống thì service tự sinh từ `name`.
     slug: categorySlugSchema.optional(),
-    icon: z.string().max(8).optional().openapi({ example: '📚' }),
+    icon: categoryIconSchema,
     order: z.number().int().min(0).optional(),
     requireManualReview: z.boolean().optional(),
     /**
@@ -47,7 +64,8 @@ export const createCategorySchema = z
 export const updateCategorySchema = z
   .object({
     name: z.string().min(2).max(60).optional(),
-    icon: z.string().max(8).optional(),
+    // Sửa vẫn tuỳ chọn: đổi tên danh mục không phải là lý do bắt khai lại icon.
+    icon: categoryIconSchema.optional(),
     order: z.number().int().min(0).optional(),
     isActive: z.boolean().optional(),
     requireManualReview: z.boolean().optional(),

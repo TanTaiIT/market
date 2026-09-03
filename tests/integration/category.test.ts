@@ -74,11 +74,20 @@ describe('Category — đọc công khai', () => {
     activeId = res.body.data.id
   })
 
+  it('thiếu biểu tượng thì 400 — danh mục không được ra đời trống icon', async () => {
+    const res = await request(app)
+      .post('/api/v1/categories')
+      .set(asSuper())
+      .send({ name: 'Không icon' })
+
+    expect(res.status).toBe(400)
+  })
+
   it('chặn slug trùng bằng 409, không để rơi xuống lỗi duplicate key của Mongo', async () => {
     const res = await request(app)
       .post('/api/v1/categories')
       .set(asSuper())
-      .send({ name: 'Sách  vở' }) // slugify ra cùng 'sach-vo'
+      .send({ name: 'Sách  vở', icon: '📔' }) // slugify ra cùng 'sach-vo'
     expect(res.status).toBe(409)
   })
 
@@ -107,7 +116,7 @@ describe('Category — đọc công khai', () => {
     const created = await request(app)
       .post('/api/v1/categories')
       .set(asSuper())
-      .send({ name: 'Đã ngừng', order: 9 })
+      .send({ name: 'Đã ngừng', icon: '📦', order: 9 })
       .expect(201)
     inactiveId = created.body.data.id
 

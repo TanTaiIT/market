@@ -144,6 +144,45 @@ const toTemplateFields = (fields: TemplateFieldInput[]) =>
     override: field.override,
   }))
 
+/**
+ * Ghi `fields` vào một bản NHÁP đã tìm được.
+ *
+ * Tách ra vì template của danh mục và MẪU MẶC ĐỊNH chỉ khác nhau ở cách TÌM ra bản đó — còn
+ * luật ghi thì đúng một bộ. Chép đôi ở đây nghĩa là lần siết luật sau chỉ siết một nửa.
+ */
+async function writeDraft(doc: ICategoryTemplateDocument | null, input: TemplateFieldsInput) {
+  if (!doc) throw new NotFoundError('Template not found')
+  if (doc.status !== TEMPLATE_STATUS.DRAFT) {
+    throw new BadRequestError(
+      'Bản đã phát hành không sửa được — tạo bản nháp mới, tin cũ vẫn đọc bản này',
+    )
+  }
+
+  const definitions = await resolveDefinitions(input.fields)
+  assertTemplateShape(input.fields, definitions)
+
+  doc.fieldKeys = toTemplateFields(input.fields)
+  await doc.save()
+}
+
+/** Đóng dấu phát hành cho một bản nháp đã tìm được. Cùng lý do tách như `writeDraft`. */
+async function markPublished(doc: ICategoryTemplateDocument | null) {
+  if (!doc) throw new NotFoundError('Template not found')
+  if (doc.status === TEMPLATE_STATUS.PUBLISHED) {
+    throw new BadRequestError('Bản này đã phát hành rồi')
+  }
+
+  // Kiểm lại lúc phát hành, không chỉ lúc ghi: từ điển có thể đã xoá mềm một field kể từ khi
+  // bản nháp được tạo, và lúc đó form sẽ hiện một ô không có định nghĩa nào phía sau.
+  const fields = doc.fieldKeys as TemplateFieldInput[]
+  const definitions = await resolveDefinitions(fields)
+  assertTemplateShape(fields, definitions)
+
+  doc.status = TEMPLATE_STATUS.PUBLISHED
+  doc.publishedAt = new Date()
+  await doc.save()
+}
+
 export const categoryTemplateService = {
   /**
    * Template đang phục vụ cho một danh mục. Chưa có bản riêng thì rơi về bản chung — đó là lý
@@ -187,37 +226,17 @@ export const categoryTemplateService = {
   },
 
   async updateDraft(categoryId: string, version: number, input: TemplateFieldsInput) {
-    const doc = await categoryTemplateRepository.findByCategoryAndVersion(categoryId, version)
-    if (!doc) throw new NotFoundError('Template not found')
-    if (doc.status !== TEMPLATE_STATUS.DRAFT) {
-      throw new BadRequestError(
-        'Bản đã phát hành không sửa được — tạo bản nháp mới, tin cũ vẫn đọc bản này',
-      )
-    }
-
-    const definitions = await resolveDefinitions(input.fields)
-    assertTemplateShape(input.fields, definitions)
-
-    doc.fieldKeys = toTemplateFields(input.fields)
-    await doc.save()
+    await writeDraft(
+      await categoryTemplateRepository.findByCategoryAndVersion(categoryId, version),
+      input,
+    )
     return this.getForCategory(categoryId, version)
   },
 
   async publish(categoryId: string, version: number) {
-    const doc = await categoryTemplateRepository.findByCategoryAndVersion(categoryId, version)
-    if (!doc) throw new NotFoundError('Template not found')
-    if (doc.status === TEMPLATE_STATUS.PUBLISHED) {
-      throw new BadRequestError('Bản này đã phát hành rồi')
-    }
-
-    // Kiểm lại lúc phát hành, không chỉ lúc ghi: từ điển có thể đã xoá mềm một field kể từ khi
-    // bản nháp được tạo, và lúc đó form sẽ hiện một ô không có định nghĩa nào phía sau.
-    const definitions = await resolveDefinitions(doc.fieldKeys as TemplateFieldInput[])
-    assertTemplateShape(doc.fieldKeys as TemplateFieldInput[], definitions)
-
-    doc.status = TEMPLATE_STATUS.PUBLISHED
-    doc.publishedAt = new Date()
-    await doc.save()
+    await markPublished(
+      await categoryTemplateRepository.findByCategoryAndVersion(categoryId, version),
+    )
     return this.getForCategory(categoryId, version)
   },
 
@@ -244,6 +263,51 @@ export const categoryTemplateService = {
 
     const fallback = await resolve(await categoryTemplateRepository.findPublishedFallback())
     return fallback ?? NO_TEMPLATE
+  },
+
+  /*
+   * ── MẪU MẶC ĐỊNH (`isFallback`) ─────────────────────────────────────────
+   *
+   * Bản dùng cho mọi danh mục chưa có template riêng. Nó KHÔNG thuộc danh mục nào
+   * (`categoryId: null`) nên không đi qua `/categories/:id/template` được — bốn đường dưới đây
+   * là bản song song, dùng chung toàn bộ luật ghi với đường của danh mục.
+   *
+   * Trước đây chỉ `scripts/seed-templates.ts` đặt được bản này, tức là đổi mẫu mặc định phải
+   * vào server chạy script.
+   */
+  async getFallback(version?: number): Promise<ResolvedTemplate> {
+    if (version != null) {
+      const pinned = await resolve(await categoryTemplateRepository.findFallbackByVersion(version))
+      if (pinned) return pinned
+    }
+    const published = await resolve(await categoryTemplateRepository.findPublishedFallback())
+    return published ?? NO_TEMPLATE
+  },
+
+  async createFallbackDraft(input: TemplateFieldsInput) {
+    const definitions = await resolveDefinitions(input.fields)
+    assertTemplateShape(input.fields, definitions)
+
+    const latest = await categoryTemplateRepository.findLatestFallback()
+    const doc = await categoryTemplateRepository.createTemplate({
+      // `null` KHI VÀ CHỈ KHI `isFallback` — hợp đồng đã ghi ở `ICategoryTemplate`.
+      categoryId: null,
+      isFallback: true,
+      version: (latest?.version ?? 0) + 1,
+      status: TEMPLATE_STATUS.DRAFT,
+      fieldKeys: toTemplateFields(input.fields),
+    })
+    return this.getFallback(doc.version)
+  },
+
+  async updateFallbackDraft(version: number, input: TemplateFieldsInput) {
+    await writeDraft(await categoryTemplateRepository.findFallbackByVersion(version), input)
+    return this.getFallback(version)
+  },
+
+  async publishFallback(version: number) {
+    await markPublished(await categoryTemplateRepository.findFallbackByVersion(version))
+    return this.getFallback(version)
   },
 
   /**

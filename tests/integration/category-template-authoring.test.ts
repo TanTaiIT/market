@@ -87,6 +87,7 @@ describe('Master tạo danh mục kèm template', () => {
       .send({
         name: 'Xe cộ',
         slug: 'xe-co',
+        icon: '🏍️',
         template: { fields: [{ key: 'brand', order: 10, required: true }] },
       })
 
@@ -100,6 +101,7 @@ describe('Master tạo danh mục kèm template', () => {
       .send({
         name: 'Đồ chơi',
         slug: 'do-choi',
+        icon: '🧸',
         template: { fields: [{ key: 'khongTonTai', order: 10 }] },
       })
 
@@ -110,7 +112,7 @@ describe('Master tạo danh mục kèm template', () => {
     const res = await request(app)
       .post('/api/v1/categories')
       .set(asMaster())
-      .send({ name: 'Đồ dùng', slug: 'do-dung' })
+      .send({ name: 'Đồ dùng', slug: 'do-dung', icon: '🎒' })
 
     expect(res.status).toBe(201)
   })
@@ -243,5 +245,105 @@ describe('Chỉ master mới dựng được template', () => {
       .set('Authorization', `Bearer ${outsider.token}`)
 
     expect(res.status).toBe(403)
+  })
+})
+
+describe('Mẫu template mặc định', () => {
+  let version = 0
+
+  it('master tạo được bản nháp cho mẫu mặc định', async () => {
+    const res = await request(app)
+      .post('/api/v1/default-template')
+      .set(asMaster())
+      .send({
+        fields: [
+          {
+            key: 'condition',
+            order: 10,
+            required: true,
+            define: {
+              label: 'Tình trạng',
+              type: 'select',
+              options: [
+                { value: 'new', label: 'Mới' },
+                { value: 'used', label: 'Đã dùng' },
+              ],
+            },
+          },
+        ],
+      })
+
+    expect(res.status).toBe(201)
+    expect(res.body.data.isFallback).toBe(true)
+    version = res.body.data.version
+    expect(version).toBeGreaterThan(0)
+  })
+
+  it('sửa được bản nháp đó, dùng lại key có sẵn trong từ điển', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/default-template/${version}`)
+      .set(asMaster())
+      .send({
+        fields: [
+          { key: 'condition', order: 10 },
+          { key: 'brand', order: 20 },
+        ],
+      })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.fields.map((f: { key: string }) => f.key)).toEqual(['condition', 'brand'])
+  })
+
+  it('bản nháp chưa phục vụ ai; phát hành xong thì danh mục trơ nhận nó', async () => {
+    const created = await request(app)
+      .post('/api/v1/categories')
+      .set(asMaster())
+      .send({ name: 'Đồ lưu niệm', icon: '🎁' })
+      .expect(201)
+    const plainCategoryId = created.body.data.id
+
+    // Chốt quan trọng nhất của cả vòng đời: nháp KHÔNG lọt ra đường đọc công khai.
+    const before = await request(app)
+      .get(`/api/v1/categories/${plainCategoryId}/template`)
+      .expect(200)
+    expect(before.body.data.fields).toHaveLength(0)
+
+    await request(app)
+      .post(`/api/v1/default-template/${version}/publish`)
+      .set(asMaster())
+      .expect(200)
+
+    const after = await request(app)
+      .get(`/api/v1/categories/${plainCategoryId}/template`)
+      .expect(200)
+    expect(after.body.data.isFallback).toBe(true)
+    expect(after.body.data.version).toBe(version)
+    expect(after.body.data.fields.map((f: { key: string }) => f.key)).toEqual([
+      'condition',
+      'brand',
+    ])
+  })
+
+  it('bản mặc định đã phát hành thì bất biến như bản của danh mục', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/default-template/${version}`)
+      .set(asMaster())
+      .send({ fields: [{ key: 'condition', order: 10 }] })
+
+    expect(res.status).toBe(400)
+    expect(res.body.message).toMatch(/đã phát hành/)
+  })
+
+  it('người thường không chạm được mẫu mặc định, kể cả đọc', async () => {
+    const read = await request(app)
+      .get('/api/v1/default-template')
+      .set('Authorization', `Bearer ${outsider.token}`)
+    expect(read.status).toBe(403)
+
+    const write = await request(app)
+      .post('/api/v1/default-template')
+      .set('Authorization', `Bearer ${outsider.token}`)
+      .send({ fields: [{ key: 'brand', order: 10 }] })
+    expect(write.status).toBe(403)
   })
 })

@@ -11,6 +11,7 @@ import inviteRoutes from './invite/invite.routes'
 import roleGrantRoutes from './role-grant/role-grant.routes'
 import categoryRoutes from './category/category.routes'
 import fieldDefinitionRoutes from './category-template/field-definition.routes'
+import defaultTemplateRoutes from './category-template/default-template.routes'
 import chatRoutes from './chat/chat.routes'
 import uploadRoutes from './upload/upload.routes'
 import searchRoutes from './search/search.routes'
@@ -38,6 +39,8 @@ router.use('/invites', inviteRoutes)
 router.use('/role-grants', roleGrantRoutes)
 router.use('/categories', categoryRoutes)
 router.use('/field-definitions', fieldDefinitionRoutes)
+// Mẫu template mặc định — không thuộc danh mục nào, nên không nằm dưới /categories.
+router.use('/default-template', defaultTemplateRoutes)
 router.use('/chats', chatRoutes)
 router.use('/notifications', notificationRoutes)
 router.use('/reports', reportRoutes)

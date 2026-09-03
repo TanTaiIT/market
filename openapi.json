@@ -2704,6 +2704,7 @@
           },
           "icon": {
             "type": "string",
+            "minLength": 1,
             "maxLength": 8,
             "example": "📚"
           },
@@ -2733,7 +2734,8 @@
           }
         },
         "required": [
-          "name"
+          "name",
+          "icon"
         ],
         "additionalProperties": false
       },
@@ -2747,7 +2749,9 @@
           },
           "icon": {
             "type": "string",
-            "maxLength": 8
+            "minLength": 1,
+            "maxLength": 8,
+            "example": "📚"
           },
           "order": {
             "type": "integer",
@@ -9664,6 +9668,374 @@
           },
           "409": {
             "description": "Key đã có trong từ điển",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/default-template": {
+      "get": {
+        "operationId": "defaultTemplateGet",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Mẫu template mặc định đang phục vụ",
+        "description": "Bản dùng cho mọi danh mục chưa có template riêng. Bỏ trống `version` là lấy bản đã phát hành mới nhất; truyền `version` để đọc một bản nháp đang soạn.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "version",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Mẫu mặc định",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryTemplate"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "defaultTemplateCreateDraft",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Tạo bản nháp mới cho mẫu mặc định",
+        "description": "Version kế tiếp của dãy fallback — dãy này RỜI khỏi dãy version của từng danh mục. Bản nháp chưa phục vụ ai cho tới khi phát hành.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateFields"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tạo bản nháp",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryTemplate"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Hình dạng template không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/default-template/{version}": {
+      "patch": {
+        "operationId": "defaultTemplateUpdateDraft",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Sửa bản nháp của mẫu mặc định",
+        "description": "Chỉ bản `draft`. Bản đã phát hành là bất biến — tạo nháp mới thay vì sửa.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "example": 2
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemplateFields"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã lưu bản nháp",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryTemplate"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bản đã phát hành, hoặc hình dạng không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không có bản nào ở version này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/default-template/{version}/publish": {
+      "post": {
+        "operationId": "defaultTemplatePublish",
+        "tags": [
+          "Category"
+        ],
+        "summary": "Phát hành bản nháp của mẫu mặc định",
+        "description": "Sau bước này bản đó BẤT BIẾN, và mọi danh mục chưa có template riêng chuyển sang dùng nó ngay. Tin đã đăng vẫn đọc bản version cũ mà chúng ghim.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "example": 2
+            },
+            "required": true,
+            "name": "version",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã phát hành",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/CategoryTemplate"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bản này đã phát hành rồi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không có bản nào ở version này",
             "content": {
               "application/json": {
                 "schema": {
