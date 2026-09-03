@@ -4,6 +4,16 @@ import { JOINED_VIA, MEMBERSHIP_ROLES } from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
+export const memberParamsSchema = z.object({ userId: objectId })
+
+/** `unitId: null` = bỏ khỏi mọi nhóm con, khác hẳn với không gửi field. */
+export const moveMemberSchema = z
+  .object({ unitId: objectId.nullable() })
+  .strict()
+  .openapi('MoveMember')
+
+export type MoveMemberInput = z.infer<typeof moveMemberSchema>
+
 export const membershipQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),

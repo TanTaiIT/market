@@ -54,6 +54,37 @@ export const membershipRepository = {
   },
 
   /**
+   * Gỡ MỘT người khỏi MỘT org — quản trị nhóm bấm "Gỡ khỏi nhóm".
+   *
+   * `archived` chứ không xoá, cùng lập luận với `archiveAllForUser` ngay dưới: danh bạ cũ và
+   * `joinedAt` là dữ liệu của TỔ CHỨC. Người bị gỡ nhầm rồi thêm lại vẫn giữ được lịch sử, và
+   * mọi đường đọc đã lọc `ACTIVE` sẵn nên chỉ đổi cột là họ biến khỏi danh bạ.
+   *
+   * Trả `null` khi không có bản ghi đang hoạt động — caller phân biệt được "đã gỡ rồi" với
+   * "gỡ xong", thay vì báo thành công cho một thao tác không đụng vào gì.
+   */
+  archiveOne(userId: Id, organizationId: Id): Promise<IMembershipDocument | null> {
+    return Membership.findOneAndUpdate(
+      { userId, organizationId, ...ACTIVE },
+      { status: MEMBERSHIP_STATUS.ARCHIVED, archivedAt: new Date() },
+      { new: true },
+    ).exec()
+  },
+
+  /** Chuyển một thành viên sang nhóm con khác. `null` = bỏ khỏi mọi nhóm con. */
+  moveToUnit(
+    userId: Id,
+    organizationId: Id,
+    unitId: Types.ObjectId | null,
+  ): Promise<IMembershipDocument | null> {
+    return Membership.findOneAndUpdate(
+      { userId, organizationId, ...ACTIVE },
+      { unitId },
+      { new: true },
+    ).exec()
+  },
+
+  /**
    * Lưu trữ mọi tư cách thành viên của một người, dùng khi tài khoản bị xoá.
    *
    * Không xoá bản ghi: danh bạ cũ và `joinedAt` là dữ liệu của TỔ CHỨC, không phải của tài

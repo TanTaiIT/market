@@ -1,9 +1,13 @@
+import { Types } from 'mongoose'
 import { membershipRepository } from './membership.repository'
 import { MembershipQuery } from './membership.schema'
 import { toMemberDto } from './membership.types'
 import { userRepository } from '../user/user.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { INITIAL_TRUST } from '../trust/trust.policy'
+import { roleGrantService } from '../role-grant/role-grant.service'
+import { canAdminOrg, isMaster, type Grant } from '../../common/authz/policy'
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 
@@ -45,5 +49,54 @@ export const membershipService = {
       ),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
+  },
+
+  /**
+   * Gỡ một người khỏi org đang hoạt động.
+   *
+   * Hai chốt, và cả hai đều là để nhóm không tự bắn vào chân mình:
+   *
+   * 1. **Không gỡ chính mình.** Đây là nút của người QUẢN TRỊ dành cho người khác; tự gỡ là
+   *    thao tác "rời nhóm", một hành động khác hẳn với hậu quả khác hẳn (mất quyền quản trị
+   *    ngay lập tức) nên nó phải có đường riêng, không núp dưới nút này.
+   * 2. **Không gỡ người đang giữ quyền quản trị org**, trừ khi mình là master. Thiếu chốt này
+   *    thì hai quản trị gỡ lẫn nhau — ai bấm trước thắng, và nhóm có thể còn lại con số không
+   *    người phụ trách. Master đứng ngoài vì họ là đường sửa sai cuối cùng.
+   */
+  async remove(targetUserId: string, actor: { id: string; grants: Grant[] }) {
+    const organizationId = requireOwnOrgId('membership.remove')
+
+    if (targetUserId === actor.id) {
+      throw new BadRequestError('Không tự gỡ mình khỏi nhóm ở đây — dùng chức năng rời nhóm')
+    }
+
+    if (!isMaster(actor.grants)) {
+      const targetGrants = await roleGrantService.grantsOf(targetUserId)
+      if (canAdminOrg(targetGrants, organizationId.toString())) {
+        throw new ForbiddenError('Người này cũng là quản trị nhóm — cần master để gỡ')
+      }
+    }
+
+    const removed = await membershipRepository.archiveOne(targetUserId, organizationId)
+    if (!removed) throw new NotFoundError('Người này không còn trong nhóm')
+    return removed
+  },
+
+  /**
+   * Chuyển một thành viên sang nhóm con khác — `null` là bỏ khỏi mọi nhóm con.
+   *
+   * KHÔNG đụng tới quyền: nhóm con chỉ nói người này thuộc lớp/phòng ban nào. Người có grant
+   * `org_unit` mà bị chuyển đi thì quyền của họ vẫn trỏ vào nhóm con CŨ — đó là chuyện của
+   * màn Phân quyền, và gộp hai thứ vào một thao tác là chỗ dễ cấp nhầm quyền nhất.
+   */
+  async moveToUnit(targetUserId: string, unitId: string | null) {
+    const organizationId = requireOwnOrgId('membership.moveToUnit')
+    const moved = await membershipRepository.moveToUnit(
+      targetUserId,
+      organizationId,
+      unitId ? new Types.ObjectId(unitId) : null,
+    )
+    if (!moved) throw new NotFoundError('Người này không còn trong nhóm')
+    return moved
   },
 }

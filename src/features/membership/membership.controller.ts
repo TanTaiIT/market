@@ -1,4 +1,5 @@
 import { membershipService } from './membership.service'
+import { toMemberDto } from './membership.types'
 import { canModerateAnyInOrg } from '../../common/authz/policy'
 import { roleGrantService } from '../role-grant/role-grant.service'
 import { currentScope } from '../../common/tenant/tenantContext'
@@ -16,5 +17,20 @@ export const membershipController = {
     const detailed = canModerateAnyInOrg(grants, orgId)
     const { items, meta } = await membershipService.list(req.query as never, detailed)
     success(res, { message: 'Members', data: items, meta })
+  }),
+
+  // DELETE /memberships/:userId
+  remove: catchAsync(async (req, res) => {
+    await membershipService.remove(req.params.userId, {
+      id: req.user!.id,
+      grants: req.grants ?? (await roleGrantService.grantsOf(req.user!.id)),
+    })
+    success(res, { message: 'Đã gỡ khỏi nhóm', data: null })
+  }),
+
+  // PATCH /memberships/:userId
+  move: catchAsync(async (req, res) => {
+    const moved = await membershipService.moveToUnit(req.params.userId, req.body.unitId)
+    success(res, { message: 'Đã chuyển nhóm con', data: toMemberDto(moved, undefined, undefined) })
   }),
 }
