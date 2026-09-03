@@ -97,6 +97,15 @@ export const userRepository = {
     ).exec()
   },
 
+  /**
+   * Xoá avatar bị máy kiểm ảnh từ chối (webhook `moderation.webhook.service.ts`) — về rỗng,
+   * FE rơi về chữ viết tắt. User không có tenantPlugin nên không cần `runUnscoped`.
+   */
+  async clearAvatarRef(pattern: RegExp): Promise<number> {
+    const res = await User.updateMany({ avatar: pattern }, { avatar: '' }).exec()
+    return res.modifiedCount
+  },
+
   /** Avatar của mọi tài khoản — cho job dọn ảnh mồ côi (`upload.cleanup.service.ts`). */
   async allAvatars(): Promise<string[]> {
     const rows = await User.find().select('avatar').lean().exec()

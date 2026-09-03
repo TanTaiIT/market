@@ -24,7 +24,16 @@ export function createApp(): Application {
     }),
   )
   app.use(compression())
-  app.use(express.json({ limit: '1mb' }))
+  // `verify` giữ lại byte gốc cho webhook Cloudinary: chữ ký `X-Cld-Signature` ký trên RAW
+  // body, mà parse xong rồi stringify lại không bảo toàn từng byte (thứ tự key, khoảng trắng).
+  app.use(
+    express.json({
+      limit: '1mb',
+      verify: (req, _res, buf) => {
+        ;(req as Request & { rawBody?: Buffer }).rawBody = buf
+      },
+    }),
+  )
   app.use(express.urlencoded({ extended: true }))
 
   // Access log. Không kéo pino-http/morgan về chỉ để in một dòng mỗi request.

@@ -228,6 +228,20 @@ export const organizationRepository = {
     }).exec()
   },
 
+  /**
+   * Xoá avatar/cover bị máy kiểm ảnh từ chối (webhook `moderation.webhook.service.ts`).
+   * Hai lệnh rời vì mỗi field cần điều kiện khớp riêng; cache hồ sơ org phải xả như mọi update.
+   */
+  async clearImageRefs(pattern: RegExp): Promise<number> {
+    const [avatars, covers] = await Promise.all([
+      Organization.updateMany({ avatarUrl: pattern }, { avatarUrl: '' }).exec(),
+      Organization.updateMany({ coverUrl: pattern }, { coverUrl: '' }).exec(),
+    ])
+    const modified = avatars.modifiedCount + covers.modifiedCount
+    if (modified > 0) clearOrganizationCache()
+    return modified
+  },
+
   /** Avatar + cover của mọi org — cho job dọn ảnh mồ côi (`upload.cleanup.service.ts`). */
   async allImageUrls(): Promise<string[]> {
     const rows = await Organization.find().select('avatarUrl coverUrl').lean().exec()

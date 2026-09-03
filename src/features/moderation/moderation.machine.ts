@@ -62,6 +62,9 @@ export const MACHINE_HOLDS = [
   'duplicate_title',
   'recent_rejection',
   'category_manual_review',
+  // Không đến từ lượt quét mà từ webhook Cloudinary (moderation.webhook.service.ts): một ảnh
+  // của tin PENDING bị máy kiểm ảnh từ chối — ảnh đã bị rút, phần chữ chờ người thật xem nốt.
+  'image_rejected',
 ] as const
 export type MachineHold = (typeof MACHINE_HOLDS)[number]
 

@@ -568,6 +568,44 @@ export const listingRepository = {
    * Gồm cả snapshot avatar người đăng. Tin xoá mềm cố ý RỚT khỏi kết quả (hook của model):
    * không có đường khôi phục tin, nên ảnh của nó là rác hợp lệ.
    */
+  // ── IMAGE MODERATION (webhook Cloudinary) ──────────────────────────────────
+  // Cùng lý do `runUnscoped` với cụm machine review: sự kiện đến từ Cloudinary, không có
+  // request người dùng nào phía sau, và ảnh bị từ chối phải được gỡ ở MỌI trục.
+
+  /** Mọi tin (kể cả pending/hidden) còn giữ URL khớp ảnh bị từ chối. */
+  findByImageRef(pattern: RegExp) {
+    return runUnscoped('image moderation: tìm tin đang giữ ảnh bị từ chối', () =>
+      Listing.find({ images: pattern }).exec(),
+    )
+  },
+
+  /**
+   * Rút ảnh bị từ chối khỏi một tin, kèm (tuỳ chọn) đổi trạng thái trong CÙNG một lệnh.
+   * `ifStatus` là chốt race như `applyMachineVerdict`: người duyệt tay đổi trạng thái trước
+   * thì lệnh có điều kiện match 0 document và trả `null` — caller rơi về nhánh chỉ-rút-ảnh.
+   */
+  scrubImageRef(
+    id: Types.ObjectId,
+    pattern: RegExp,
+    opts: { ifStatus?: ListingStatus; set?: Partial<IListing> } = {},
+  ) {
+    return runUnscoped('image moderation: rút ảnh bị từ chối khỏi tin', () =>
+      Listing.findOneAndUpdate(
+        { _id: id, ...(opts.ifStatus ? { status: opts.ifStatus } : {}) },
+        { $pull: { images: pattern }, ...(opts.set ? { $set: opts.set } : {}) },
+        { new: true },
+      ).exec(),
+    )
+  },
+
+  /** Xoá snapshot avatar người đăng khi chính ảnh avatar đó bị từ chối — FE rơi về chữ viết tắt. */
+  async clearPosterAvatarRef(pattern: RegExp): Promise<number> {
+    const res = await runUnscoped('image moderation: xoá snapshot avatar bị từ chối', () =>
+      Listing.updateMany({ posterAvatar: pattern }, { posterAvatar: '' }).exec(),
+    )
+    return res.modifiedCount
+  },
+
   async allImageRefs(): Promise<string[]> {
     const rows = await runUnscoped('image cleanup: gom URL ảnh của mọi tin', () =>
       Listing.find().select('images posterAvatar').lean().exec(),

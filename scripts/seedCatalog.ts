@@ -462,14 +462,21 @@ export const TEMPLATES: TemplateSeed[] = [
   },
 
   {
+    /*
+     * v2: chia hai nhóm "Máy của bạn" / "Tình trạng máy" (FE in tiêu đề nhóm), thêm `ram` +
+     * `origin`, và `color` đổi từ ô gõ tay sang danh sách màu chuẩn — FE vẽ chấm màu theo
+     * NHÃN, mà nhãn gõ tay thì "Đen"/"đen "/"mau den" không bao giờ khớp bảng màu.
+     * v1 giữ nguyên trong DB cho tin đã đăng (form sửa ghim version cũ).
+     */
     slug: 'dien-thoai',
-    version: 1,
+    version: 2,
     fieldKeys: [
       {
         key: 'brand',
         order: 10,
         required: true,
         filterable: true,
+        group: 'Máy của bạn',
         // Dropdown thay ô nhập tự do: `brand` là field lọc, mà gõ tay thì "Iphone"/"iphone"/
         // "IPhone" thành ba giá trị khác nhau và bộ lọc vỡ.
         override: {
@@ -487,15 +494,56 @@ export const TEMPLATES: TemplateSeed[] = [
           ),
         },
       },
-      { key: 'model', order: 20, required: true },
-      { key: 'storage', order: 30, required: true, filterable: true },
-      { key: 'color', order: 40, required: false },
-      { key: 'batteryHealth', order: 50, required: false, filterable: false },
+      { key: 'model', order: 20, required: true, group: 'Máy của bạn' },
+      { key: 'ram', order: 30, required: false, filterable: true, group: 'Máy của bạn' },
+      { key: 'storage', order: 40, required: true, filterable: true, group: 'Máy của bạn' },
+      {
+        key: 'color',
+        order: 50,
+        required: false,
+        group: 'Máy của bạn',
+        override: {
+          type: FIELD_TYPE.SELECT,
+          options: opts(
+            ['black', 'Đen'],
+            ['white', 'Trắng'],
+            ['silver', 'Bạc'],
+            ['gold', 'Vàng'],
+            ['pink', 'Hồng'],
+            ['blue', 'Xanh dương'],
+            ['green', 'Xanh lá'],
+            ['purple', 'Tím'],
+            ['red', 'Đỏ'],
+            ['titan_natural', 'Titan tự nhiên'],
+            ['gray', 'Xám'],
+          ),
+        },
+      },
+      {
+        key: 'batteryHealth',
+        order: 60,
+        required: false,
+        filterable: false,
+        group: 'Tình trạng máy',
+      },
+      { key: 'origin', order: 70, required: false, group: 'Tình trạng máy' },
       // `required` có chủ ý: đây là thông tin người mua quan tâm nhất và là chỗ hay bị giấu.
-      { key: 'repairHistory', order: 60, required: true, filterable: true },
-      { key: 'accessories', order: 70, required: false },
-      { key: 'warranty', order: 80, required: false, filterable: true },
-      { key: 'warrantyUntil', order: 90, required: false, showIf: { key: 'warranty', eq: true } },
+      {
+        key: 'repairHistory',
+        order: 80,
+        required: true,
+        filterable: true,
+        group: 'Tình trạng máy',
+      },
+      { key: 'warranty', order: 90, required: false, filterable: true, group: 'Tình trạng máy' },
+      {
+        key: 'warrantyUntil',
+        order: 100,
+        required: false,
+        showIf: { key: 'warranty', eq: true },
+        group: 'Tình trạng máy',
+      },
+      { key: 'accessories', order: 110, required: false, group: 'Phụ kiện' },
     ],
   },
 
