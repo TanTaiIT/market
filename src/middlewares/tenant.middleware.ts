@@ -79,7 +79,22 @@ async function resolveOrganization(
  * header) và được đối chiếu với `memberships` NGAY LÚC ĐÓ — rời org là mất quyền ngay, không
  * phải chờ token hết hạn.
  */
+/**
+ * Đường phiên đăng nhập: KHÔNG mang tổ chức.
+ *
+ * Client gắn `X-Org-Slug` vào MỌI request. Nếu org đang chọn bị khoá thì `resolveBySlug` ném
+ * 403 — kể cả trên `/auth/refresh`, tức là chính lối tự cứu phiên bị header org làm chết, rồi
+ * app đăng xuất người dùng vì một lý do không liên quan gì tới phiên của họ.
+ *
+ * An toàn vì `auth.service` không đọc scope org nào: nó chỉ tra `userRepository`. Vẫn mở scope
+ * CÔNG KHAI chứ không bỏ trắng — `tenantPlugin` fail-closed, thiếu scope là mọi truy vấn bên
+ * trong ném "Missing tenant context".
+ */
+const SESSION_PATH = /^\/auth\//
+
 export const resolveTenant = catchAsync(async (req, _res, next) => {
+  if (SESSION_PATH.test(req.path)) return runWithTenant(publicOnlyScope(), next)
+
   const actorId = actorIdOf(req)
   const org = await resolveOrganization(req, actorId)
 

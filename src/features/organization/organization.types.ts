@@ -56,6 +56,13 @@ export function toMyOrganizationDto(row: {
     role: row.membership.role,
     unitId: row.membership.unitId?.toString() ?? null,
     feedLayout: row.org.feedLayout,
+    /*
+     * `findByIds` cố ý GIỮ org bị khoá trong danh sách, với lý do "người gọi cần phân biệt
+     * khoá với không còn" — nhưng lời hứa đó chỉ thành thật khi DTO nói ra trạng thái. Thiếu
+     * nó, client tự chọn org duy nhất mình thuộc về mà không biết nó đã khoá, rồi mọi request
+     * mang một slug BE chắc chắn từ chối.
+     */
+    status: row.org.status,
   }
 }
 

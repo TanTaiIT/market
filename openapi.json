@@ -699,6 +699,14 @@
               "feed",
               "grid"
             ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "pending_admin"
+            ]
           }
         },
         "required": [
@@ -709,7 +717,8 @@
           "provinceCode",
           "role",
           "unitId",
-          "feedLayout"
+          "feedLayout",
+          "status"
         ]
       },
       "UpdateOrganization": {

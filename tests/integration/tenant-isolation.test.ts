@@ -193,6 +193,45 @@ describe('Nhánh master', () => {
     expect(res.status).toBe(403)
   })
 
+  /**
+   * Ca đã đẩy người dùng ra khỏi app: client gắn `X-Org-Slug` vào MỌI request, nên org đang chọn
+   * bị khoá làm chết luôn `/auth/refresh` — đúng cái lối dùng để tự cứu phiên. App thấy refresh
+   * hỏng thì dọn phiên, và người dùng bị đăng xuất vì một lý do không liên quan gì tới phiên của
+   * họ; đăng nhập lại thì client tự chọn lại đúng org đó và vòng lặp khép kín.
+   *
+   * Đường phiên vì thế được miễn tenant scope (`SESSION_PATH` trong `tenant.middleware`).
+   */
+  it('org bị khoá KHÔNG làm chết đường đăng nhập / refresh phiên', async () => {
+    const login = await request(app)
+      .post('/api/v1/auth/login')
+      .set(orgAuth(orgB.owner.token, orgB.slug))
+      .send({ email: orgB.owner.email, password: PASSWORD })
+
+    expect(login.status).toBe(200)
+
+    const refreshed = await request(app)
+      .post('/api/v1/auth/refresh')
+      .set(orgAuth(orgB.owner.token, orgB.slug))
+      .send({ refreshToken: login.body.data.tokens.refreshToken })
+
+    expect(refreshed.status).toBe(200)
+  })
+
+  /**
+   * `findByIds` cố ý giữ org bị khoá trong danh sách để người gọi phân biệt "khoá" với "không
+   * còn" — lời hứa đó chỉ thành thật khi DTO nói ra trạng thái. Thiếu nó, client tự chọn org
+   * duy nhất mình thuộc về mà không biết nó đã khoá.
+   */
+  it('/organizations/mine nói ra org đang bị khoá', async () => {
+    const res = await request(app)
+      .get('/api/v1/organizations/mine')
+      .set('Authorization', `Bearer ${orgB.owner.token}`)
+      .expect(200)
+
+    const row = res.body.data.find((o: { slug: string }) => o.slug === orgB.slug)
+    expect(row).toMatchObject({ status: 'suspended' })
+  })
+
   it('không thu hồi được master cuối cùng', async () => {
     const grants = await request(app)
       .get('/api/v1/role-grants/mine')

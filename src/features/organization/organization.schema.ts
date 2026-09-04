@@ -155,6 +155,8 @@ export const myOrganizationSchema = z
      * mình thuộc về mà không tốn thêm lượt nào lúc đổi org.
      */
     feedLayout: z.nativeEnum(FEED_LAYOUTS),
+    /** Org bị khoá vẫn nằm trong danh sách này — client cần biết để đừng tự chọn nó. */
+    status: z.nativeEnum(TENANT_STATUS),
   })
   .openapi('MyOrganization')
 
