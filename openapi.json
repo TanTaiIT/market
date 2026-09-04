@@ -1139,6 +1139,46 @@
           "penalty"
         ]
       },
+      "StaleListing": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "image": {
+            "type": "string",
+            "description": "Ảnh bìa; rỗng nếu tin không có ảnh nào"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "pending",
+              "pending_unverified",
+              "active",
+              "sold",
+              "expired",
+              "rejected",
+              "hidden"
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "_id",
+          "title",
+          "image",
+          "status",
+          "expiresAt"
+        ]
+      },
       "QuotaStatus": {
         "type": "object",
         "properties": {
@@ -1166,6 +1206,13 @@
           },
           "standing": {
             "$ref": "#/components/schemas/PostingStanding"
+          },
+          "needsReconcile": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StaleListing"
+            },
+            "description": "Tin đã hết hạn hoặc sắp hết hạn trong 7 ngày, cũ nhất trước, tối đa 20 tin. Client dùng để chặn lại và hỏi về tin cũ trước khi cho đăng tin mới."
           }
         },
         "required": [
@@ -1174,7 +1221,8 @@
           "pending",
           "remaining",
           "fee",
-          "standing"
+          "standing",
+          "needsReconcile"
         ]
       },
       "PostingStats": {
@@ -4660,6 +4708,297 @@
           },
           "409": {
             "description": "Trạng thái không đổi, hoặc người này đang giữ quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listings/{id}/bump": {
+      "post": {
+        "operationId": "listingBump",
+        "tags": [
+          "Listing"
+        ],
+        "summary": "Đẩy tin lên đầu bảng tin",
+        "description": "Đặt lại `rankAt` = hiện tại; bảng tin xếp theo khoá đó. MIỄN PHÍ, không qua gói nào — chỉ master, người phụ trách danh mục của tin (tin công khai), hoặc quản trị nhóm sở hữu tin (tin nội bộ). Người duyệt tin cấp staff KHÔNG đẩy được. Chỉ áp dụng cho tin `active`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã đẩy tin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Listing"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Tin không ở trạng thái hiển thị trên bảng tin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không đủ hạng để đẩy tin ở trục của tin này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tin không tồn tại, hoặc thuộc tổ chức bạn không có phần nào trong đó",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listings/{id}/renew": {
+      "post": {
+        "operationId": "listingRenew",
+        "tags": [
+          "Listing"
+        ],
+        "summary": "Gia hạn tin thêm 30 ngày",
+        "description": "Đường của CHÍNH CHỦ — câu trả lời \"vẫn còn\" cho tin hết hạn. Đặt lại `expiresAt` = hiện tại + 30 ngày và bật `expired` về `active`. KHÔNG chạm `rankAt`: gia hạn không phải đẩy tin. Chỉ nhận tin `active` hoặc `expired`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã gia hạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Listing"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Tin không ở trạng thái gia hạn được",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tin không phải của bạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tin không tồn tại",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listings/{id}/sold": {
+      "post": {
+        "operationId": "listingMarkSold",
+        "tags": [
+          "Listing"
+        ],
+        "summary": "Đánh dấu tin đã bán",
+        "description": "Đường của CHÍNH CHỦ — câu trả lời \"đã bán\". Idempotent: tin đã `sold` trả 200 nguyên trạng. Chỉ nhận tin `active` hoặc `expired`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã đánh dấu đã bán",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Listing"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Tin không ở trạng thái đánh dấu được",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Tin không phải của bạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Tin không tồn tại",
             "content": {
               "application/json": {
                 "schema": {

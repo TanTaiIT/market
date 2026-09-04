@@ -4,6 +4,7 @@ import { CreateListingInput, UpdateListingInput, ListingQuery, NearbyQuery } fro
 import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
 import { PostingFee, postingFee } from './listing.pricing'
+import { RECONCILE_LIMIT, listingExpiresAt, reconcileCutoff } from './listing.expiry.service'
 import {
   QUOTA,
   QuotaVerdict,
@@ -32,7 +33,12 @@ import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { CLEAN_APPROVALS_PER_LEVEL, MAX_TRUST_LEVEL } from '../trust/trust.policy'
-import { Grant, canModerateAnyInOrg, canModerateListing } from '../../common/authz/policy'
+import {
+  Grant,
+  canBumpListing,
+  canModerateAnyInOrg,
+  canModerateListing,
+} from '../../common/authz/policy'
 import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from '../../common/errors'
 import {
   LISTING_STATUS,
@@ -49,8 +55,6 @@ import {
   buildPaginationMeta,
   PaginationParams,
 } from '../../common/utils/pagination'
-
-const LISTING_TTL_DAYS = 30
 
 /**
  * Chốt phạm vi THẬT của một thao tác duyệt.
@@ -102,6 +106,37 @@ export function assertCanModerateListing(listing: IListingDocument, grants: Gran
   throw new ForbiddenError('Tin này không thuộc phạm vi duyệt của bạn')
 }
 
+/**
+ * Chốt thẩm quyền ĐẨY TIN. Cùng luật 403/404 với `assertCanModerateListing`: giấu sự tồn tại
+ * của tin chỉ khi người hỏi không có chân nào trong org của nó.
+ *
+ * Thông điệp 403 nói ra HẠNG còn thiếu, không nói "không có quyền": người bấm nút này thường
+ * là staff nhóm — họ duyệt tin được nên đang tưởng mình đẩy được, và câu trả lời hữu ích là
+ * "việc này thuộc quản trị nhóm" chứ không phải một lời từ chối trơn.
+ */
+export function assertCanBumpListing(listing: IListingDocument, grants: Grant[]): void {
+  const orgId = listing.organizationId?.toString() ?? null
+  const allowed = canBumpListing(grants, {
+    visibility: listing.visibility,
+    organizationId: orgId,
+    unitId: listing.unitId?.toString() ?? null,
+    categoryId: listing.category.toString(),
+    provinceCode: listing.provinceCode,
+    wardCode: listing.wardCode,
+  })
+  if (allowed) return
+
+  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
+    throw new ForbiddenError('Tin công khai chỉ người phụ trách danh mục này đẩy được')
+  }
+
+  if (!orgId || !canModerateAnyInOrg(grants, orgId)) {
+    throw new NotFoundError('Listing not found')
+  }
+
+  throw new ForbiddenError('Đẩy tin là việc của quản trị nhóm, không phải người duyệt tin')
+}
+
 /** Kết quả `validateForCategory` — alias để `toListingDoc` không phải khai lại hình của nó. */
 type ValidatedForCategory = Awaited<ReturnType<typeof categoryTemplateService.validateForCategory>>
 
@@ -137,7 +172,7 @@ function toListingDoc(
   wardCode: string | null,
   validated: ValidatedForCategory,
 ): Partial<IListing> {
-  const expiresAt = new Date(Date.now() + LISTING_TTL_DAYS * 24 * 60 * 60 * 1000)
+  const expiresAt = listingExpiresAt()
   return {
     title: input.title,
     slug: slugifyWithSuffix(input.title, Date.now().toString(36)),
@@ -297,6 +332,28 @@ function quotaError(quota: QuotaVerdict): Error {
 async function assertOwner(id: string, userId: string) {
   const listing = await listingRepository.findById(id)
   // Tin của org khác đã bị scope loại từ tầng plugin -> null -> 404, không lộ tồn tại.
+  if (!listing) throw new NotFoundError('Listing not found')
+  if (listing.seller.toString() !== userId) {
+    throw new ForbiddenError('You can only modify your own listing')
+  }
+  return listing
+}
+
+/**
+ * Như `assertOwner` nhưng đọc NGOÀI scope tenant — dành cho hai phép trả lời của chính chủ
+ * (`renew`, `markSold`).
+ *
+ * Khoá `seller` lấy từ token nên đã hẹp hơn mọi scope; áp thêm trục vào đây thì bảng "tin của
+ * tôi" (`paginateMine`, cũng unscoped) hiện ra tin mà bấm vào lại 404. Hai nhóm rơi đúng vào
+ * đó: tin nội bộ của org KHÁC org đang active trên header, và tin `hidden`/`pending` — cả hai
+ * đều nằm ngoài predicate public, dù là tin của chính người đang gọi.
+ *
+ * Không dùng cho `update`/`remove`: hai đường đó ghi nội dung nên vẫn phải nằm trong trục.
+ */
+async function assertOwnerUnscoped(id: string, userId: string) {
+  const listing = await runUnscoped('chính chủ trả lời về tin của mình', () =>
+    listingRepository.findById(id).exec(),
+  )
   if (!listing) throw new NotFoundError('Listing not found')
   if (listing.seller.toString() !== userId) {
     throw new ForbiddenError('You can only modify your own listing')
@@ -561,6 +618,17 @@ export const listingService = {
           )
         : 0
 
+    /*
+     * Tin cần đối soát đi KÈM quota, không thành một endpoint riêng: màn chặn-trước-khi-đăng
+     * hỏi cả hai thứ cùng lúc ("còn N slot" + "N tin cũ này còn không?"), mà hai request rời
+     * nhau thì màn đó phải chờ cái chậm hơn rồi mới vẽ được gì.
+     */
+    const needsReconcile = await listingRepository.findNeedingReconcile(
+      author.id,
+      reconcileCutoff(),
+      RECONCILE_LIMIT,
+    )
+
     return {
       ...checkQuota({
         trustLevel: author.trustLevel,
@@ -568,6 +636,14 @@ export const listingService = {
         recentRejections,
         pendingCount,
       }),
+      needsReconcile: needsReconcile.map((l) => ({
+        _id: l._id.toString(),
+        title: l.title,
+        // Ảnh đầu là ảnh bìa ở mọi chỗ khác — giữ nguyên quy ước, đừng để màn này tự chọn khác.
+        image: l.images[0] ?? '',
+        status: l.status,
+        expiresAt: l.expiresAt!,
+      })),
       // Field phí sống trong hợp đồng API từ GIAI ĐOẠN MIỄN PHÍ — xem listing.pricing.ts.
       fee: this.feeQuote(author, categoryId),
       standing: postingStanding(author, recentRejections, lastRejectionAt),
@@ -608,6 +684,86 @@ export const listingService = {
       items,
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
+  },
+
+  /**
+   * Đẩy tin lên đầu bảng tin. MIỄN PHÍ, không qua gói nào — xem `canBumpListing` cho ai được.
+   *
+   * Chỉ ghi `rankAt`, KHÔNG đụng `createdAt`: bảng tin xếp theo `rankAt` (`paginate`), còn
+   * `createdAt` là lịch sử — sửa nó thì tin trông như vừa đăng ở mọi bề mặt khác, kể cả trang
+   * chi tiết và thống kê.
+   *
+   * Chỉ tin ACTIVE: pending/rejected/sold/expired không nằm trên bảng tin, đẩy chúng là một
+   * thao tác báo thành công mà không dịch được gì — người bấm sẽ tưởng nó có tác dụng.
+   *
+   * Đọc và ghi ĐỀU unscoped, chốt thật là `assertCanBumpListing` kẹp ở giữa — cùng lý do đã
+   * ghi ở `setModerationStatus`: tenant scope không diễn đạt nổi thẩm quyền của trục danh mục,
+   * nên người phụ trách danh mục (không thuộc nhóm nào) sẽ không đụng được tin công khai mang
+   * badge nhóm dù chính họ có thẩm quyền trên trục đó.
+   */
+  async bump(id: string, grants: Grant[]) {
+    const listing = await runUnscoped('bump: đọc tin để xét thẩm quyền theo trục', () =>
+      listingRepository.findById(id).exec(),
+    )
+    if (!listing) throw new NotFoundError('Listing not found')
+    assertCanBumpListing(listing, grants)
+
+    if (listing.status !== LISTING_STATUS.ACTIVE) {
+      throw new BadRequestError('Chỉ đẩy được tin đang hiển thị trên bảng tin')
+    }
+
+    const updated = await runUnscoped('bump: ghi rankAt đã qua chốt thẩm quyền', () =>
+      listingRepository.updateById(id, { rankAt: new Date() }).exec(),
+    )
+    return updated!
+  },
+
+  /**
+   * Gia hạn tin — đường của CHÍNH CHỦ, trả lời "vẫn còn" cho câu hỏi hết hạn.
+   *
+   * KHÔNG chạm `rankAt`. Gia hạn mà kèm đẩy tin thì cách rẻ nhất để lên đầu bảng là để tin
+   * hết hạn rồi bấm gia hạn — đẩy tin là quyền của quản trị (`bump`), giữ hai việc rời nhau.
+   *
+   * Chỉ nhận `active` (còn hạn, gia hạn sớm) và `expired`. Mọi trạng thái khác 400: bật
+   * `hidden`/`rejected` lên `active` là để chủ tin tự lật phán quyết của người duyệt, còn
+   * `sold` thì phải đăng tin mới chứ không hồi sinh tin đã bán.
+   */
+  async renew(id: string, userId: string) {
+    const existing = await assertOwnerUnscoped(id, userId)
+    if (existing.status !== LISTING_STATUS.ACTIVE && existing.status !== LISTING_STATUS.EXPIRED) {
+      throw new BadRequestError('Chỉ gia hạn được tin đang hiển thị hoặc đã hết hạn')
+    }
+
+    const updated = await runUnscoped('gia hạn: ghi sau khi đã chốt chính chủ', () =>
+      listingRepository.updateById(id, {
+        status: LISTING_STATUS.ACTIVE,
+        expiresAt: listingExpiresAt(),
+      }),
+    )
+    return updated!
+  },
+
+  /**
+   * Đánh dấu đã bán — đường của CHÍNH CHỦ, trả lời "đã bán".
+   *
+   * Idempotent: tin đã `sold` trả về nguyên trạng chứ không 400. Nút này sẽ nằm trong push
+   * notification (đợt sau), nơi bấm hai lần là chuyện thường và một lỗi đỏ ở lần thứ hai chỉ
+   * làm người bán tưởng lần đầu thất bại.
+   *
+   * `hidden`/`rejected`/`pending` thì 400 — cùng lý do `renew`: chúng là phán quyết của
+   * người duyệt, chủ tin không được đi vòng qua bằng cách tự đổi trạng thái.
+   */
+  async markSold(id: string, userId: string) {
+    const existing = await assertOwnerUnscoped(id, userId)
+    if (existing.status === LISTING_STATUS.SOLD) return existing
+    if (existing.status !== LISTING_STATUS.ACTIVE && existing.status !== LISTING_STATUS.EXPIRED) {
+      throw new BadRequestError('Chỉ đánh dấu đã bán cho tin đang hiển thị hoặc đã hết hạn')
+    }
+
+    const updated = await runUnscoped('đã bán: ghi sau khi đã chốt chính chủ', () =>
+      listingRepository.updateById(id, { status: LISTING_STATUS.SOLD }),
+    )
+    return updated!
   },
 
   async nearby(query: NearbyQuery) {

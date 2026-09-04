@@ -57,6 +57,13 @@ const envSchema = z.object({
   // Nhịp quét của người duyệt máy (cú pháp human-interval của Agenda: '2 minutes', '30 seconds').
   MACHINE_REVIEW_EVERY: z.string().default('2 minutes'),
 
+  /*
+   * Nhịp hạ tin quá hạn xuống `expired`. Một giờ là đủ: hạn tin tính bằng NGÀY, nên trễ tối đa
+   * một giờ không ai thấy — mà trên free tier job chỉ chạy khi có traffic đánh thức server
+   * (xem `config/agenda.ts`), đặt nhịp dày hơn cũng không làm nó đúng giờ hơn.
+   */
+  LISTING_EXPIRY_EVERY: z.string().default('1 hour'),
+
   // Domain gốc để tách subdomain -> Organization.slug (vd 'app.com' => hungvuong.app.com).
   // Bỏ trống ở dev/test: khi đó org hoạt động đến từ header `X-Org-Slug`, hoặc suy ra khi
   // người dùng chỉ thuộc đúng một org.

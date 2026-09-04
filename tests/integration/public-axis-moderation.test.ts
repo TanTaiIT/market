@@ -375,3 +375,113 @@ describe('Trục công khai — tầng phường', () => {
     expect(Array.isArray(res.body.data.trend)).toBe(true)
   }, 60_000)
 })
+
+/**
+ * ĐẨY TIN — miễn phí, không qua gói nào. Đúng ba hạng: master, người phụ trách danh mục của
+ * tin, quản trị nhóm sở hữu tin.
+ *
+ * Ma trận quyền LÀ toàn bộ feature này, nên nó phải nằm trong test chứ không phải trong mô tả.
+ * Hai ca dễ nới lỏng nhất lúc sửa sau này được chốt tường minh: phụ trách danh mục KHÁC, và
+ * staff nhóm — staff duyệt được tin nhưng không được đẩy, vì đẩy tin là lấy chỗ của tin người
+ * khác trên bảng.
+ */
+describe('Đẩy tin lên đầu bảng', () => {
+  let seq = 0
+  /** Tài khoản mới ở bậc trần uy tín → tin công khai lên bảng ngay, không qua hàng đợi. */
+  const freshUser = () => registerUser(app, `bump${(seq += 1)}@pub.local`, `Người bán ${seq}`)
+
+  const bump = (who: TestUser, id: string) =>
+    request(app).post(`/api/v1/listings/${id}/bump`).set(bearer(who))
+
+  const feedTitles = async () => {
+    const res = await request(app)
+      .get('/api/v1/listings')
+      .set(bearer(master))
+      .query({ category: jobs })
+      .expect(200)
+    return res.body.data.map((l: { title: string }) => l.title)
+  }
+
+  /** Tin công khai ĐANG hiển thị. Chốt luôn tiền đề `active` — cả nhóm test dựa vào nó. */
+  const activePublic = async (title: string) => {
+    const seller = await freshUser()
+    const res = await postPublic(seller, title, jobs).expect(201)
+    const id = res.body.data._id as string
+    expect((await statusOf(id))?.status).toBe('active')
+    return id
+  }
+
+  it('master đẩy được, và tin nhảy lên đầu bảng', async () => {
+    const older = await activePublic('Tin cũ cần kéo lên')
+    await activePublic('Tin mới hơn')
+
+    // Trước khi đẩy: tin mới hơn đứng trên, vì `rankAt` mặc định bằng lúc tạo.
+    expect((await feedTitles())[0]).toBe('Tin mới hơn')
+
+    await bump(master, older).expect(200)
+
+    expect((await feedTitles())[0]).toBe('Tin cũ cần kéo lên')
+  }, 60_000)
+
+  it('phụ trách danh mục đẩy được tin trong ô của mình', async () => {
+    const id = await activePublic('Tuyển thợ điện')
+    await bump(catManager, id).expect(200)
+  }, 60_000)
+
+  it('phụ trách danh mục KHÁC bị chặn — phạm vi vẫn được tôn trọng', async () => {
+    const id = await activePublic('Tuyển thợ nước')
+    const res = await bump(otherCatManager, id)
+
+    expect(res.status).toBe(403)
+    expect(res.body.message).toMatch(/phụ trách danh mục/)
+  }, 60_000)
+
+  it('người bán thường không đẩy được tin của CHÍNH mình', async () => {
+    const seller = await freshUser()
+    const created = await postPublic(seller, 'Tin tự đẩy', jobs).expect(201)
+
+    const res = await bump(seller, created.body.data._id)
+    expect(res.status).toBe(403)
+  }, 60_000)
+
+  it('tin chưa duyệt không đẩy được — nó chưa ở trên bảng', async () => {
+    const created = await postPublic(loneSeller, 'Tin còn chờ duyệt', jobs).expect(201)
+    expect((await statusOf(created.body.data._id))?.status).toBe('pending')
+
+    const res = await bump(master, created.body.data._id)
+    expect(res.status).toBe(400)
+  }, 60_000)
+
+  it('tin nội bộ: quản trị nhóm đẩy được, staff nhóm thì không', async () => {
+    const { addMember } = await import('../helpers/fixtures')
+    const { Organization } = await import('../../src/features/organization/organization.model')
+    const org = await Organization.findOne({ slug: SLUG }).lean().exec()
+    const orgId = org!._id.toString()
+
+    const poster = await freshUser()
+    await addMember(poster.id, orgId)
+    const created = await request(app)
+      .post('/api/v1/listings')
+      .set(orgAuth(poster.token, SLUG))
+      .send(listingPayload('Tin nội bộ của trường', jobs))
+      .expect(201)
+    const id = created.body.data._id as string
+    expect((await statusOf(id))?.status).toBe('active')
+
+    // Grant cấp TƯỜNG MINH ở đây chứ không mượn side-effect của `createOrg`: test phải nói ra
+    // ĐÚNG grant nào cho quyền đẩy tin, đó mới là thứ đang được kiểm.
+    const staff = await freshUser()
+    await addMember(staff.id, orgId)
+    await grantRole({ userId: staff.id, role: 'staff', scopeType: 'org', orgId })
+
+    const denied = await bump(staff, id)
+    expect(denied.status).toBe(403)
+    expect(denied.body.message).toMatch(/quản trị nhóm/)
+
+    const groupAdmin = await freshUser()
+    await addMember(groupAdmin.id, orgId)
+    await grantRole({ userId: groupAdmin.id, role: 'manager', scopeType: 'org', orgId })
+
+    await bump(groupAdmin, id).expect(200)
+  }, 60_000)
+})

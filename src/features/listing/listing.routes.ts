@@ -16,6 +16,7 @@ import {
 import { listingProductResponseSchema } from '../listing-product/listing-product.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
+import { requireAnyModerator } from '../moderation/moderation.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
   registry,
@@ -74,8 +75,109 @@ router.delete(
   listingController.remove,
 )
 
+/*
+ * HAI CÂU TRẢ LỜI cho "tin này còn không": gia hạn ("vẫn còn") và đã bán.
+ *
+ * Không gộp vào `PATCH /:id`: `updateListingSchema` cố ý KHÔNG có `status` — mở field đó ra
+ * cho chủ tin là mở luôn đường tự bật `hidden`/`rejected` thành `active`. Hai route hẹp, mỗi
+ * route một phép chuyển trạng thái được phép, thì không có gì để lách.
+ *
+ * Chỉ `authenticate`; thẩm quyền là `assertOwner` trong service (404 cho tin của người khác,
+ * không lộ tồn tại) — cùng khuôn `PATCH`/`DELETE` ngay trên.
+ */
+router.post(
+  '/:id/renew',
+  authenticate,
+  validate({ params: listingParamsSchema }),
+  listingController.renew,
+)
+router.post(
+  '/:id/sold',
+  authenticate,
+  validate({ params: listingParamsSchema }),
+  listingController.markSold,
+)
+
+/*
+ * ĐẨY TIN — không phải đường của chủ tin.
+ *
+ * Cổng route cố ý RỘNG (`requireAnyModerator`: "có quyền duyệt ở đâu đó không") và thẩm quyền
+ * trên ĐÚNG tin này do `assertCanBumpListing` phán, vì chỉ nó mới biết tin thuộc trục nào —
+ * cùng khuôn với hai route ghi của `moderation`. Đặt cổng hẹp ở đây là khoá chặt một trục:
+ * người phụ trách danh mục không thuộc nhóm nào, còn quản trị nhóm không có grant trục danh mục.
+ */
+router.post(
+  '/:id/bump',
+  authenticate,
+  requireAnyModerator,
+  validate({ params: listingParamsSchema }),
+  listingController.bump,
+)
+
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
+
+registry.registerPath({
+  method: 'post',
+  path: '/listings/{id}/bump',
+  operationId: 'listingBump',
+  tags: ['Listing'],
+  summary: 'Đẩy tin lên đầu bảng tin',
+  description:
+    'Đặt lại `rankAt` = hiện tại; bảng tin xếp theo khoá đó. MIỄN PHÍ, không qua gói nào — ' +
+    'chỉ master, người phụ trách danh mục của tin (tin công khai), hoặc quản trị nhóm sở hữu ' +
+    'tin (tin nội bộ). Người duyệt tin cấp staff KHÔNG đẩy được. Chỉ áp dụng cho tin `active`.',
+  ...protectedRoute,
+  request: { params: listingParamsSchema },
+  responses: {
+    200: jsonResponse('Đã đẩy tin', envelope(listingResponseSchema)),
+    400: errorResponse('Tin không ở trạng thái hiển thị trên bảng tin'),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Không đủ hạng để đẩy tin ở trục của tin này'),
+    404: errorResponse('Tin không tồn tại, hoặc thuộc tổ chức bạn không có phần nào trong đó'),
+  },
+})
+registry.registerPath({
+  method: 'post',
+  path: '/listings/{id}/renew',
+  operationId: 'listingRenew',
+  tags: ['Listing'],
+  summary: 'Gia hạn tin thêm 30 ngày',
+  description:
+    'Đường của CHÍNH CHỦ — câu trả lời "vẫn còn" cho tin hết hạn. Đặt lại `expiresAt` = ' +
+    'hiện tại + 30 ngày và bật `expired` về `active`. KHÔNG chạm `rankAt`: gia hạn không ' +
+    'phải đẩy tin. Chỉ nhận tin `active` hoặc `expired`.',
+  ...protectedRoute,
+  request: { params: listingParamsSchema },
+  responses: {
+    200: jsonResponse('Đã gia hạn', envelope(listingResponseSchema)),
+    400: errorResponse('Tin không ở trạng thái gia hạn được'),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Tin không phải của bạn'),
+    404: errorResponse('Tin không tồn tại'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/listings/{id}/sold',
+  operationId: 'listingMarkSold',
+  tags: ['Listing'],
+  summary: 'Đánh dấu tin đã bán',
+  description:
+    'Đường của CHÍNH CHỦ — câu trả lời "đã bán". Idempotent: tin đã `sold` trả 200 nguyên ' +
+    'trạng. Chỉ nhận tin `active` hoặc `expired`.',
+  ...protectedRoute,
+  request: { params: listingParamsSchema },
+  responses: {
+    200: jsonResponse('Đã đánh dấu đã bán', envelope(listingResponseSchema)),
+    400: errorResponse('Tin không ở trạng thái đánh dấu được'),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Tin không phải của bạn'),
+    404: errorResponse('Tin không tồn tại'),
+  },
+})
+
 const listingResponse = envelope(listingResponseSchema)
 // Riêng create: meta mang biên lai phí của HÀNH ĐỘNG — spec phải nói đúng thứ runtime trả.
 const listingCreatedResponse = envelope(listingResponseSchema, z.object({ fee: postingFeeSchema }))

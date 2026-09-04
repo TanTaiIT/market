@@ -126,6 +126,20 @@ export const postingStandingSchema = z
   })
   .openapi('PostingStanding')
 
+/**
+ * Một tin cũ mà màn chặn-trước-khi-đăng đem ra hỏi. Rút gọn có chủ đích: chỉ đủ để vẽ một
+ * dòng kèm hai nút "đã bán" / "vẫn còn", không phải bản sao của `Listing`.
+ */
+export const staleListingSchema = z
+  .object({
+    _id: objectId,
+    title: z.string(),
+    image: z.string().openapi({ description: 'Ảnh bìa; rỗng nếu tin không có ảnh nào' }),
+    status: z.nativeEnum(LISTING_STATUS),
+    expiresAt: z.coerce.date(),
+  })
+  .openapi('StaleListing')
+
 export const quotaStatusSchema = z
   .object({
     allowed: z.boolean(),
@@ -135,6 +149,11 @@ export const quotaStatusSchema = z
     reason: z.enum(['blocked_by_rejections', 'quota_full']).optional(),
     fee: postingFeeSchema,
     standing: postingStandingSchema,
+    needsReconcile: z.array(staleListingSchema).openapi({
+      description:
+        'Tin đã hết hạn hoặc sắp hết hạn trong 7 ngày, cũ nhất trước, tối đa 20 tin. ' +
+        'Client dùng để chặn lại và hỏi về tin cũ trước khi cho đăng tin mới.',
+    }),
   })
   .openapi('QuotaStatus')
 
@@ -273,6 +292,7 @@ export type NearbyQuery = z.infer<typeof nearbyQuerySchema>
 registry.register('CreateListing', createListingSchema)
 registry.register('PostingFee', postingFeeSchema)
 registry.register('PostingStanding', postingStandingSchema)
+registry.register('StaleListing', staleListingSchema)
 registry.register('QuotaStatus', quotaStatusSchema)
 registry.register('PostingStats', postingStatsSchema)
 registry.register('UpdateListing', updateListingSchema)

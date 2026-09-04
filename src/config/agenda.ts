@@ -5,6 +5,7 @@ import type { Db } from 'mongodb'
 import { env } from './env'
 import { logger } from './logger'
 import { machineReviewService } from '../features/moderation/moderation.machine.service'
+import { listingExpiryService } from '../features/listing/listing.expiry.service'
 import {
   cleanupConfigFromEnv,
   uploadCleanupService,
@@ -24,6 +25,7 @@ import {
 const JOBS = {
   MACHINE_REVIEW: 'machine-review:sweep',
   IMAGE_CLEANUP: 'image-cleanup:sweep',
+  LISTING_EXPIRY: 'listing-expiry:sweep',
 } as const
 
 let agenda: Agenda | null = null
@@ -53,6 +55,16 @@ export async function startAgenda(): Promise<void> {
     { lockLifetime: 5 * 60 * 1000 },
   )
 
+  // Thay cho TTL index đã bỏ trên `Listing.expiresAt` — xem ghi chú ở `listing.model.ts`.
+  // `lockLifetime` ngắn hơn machine review: một `updateMany` đi trọn index, không có vòng lặp.
+  agenda.define(
+    JOBS.LISTING_EXPIRY,
+    async () => {
+      await listingExpiryService.sweep()
+    },
+    { lockLifetime: 2 * 60 * 1000 },
+  )
+
   // Chỉ đăng ký khi có đủ CLOUDINARY_* — thiếu là tính năng chưa bật, đừng chạy một job mà
   // lượt nào cũng bỏ qua rồi ghi log "thiếu env" mỗi ngày.
   if (cleanupConfigFromEnv()) {
@@ -67,11 +79,13 @@ export async function startAgenda(): Promise<void> {
 
   await agenda.start()
   await agenda.every(env.MACHINE_REVIEW_EVERY, JOBS.MACHINE_REVIEW)
+  await agenda.every(env.LISTING_EXPIRY_EVERY, JOBS.LISTING_EXPIRY)
   if (cleanupConfigFromEnv()) {
     await agenda.every(env.IMAGE_CLEANUP_EVERY, JOBS.IMAGE_CLEANUP)
   }
   logger.info(
     `⏱️  Agenda started — machine review every ${env.MACHINE_REVIEW_EVERY}` +
+      `, listing expiry every ${env.LISTING_EXPIRY_EVERY}` +
       (cleanupConfigFromEnv() ? `, image cleanup every ${env.IMAGE_CLEANUP_EVERY}` : ''),
   )
 }

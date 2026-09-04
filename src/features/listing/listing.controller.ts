@@ -91,6 +91,25 @@ export const listingController = {
     success(res, { message: 'Listing updated', data: listing })
   }),
 
+  // POST /listings/:id/bump
+  bump: catchAsync(async (req, res) => {
+    // `req.grants` do `requireAnyModerator` nạp sẵn — cổng route đã chạy trước handler này.
+    const listing = await listingService.bump(req.params.id, req.grants!)
+    success(res, { message: 'Đã đẩy tin lên đầu bảng', data: listing })
+  }),
+
+  // POST /listings/:id/renew
+  renew: catchAsync(async (req, res) => {
+    const listing = await listingService.renew(req.params.id, req.user!.id)
+    success(res, { message: 'Đã gia hạn tin', data: listing })
+  }),
+
+  // POST /listings/:id/sold
+  markSold: catchAsync(async (req, res) => {
+    const listing = await listingService.markSold(req.params.id, req.user!.id)
+    success(res, { message: 'Đã đánh dấu tin là đã bán', data: listing })
+  }),
+
   // DELETE /listings/:id
   remove: catchAsync(async (req, res) => {
     await listingService.remove(req.params.id, req.user!.id)

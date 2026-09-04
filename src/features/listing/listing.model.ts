@@ -299,7 +299,8 @@ const listingSchema = new Schema<IListingDocument>(
       default: undefined,
     },
 
-    // Tự hết hạn qua TTL index (xem index bên dưới)
+    // Hạn hiển thị. Job `listing-expiry:sweep` hạ status khi tới hạn — KHÔNG phải TTL index,
+    // xem ghi chú ở cụm index bên dưới.
     expiresAt: { type: Date },
 
     deletedAt: { type: Date, default: null },
@@ -426,14 +427,19 @@ listingSchema.index(
 )
 
 /*
- * TTL BẮT BUỘC single-field — Mongo từ chối compound TTL. Nó là tiến trình dọn nền, không nằm
- * trên đường query nên không ảnh hưởng hiệu năng tenant.
+ * KHÔNG có TTL index trên `expiresAt` — CỐ Ý, và đây là chỗ dễ "sửa lại cho gọn" nhất.
  *
- * Index này XOÁ THẬT document khi tới hạn, không phải đổi `status` thành `expired`. Muốn "ẩn
- * mà giữ lịch sử" thì phải BỎ index này rồi thay bằng một job nền tự set `status = EXPIRED` —
- * hai cách loại trừ nhau, giữ cả hai thì job không bao giờ kịp chạy trước khi Mongo xoá mất.
+ * TTL index xoá THẬT document khi tới hạn. Sản phẩm cần điều ngược lại: tin hết hạn phải còn
+ * đó để người bán trả lời "vẫn còn" rồi gia hạn (`POST /listings/:id/renew`), và `expired`
+ * vốn đã nằm trong `PUBLIC_LISTING_STATUSES` nên trang chi tiết vẫn xem được.
+ *
+ * Thay nó là job `listing-expiry:sweep` (`listing.expiry.service.ts`) đổi `status` sang
+ * `expired`. HAI CÁCH LOẠI TRỪ NHAU: thêm TTL index trở lại thì Mongo xoá mất tin trước khi
+ * job kịp chạy, và cả luồng nhắc-gia-hạn mất đối tượng để nhắc.
+ *
+ * Index cho chính job đó: nó quét `{ status, expiresAt }` nên khoá sắp theo đúng thứ tự lọc.
  */
-listingSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+listingSchema.index({ status: 1, expiresAt: 1 })
 
 // KHÔNG có text index: scope đọc là `$in [...readableOrgIds]`, mà text index bắt buộc
 // equality trên prefix -> vỡ ngay ở route tìm kiếm chính. Xem listing.repository.buildFilter

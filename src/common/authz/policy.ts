@@ -177,6 +177,28 @@ export function canModerateListing(grants: Grant[], listing: ListingTarget): boo
   })
 }
 
+/**
+ * Đẩy tin lên đầu bảng.
+ *
+ * Theo TRỤC CỦA TIN như `canModerateListing` — tin công khai do người phụ trách danh mục quyết,
+ * tin của nhóm do quản trị nhóm quyết — nhưng HẸP HƠN ở vế org: `canModerateOrg` cho cả staff
+ * nhóm con, còn đây chỉ `canAdminOrg`.
+ *
+ * Vì hai việc khác hạng: duyệt tin là nói "tin này hợp lệ", còn đẩy tin là LẤY CHỖ của tin
+ * người khác trên bảng. Thứ hai là quyết định phân phối, thuộc người chịu trách nhiệm cả bề
+ * mặt đó. Master phủ cả hai nhánh (kiểm bên trong từng hàm).
+ */
+export function canBumpListing(grants: Grant[], listing: ListingTarget): boolean {
+  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
+    return canModerateCategory(grants, {
+      categoryId: listing.categoryId,
+      provinceCode: listing.provinceCode ?? '',
+      wardCode: listing.wardCode,
+    })
+  }
+  return canAdminOrg(grants, listing.organizationId ?? '')
+}
+
 /** `outer` (của manager) có phủ trọn `inner` (định cấp cho staff) không. */
 function covers(outer: Grant, inner: Grant): boolean {
   if (outer.scopeType === SCOPE_TYPES.ORG) {

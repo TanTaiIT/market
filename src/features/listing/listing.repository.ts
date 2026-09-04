@@ -253,6 +253,23 @@ export const listingRepository = {
     return [...head, ...tail]
   },
 
+  /**
+   * Hạ MỌI tin quá hạn xuống `expired`, trả về số tin đã đổi.
+   *
+   * `updateMany` một lượt chứ không batch: điều kiện đi trọn index `{ status, expiresAt }` và
+   * mỗi tin chỉ bị đụng đúng một lần trong đời (sau lượt này nó không còn `active`), nên
+   * không có nguy cơ quét lại tăng dần như hàng đợi duyệt máy.
+   *
+   * Người gọi phải bọc `runUnscoped` — xem `listingExpiryService.sweep`.
+   */
+  async expireDue(now: Date): Promise<number> {
+    const res = await Listing.updateMany(
+      { status: LISTING_STATUS.ACTIVE, expiresAt: { $lte: now } },
+      { $set: { status: LISTING_STATUS.EXPIRED } },
+    ).exec()
+    return res.modifiedCount
+  },
+
   updateById(id: string, update: Partial<IListing>) {
     return Listing.findByIdAndUpdate(id, update, { new: true, runValidators: true })
   },
@@ -424,6 +441,29 @@ export const listingRepository = {
       ])
       return { items, total }
     })
+  },
+
+  /**
+   * Tin của MỘT người bán cần đối soát: đã hết hạn, hoặc sắp hết hạn trước `cutoff`.
+   *
+   * `runUnscoped` + lọc theo `seller` cùng lý do `paginateMine`: khoá đã hẹp hơn mọi scope
+   * tenant, mà áp thêm trục sẽ làm tin công khai của người không thuộc org nào biến mất — đúng
+   * nhóm tin mà màn đối soát cần đem ra hỏi nhất.
+   *
+   * `limit` cứng: đây là dữ liệu cho một màn hỏi-đáp, không phải một bảng có phân trang. Người
+   * có 300 tin quá hạn thì hỏi 20 tin cũ nhất trước cũng đủ việc cho một lượt.
+   */
+  findNeedingReconcile(sellerId: string, cutoff: Date, limit: number) {
+    return runUnscoped('reconcile: tin quá hạn/sắp hết hạn của chính chủ', () =>
+      Listing.find({
+        seller: sellerId,
+        status: { $in: [LISTING_STATUS.ACTIVE, LISTING_STATUS.EXPIRED] },
+        expiresAt: { $lte: cutoff },
+      })
+        .sort({ expiresAt: 1 })
+        .limit(limit)
+        .exec(),
+    )
   },
 
   /**

@@ -33,7 +33,9 @@
     "migrate:outsider-posts": "cross-env NODE_ENV=development tsx scripts/migrate-outsider-posts.ts",
     "migrate:trust-default": "cross-env NODE_ENV=development tsx scripts/migrate-trust-default.ts",
     "migrate:master": "cross-env NODE_ENV=development tsx scripts/migrate-master.ts",
-    "migrate:ward-axis": "cross-env NODE_ENV=development tsx scripts/migrate-ward-axis.ts"
+    "migrate:ward-axis": "cross-env NODE_ENV=development tsx scripts/migrate-ward-axis.ts",
+    "migrate:listing-expiry": "cross-env NODE_ENV=development tsx scripts/migrate-listing-expiry.ts",
+    "migrate:listing-expiry:prod": "cross-env NODE_ENV=production tsx scripts/migrate-listing-expiry.ts"
   },
   "keywords": [
     "marketplace",
