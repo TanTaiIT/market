@@ -1,5 +1,4 @@
 import { membershipService } from './membership.service'
-import { toMemberDto } from './membership.types'
 import { canModerateAnyInOrg } from '../../common/authz/policy'
 import { roleGrantService } from '../role-grant/role-grant.service'
 import { currentScope } from '../../common/tenant/tenantContext'
@@ -10,7 +9,8 @@ export const membershipController = {
   // GET /memberships
   list: catchAsync(async (req, res) => {
     const orgId = currentScope()?.ownOrgId?.toString() ?? ''
-    // Tự nạp grant: route chỉ gác bằng `requireMembership`, mà middleware đó không đọc quyền —
+    // Tự nạp grant: cổng `requireMembershipOrOrgModerator` thoát sớm ngay khi có membership,
+    // nên với THÀNH VIÊN thì grant vẫn chưa được nạp —
     // `req.grants` chỉ có sẵn ở những route đi qua `requireOrgModerator`/`requireOrgAdmin`.
     // Dựa vào `req.grants ?? []` là mọi quản trị đều bị hạ xuống bản rút gọn mà không báo gì.
     const grants = req.grants ?? (await roleGrantService.grantsOf(req.user!.id))
@@ -26,11 +26,5 @@ export const membershipController = {
       grants: req.grants ?? (await roleGrantService.grantsOf(req.user!.id)),
     })
     success(res, { message: 'Đã gỡ khỏi nhóm', data: null })
-  }),
-
-  // PATCH /memberships/:userId
-  move: catchAsync(async (req, res) => {
-    const moved = await membershipService.moveToUnit(req.params.userId, req.body.unitId)
-    success(res, { message: 'Đã chuyển nhóm con', data: toMemberDto(moved, undefined, undefined) })
   }),
 }

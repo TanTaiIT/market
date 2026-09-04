@@ -1,4 +1,3 @@
-import { Types } from 'mongoose'
 import { membershipRepository } from './membership.repository'
 import { MembershipQuery } from './membership.schema'
 import { toMemberDto } from './membership.types'
@@ -7,7 +6,7 @@ import { trustRepository } from '../trust/trust.repository'
 import { INITIAL_TRUST } from '../trust/trust.policy'
 import { roleGrantService } from '../role-grant/role-grant.service'
 import { canAdminOrg, isMaster, type Grant } from '../../common/authz/policy'
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
+import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 
@@ -80,23 +79,5 @@ export const membershipService = {
     const removed = await membershipRepository.archiveOne(targetUserId, organizationId)
     if (!removed) throw new NotFoundError('Người này không còn trong nhóm')
     return removed
-  },
-
-  /**
-   * Chuyển một thành viên sang nhóm con khác — `null` là bỏ khỏi mọi nhóm con.
-   *
-   * KHÔNG đụng tới quyền: nhóm con chỉ nói người này thuộc lớp/phòng ban nào. Người có grant
-   * `org_unit` mà bị chuyển đi thì quyền của họ vẫn trỏ vào nhóm con CŨ — đó là chuyện của
-   * màn Phân quyền, và gộp hai thứ vào một thao tác là chỗ dễ cấp nhầm quyền nhất.
-   */
-  async moveToUnit(targetUserId: string, unitId: string | null) {
-    const organizationId = requireOwnOrgId('membership.moveToUnit')
-    const moved = await membershipRepository.moveToUnit(
-      targetUserId,
-      organizationId,
-      unitId ? new Types.ObjectId(unitId) : null,
-    )
-    if (!moved) throw new NotFoundError('Người này không còn trong nhóm')
-    return moved
   },
 }

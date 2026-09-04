@@ -4,12 +4,11 @@ import {
   memberParamsSchema,
   membershipQuerySchema,
   memberResponseSchema,
-  moveMemberSchema,
 } from './membership.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import {
   authenticate,
-  requireMembership,
+  requireMembershipOrOrgModerator,
   requireOrg,
   requireOrgAdmin,
 } from '../../middlewares/auth.middleware'
@@ -27,11 +26,15 @@ const router = Router()
 
 // Thành viên thấy nhau: đây là danh bạ của nhóm, không phải công cụ riêng của bàn quản trị.
 // Quản trị nhận thêm ba field hồ sơ vận hành — phân mức nằm ở DTO, không phải ở route.
+//
+// Người quản org mà KHÔNG phải thành viên (master, manager org) cũng đọc được: họ xoá được
+// thành viên ở `DELETE` bên dưới, nên chặn họ đọc danh sách chỉ tạo ra một bàn quản trị
+// thao tác được mà không nhìn được.
 router.get(
   '/',
   authenticate,
   requireOrg,
-  requireMembership,
+  requireMembershipOrOrgModerator,
   validate({ query: membershipQuerySchema }),
   membershipController.list,
 )
@@ -49,14 +52,6 @@ router.delete(
   requireOrgAdmin,
   validate({ params: memberParamsSchema }),
   membershipController.remove,
-)
-router.patch(
-  '/:userId',
-  authenticate,
-  requireOrg,
-  requireOrgAdmin,
-  validate({ params: memberParamsSchema, body: moveMemberSchema }),
-  membershipController.move,
 )
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
@@ -78,7 +73,7 @@ registry.registerPath({
       envelope(z.array(memberResponseSchema), paginationMetaSchema),
     ),
     401: errorResponse('Thiếu hoặc sai access token'),
-    403: errorResponse('Cần quyền owner hoặc moderator của tổ chức'),
+    403: errorResponse('Không phải thành viên, và cũng không có quyền quản tổ chức này'),
   },
 })
 
@@ -101,28 +96,6 @@ registry.registerPath({
     400: errorResponse('Tự gỡ mình — dùng chức năng rời nhóm'),
     401: errorResponse('Thiếu hoặc sai access token'),
     403: errorResponse('Cần quyền quản trị tổ chức, hoặc mục tiêu cũng là quản trị'),
-    404: errorResponse('Người này không còn trong nhóm'),
-  },
-})
-
-registry.registerPath({
-  method: 'patch',
-  path: '/memberships/{userId}',
-  operationId: 'membershipMove',
-  tags: ['Membership'],
-  summary: 'Chuyển thành viên sang nhóm con khác (quản trị nhóm)',
-  description:
-    'KHÔNG đụng tới quyền: nhóm con chỉ nói người này thuộc lớp/phòng ban nào. Grant phạm vi ' +
-    '`org_unit` của họ vẫn trỏ vào nhóm con cũ — đó là việc của màn Phân quyền.',
-  security: [{ [bearerAuth.name]: [] }],
-  request: {
-    params: memberParamsSchema,
-    body: { content: { 'application/json': { schema: moveMemberSchema } } },
-  },
-  responses: {
-    200: jsonResponse('Đã chuyển', envelope(memberResponseSchema)),
-    401: errorResponse('Thiếu hoặc sai access token'),
-    403: errorResponse('Cần quyền quản trị tổ chức'),
     404: errorResponse('Người này không còn trong nhóm'),
   },
 })

@@ -51,30 +51,6 @@ afterAll(async () => {
 })
 
 /**
- * `capabilities` là ranh giới giữa "tổng quát hoá thật" và "thêm một cột rồi vẫn `if (orgType
- * === 'school')` khắp nơi". Nó chỉ có nghĩa khi có ai đó ĐỌC và từ chối dựa trên nó.
- */
-describe('capabilities quyết định org có nhóm con hay không', () => {
-  it('org loại trường (preset hasUnits=true) tạo được nhóm con', async () => {
-    const res = await request(app)
-      .post('/api/v1/org-units')
-      .set(orgAuth(schoolOwner.token, 'truong-co-lop'))
-      .send({ name: '10A1' })
-    expect(res.status).toBe(201)
-  })
-
-  it('org phẳng (preset hasUnits=false) bị từ chối, kèm lý do đọc được', async () => {
-    const res = await request(app)
-      .post('/api/v1/org-units')
-      .set(orgAuth(flatOwner.token, 'nhom-phang'))
-      .send({ name: 'Tổ 1' })
-
-    expect(res.status).toBe(400)
-    expect(res.body.message).toMatch(/hasUnits/)
-  })
-})
-
-/**
  * Client dựng bộ chuyển tổ chức từ đây: org hoạt động do client chỉ ra bằng header, nên không
  * có danh sách này thì người thuộc nhiều org không biết mình được gửi slug nào.
  */
@@ -104,6 +80,7 @@ describe('GET /organizations/mine', () => {
  * Đổi slug mà URL cũ chết thì bảng alias chỉ là dữ liệu ghi ra rồi không ai đọc.
  */
 describe('Slug cũ vẫn dẫn về đúng tổ chức sau khi đổi tên', () => {
+  // Đi bằng /memberships: bài này kiểm BẢNG ALIAS SLUG, endpoint chỉ là phương tiện org-scoped.
   it('gọi API bằng slug cũ vẫn vào đúng org', async () => {
     await request(app)
       .patch(`/api/v1/organizations/${schoolId}/slug`)
@@ -112,22 +89,22 @@ describe('Slug cũ vẫn dẫn về đúng tổ chức sau khi đổi tên', () 
       .expect(200)
 
     const viaNew = await request(app)
-      .get('/api/v1/org-units')
+      .get('/api/v1/memberships')
       .set(orgAuth(schoolOwner.token, 'thpt-co-lop'))
       .expect(200)
 
     const viaOld = await request(app)
-      .get('/api/v1/org-units')
+      .get('/api/v1/memberships')
       .set(orgAuth(schoolOwner.token, 'truong-co-lop'))
       .expect(200)
 
     expect(viaOld.body.data).toEqual(viaNew.body.data)
-    expect(viaOld.body.data[0].name).toBe('10A1')
+    expect(viaOld.body.data[0].name).toBe('School Owner')
   })
 
   it('slug chưa từng tồn tại vẫn bị từ chối', async () => {
     const res = await request(app)
-      .get('/api/v1/org-units')
+      .get('/api/v1/memberships')
       .set(orgAuth(schoolOwner.token, 'khong-co-that'))
     expect(res.status).toBe(403)
   })

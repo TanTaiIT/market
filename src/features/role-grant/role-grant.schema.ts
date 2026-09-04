@@ -12,7 +12,8 @@ export const roleGrantParamsSchema = z.object({ id: objectId })
  *
  * Người nhận tới bằng `userId` khi người cấp chọn được từ danh bạ, bằng `userEmail` khi không:
  * manager trục (danh mục × tỉnh) thường chẳng thuộc tổ chức nào, mà `GET /memberships` đòi
- * `requireMembership` — với họ danh bạ vĩnh viễn rỗng. Đúng MỘT trong hai, vì hai định danh
+ * hoặc tư cách thành viên hoặc quyền quản CHÍNH org đó — grant trục danh mục không phải cái
+ * nào trong hai, nên với họ danh bạ vĩnh viễn rỗng. Đúng MỘT trong hai, vì hai định danh
  * gửi cùng lúc có thể trỏ hai người khác nhau và không có luật nào nói cái nào thắng.
  */
 export const createRoleGrantSchema = z

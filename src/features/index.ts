@@ -4,7 +4,6 @@ import userRoutes from './user/user.routes'
 import listingRoutes from './listing/listing.routes'
 import favoriteRoutes from './favorite/favorite.routes'
 import organizationRoutes from './organization/organization.routes'
-import orgUnitRoutes from './org-unit/org-unit.routes'
 import joinRequestRoutes from './join-request/join-request.routes'
 import membershipRoutes from './membership/membership.routes'
 import inviteRoutes from './invite/invite.routes'
@@ -33,7 +32,6 @@ router.use('/users', userRoutes)
 router.use('/listings', listingRoutes)
 router.use('/favorites', favoriteRoutes)
 router.use('/organizations', organizationRoutes)
-router.use('/org-units', orgUnitRoutes)
 router.use('/join-requests', joinRequestRoutes)
 router.use('/memberships', membershipRoutes)
 router.use('/invites', inviteRoutes)

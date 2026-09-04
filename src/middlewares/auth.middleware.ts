@@ -68,6 +68,31 @@ export const requireMembership = catchAsync(async (req, _res, next) => {
 })
 
 /**
+ * Danh bạ tổ chức: thành viên xem được nhau, VÀ người đang quản org đó cũng xem được — kể cả
+ * khi họ không phải thành viên.
+ *
+ * Hai vế là hai lý do khác nhau chứ không phải một: thành viên xem vì họ THUỘC VỀ nhóm, còn
+ * master/manager org xem vì họ CHỊU TRÁCH NHIỆM nhóm đó. `requireMembership` chỉ nhận vế đầu,
+ * và điều đó đẻ ra một bất đối xứng: master `DELETE` được một thành viên (`requireOrgAdmin`)
+ * nhưng không `GET` nổi danh sách để biết mình đang xoá ai — màn Thành viên của bàn quản trị
+ * vì thế 403 với đúng người quản nó.
+ *
+ * Vẫn KHÔNG mở cho người ngoài: không có membership thì phải có grant phủ chính org này.
+ */
+export const requireMembershipOrOrgModerator = catchAsync(async (req, _res, next) => {
+  if (req.membership) return next()
+
+  const orgId = currentScope()?.ownOrgId
+  if (!orgId) throw new ForbiddenError('Chưa xác định được tổ chức')
+
+  const grants = await loadGrants(req)
+  if (!canModerateAnyInOrg(grants, orgId.toString())) {
+    throw new ForbiddenError('Bạn không phải thành viên của tổ chức này')
+  }
+  next()
+})
+
+/**
  * Mở màn hình bàn duyệt của org hoạt động. Dùng `canModerateAnyInOrg` chứ không phải
  * `canModerateOrg`: staff nhóm con phải vào được màn hình của chính họ, việc lọc theo nhóm là
  * của tầng query bên dưới.

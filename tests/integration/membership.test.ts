@@ -94,6 +94,25 @@ describe('GET /memberships', () => {
     expect(chu.joinedAt).toEqual(expect.any(String))
   })
 
+  /**
+   * Master không phải thành viên của org nào — `createOrg` chỉ định chủ tổ chức chứ không tự
+   * ghi master vào roster. Chặn họ đọc danh bạ là dựng ra một bàn quản trị mà người quản xoá
+   * được thành viên (`DELETE` dùng `requireOrgAdmin`) nhưng không nhìn được mình đang xoá ai.
+   */
+  it('master không thuộc org vẫn đọc được danh bạ', async () => {
+    const res = await members(master.token, SLUG).expect(200)
+
+    expect(res.body.data.map((m: { name: string }) => m.name)).toEqual([
+      'Chủ tổ chức',
+      'Thành viên roster',
+    ])
+  })
+
+  /** Nới cho người QUẢN org này, không nới cho người ngoài: chủ org B không quản gì ở org A. */
+  it('chủ tổ chức khác vẫn bị chặn — nới cổng không phải mở cổng', async () => {
+    await members(otherOwner.token, SLUG).expect(403)
+  })
+
   it('KHÔNG trả email/phone — danh bạ để nhận ra người, không phải bản sao hồ sơ', async () => {
     const res = await members(owner.token, SLUG).expect(200)
     const keys = Object.keys(res.body.data[0]).sort()
@@ -193,29 +212,5 @@ describe('Quản trị nhóm quản lý thành viên', () => {
       .delete(`/api/v1/memberships/${victim.id}`)
       .set(orgAuth(member.token, SLUG))
       .expect(403)
-  }, 60_000)
-
-  it('chuyển được sang nhóm con, và `null` là bỏ khỏi mọi nhóm con', async () => {
-    // Qua API chứ không `OrgUnit.create` thẳng: model có `tenantPlugin`, ghi ngoài scope là
-    // "Missing tenant context".
-    const unit = await request(app)
-      .post('/api/v1/org-units')
-      .set(asOwner())
-      .send({ name: 'Lớp 10A' })
-      .expect(201)
-
-    const moved = await request(app)
-      .patch(`/api/v1/memberships/${member.id}`)
-      .set(asOwner())
-      .send({ unitId: unit.body.data.id })
-      .expect(200)
-    expect(moved.body.data.unitId).toBe(unit.body.data.id)
-
-    const cleared = await request(app)
-      .patch(`/api/v1/memberships/${member.id}`)
-      .set(asOwner())
-      .send({ unitId: null })
-      .expect(200)
-    expect(cleared.body.data.unitId).toBeNull()
   }, 60_000)
 })

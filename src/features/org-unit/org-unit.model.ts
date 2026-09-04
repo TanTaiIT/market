@@ -8,6 +8,18 @@ import { tenantPlugin } from '../../common/tenant/tenantPlugin'
  * và lớp duyệt phân tầng tự suy biến đúng — không có tầng trung gian thì manager org duyệt
  * thẳng. Không có nhánh code riêng cho org phẳng.
  */
+/*
+ * NHÓM CON — bề mặt API đã gỡ, chỉ còn tầng dữ liệu.
+ *
+ * Tính năng chưa cần tới nên bốn endpoint `/org-units` và `PATCH /memberships/:userId`
+ * (chuyển thành viên sang nhóm con) đã xoá. Model + repository ở lại vì code KHÔNG bị gỡ vẫn
+ * đọc chúng: `notification.service` và `join-request.service` còn nhận `unitId` và kiểm bằng
+ * `orgUnitRepository.findById`, ba script seed/migrate còn ghi bản ghi `OrgUnit`, và cột
+ * `unitId` vẫn nằm trên Listing · Membership · Notification · RoleGrant.
+ *
+ * Hệ quả đang có: không đường nào TẠO được nhóm con qua HTTP nữa, nên hai nhánh nhận `unitId`
+ * kia trên thực tế không ai đi vào — chúng ở lại để bật tính năng trở lại chỉ là revert.
+ */
 export interface IOrgUnit {
   organizationId: Types.ObjectId
   name: string

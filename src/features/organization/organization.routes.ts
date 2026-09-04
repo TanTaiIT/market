@@ -89,7 +89,7 @@ router.get(
 router.get('/mine', authenticate, organizationController.mine)
 
 // Hồ sơ nhóm — đường DUY NHẤT trong feature này mà admin org gọi được, phần còn lại của master.
-// Không có id trên path: org đến từ scope, đúng khuôn `org-unit` và `role-grant`. Phải khai
+// Không có id trên path: org đến từ scope, đúng khuôn `role-grant`. Phải khai
 // TRƯỚC các route `/:organizationId` — Express khớp theo thứ tự.
 router.post(
   '/current/join-code',

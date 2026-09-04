@@ -178,6 +178,21 @@ export async function createCategory(name = 'Đồ dùng', slug = 'do-dung') {
   return category._id.toString()
 }
 
+/**
+ * Nhóm con dựng THẲNG ở tầng model.
+ *
+ * Bề mặt API của nhóm con đã gỡ (`POST /org-units` không còn), nhưng vài đường vẫn NHẬN
+ * `unitId` — thông báo theo nhóm con, đơn xin vào nhóm con — nên muốn kiểm chúng thì phải tự
+ * tạo bản ghi. `runUnscoped` vì model mang `tenantPlugin`: ghi ngoài scope của một request
+ * là "Missing tenant context".
+ */
+export async function createOrgUnit(organizationId: string, name = '10A1') {
+  const { OrgUnit } = await import('../../src/features/org-unit/org-unit.model')
+  const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
+  const unit = await runUnscoped('test fixture', () => OrgUnit.create({ organizationId, name }))
+  return unit._id.toString()
+}
+
 /** Tin mới vào PENDING và bàn duyệt là một feature khác — bật ACTIVE thẳng ở tầng model. */
 export async function publishListing(listingId: string) {
   const { Listing } = await import('../../src/features/listing/listing.model')

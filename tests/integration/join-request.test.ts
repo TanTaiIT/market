@@ -6,6 +6,7 @@ import type { Application } from 'express'
 import {
   TestUser,
   createOrg,
+  createOrgUnit,
   createTestApp,
   joinCodeOf,
   makeMaster,
@@ -52,9 +53,7 @@ beforeAll(async () => {
   ).id
   code = await joinCodeOf(SLUG)
 
-  const unit = await request(app).post('/api/v1/org-units').set(asOwner()).send({ name: '10A1' })
-  expect(unit.status).toBe(201)
-  unitId = unit.body.data.id
+  unitId = await createOrgUnit(orgId)
 }, 120_000)
 
 afterAll(async () => {

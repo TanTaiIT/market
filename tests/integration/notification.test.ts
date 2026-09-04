@@ -7,6 +7,7 @@ import {
   TestUser,
   addMember,
   createOrg,
+  createOrgUnit,
   createTestApp,
   grantRole,
   joinCodeOf,
@@ -54,12 +55,7 @@ beforeAll(async () => {
     })
   ).id
 
-  const unit = await request(app)
-    .post('/api/v1/org-units')
-    .set(asOwner())
-    .send({ name: '10A1' })
-    .expect(201)
-  unitId = unit.body.data.id
+  unitId = await createOrgUnit(orgId)
 
   unitStaff = await registerUser(app, 'staff@notice.local', 'Phụ trách 10A1')
   await addMember(unitStaff.id, orgId, { unitId })
@@ -185,11 +181,7 @@ describe('scope=managed — thứ tôi gửi được tới', () => {
   })
 
   it('staff nhóm chỉ thấy phần trong tầm với — không thành đường vòng đọc nhóm khác', async () => {
-    const otherUnit = await request(app)
-      .post('/api/v1/org-units')
-      .set(asOwner())
-      .send({ name: '10A2' })
-      .expect(201)
+    const otherUnitId = await createOrgUnit(orgId, '10A2')
 
     await request(app)
       .post('/api/v1/notifications')
@@ -197,7 +189,7 @@ describe('scope=managed — thứ tôi gửi được tới', () => {
       .send({
         title: 'Riêng 10A2',
         body: 'Không phải việc của 10A1.',
-        unitId: otherUnit.body.data.id,
+        unitId: otherUnitId,
       })
       .expect(201)
 

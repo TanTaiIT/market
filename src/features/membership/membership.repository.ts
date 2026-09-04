@@ -71,19 +71,6 @@ export const membershipRepository = {
     ).exec()
   },
 
-  /** Chuyển một thành viên sang nhóm con khác. `null` = bỏ khỏi mọi nhóm con. */
-  moveToUnit(
-    userId: Id,
-    organizationId: Id,
-    unitId: Types.ObjectId | null,
-  ): Promise<IMembershipDocument | null> {
-    return Membership.findOneAndUpdate(
-      { userId, organizationId, ...ACTIVE },
-      { unitId },
-      { new: true },
-    ).exec()
-  },
-
   /**
    * Lưu trữ mọi tư cách thành viên của một người, dùng khi tài khoản bị xoá.
    *
