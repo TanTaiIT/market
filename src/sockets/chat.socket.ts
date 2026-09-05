@@ -1,7 +1,5 @@
 import { Socket } from 'socket.io'
 import { chatService } from '../features/chat/chat.service'
-import { runWithTenant } from '../common/tenant/tenantContext'
-import { organizationRepository } from '../features/organization/organization.repository'
 import { logger } from '../config/logger'
 import { adminRoom, conversationRoom } from './emit'
 import { canModerateAnyInOrg } from '../common/authz/policy'
@@ -17,23 +15,24 @@ import { roleGrantService } from '../features/role-grant/role-grant.service'
  */
 export function registerChatHandlers(socket: Socket): void {
   const userId = socket.data.userId as string
-  const organizationId = socket.data.organizationId as string
+  /** `null` khi người này chưa thuộc nhóm nào — chỉ `admin:join` phía dưới còn cần tới nó. */
+  const organizationId = socket.data.organizationId as string | null
 
   socket.on('chat:join', async (conversationId: unknown) => {
     if (typeof conversationId !== 'string' || !conversationId) return
 
     try {
-      // Socket sống ngoài chu kỳ request nên không có sẵn tenant scope — phải tự dựng lại,
-      // đúng org trong JWT của chính socket này.
-      const org = await organizationRepository.findActiveById(organizationId)
-      if (!org) return socket.emit('chat:error', { conversationId, reason: 'org-inactive' })
+      /*
+       * Không còn `runWithTenant`: `Conversation` đã bỏ `tenantPlugin`, nên truy vấn ở đây
+       * không cần scope nào để chạy. Chốt quyền là `getById` → `requireMembership`, và nó hỏi
+       * đúng một câu — người này có tên trong `participants` không.
+       *
+       * Bỏ luôn lượt tra org đang hoạt động: hội thoại về một tin công khai không thuộc org
+       * nào, mà bản cũ lại từ chối join khi không dựng được scope org.
+       */
+      await chatService.getById(conversationId, { id: userId })
 
-      await runWithTenant(
-        { ownOrgId: org._id, readableOrgIds: [org._id], publicAxis: { mode: 'approved' } },
-        () => chatService.getById(conversationId, { id: userId, organizationId }),
-      )
-
-      socket.join(conversationRoom(organizationId, conversationId))
+      socket.join(conversationRoom(conversationId))
       socket.emit('chat:joined', { conversationId })
     } catch {
       // `getById` ném 404 cho cả "không tồn tại" lẫn "không phải thành viên" — giữ nguyên sự
@@ -46,6 +45,10 @@ export function registerChatHandlers(socket: Socket): void {
   // từ token: token không còn mang role, và đọc lúc join nghĩa là thu hồi quyền có hiệu lực
   // ở lần join kế tiếp thay vì phải chờ token hết hạn.
   socket.on('admin:join', async () => {
+    // Đây là chỗ DUY NHẤT còn cần org ở tầng socket. Không có org trong phiên thì không có
+    // phòng quản trị nào để vào — trả `forbidden` như mọi lượt thiếu quyền khác.
+    if (!organizationId) return socket.emit('chat:error', { reason: 'forbidden' })
+
     const grants = await roleGrantService.grantsOf(userId)
     if (!canModerateAnyInOrg(grants, organizationId)) {
       return socket.emit('chat:error', { reason: 'forbidden' })
@@ -55,7 +58,7 @@ export function registerChatHandlers(socket: Socket): void {
 
   socket.on('chat:leave', (conversationId: unknown) => {
     if (typeof conversationId === 'string' && conversationId) {
-      socket.leave(conversationRoom(organizationId, conversationId))
+      socket.leave(conversationRoom(conversationId))
     }
   })
 

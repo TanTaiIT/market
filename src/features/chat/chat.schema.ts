@@ -30,6 +30,8 @@ export const conversationResponseSchema = z
     id: objectId,
     listingId: objectId,
     listingTitle: z.string(),
+    /** Ảnh đầu của tin, snapshot lúc mở hội thoại. `''` = tin không ảnh, hoặc hội thoại cũ. */
+    listingImage: z.string(),
     /** Người còn lại — client không phải tự suy từ mảng participants. */
     partnerId: objectId,
     partnerName: z.string(),

@@ -21,6 +21,7 @@ export function toConversationDto(
     id: conversation._id.toString(),
     listingId: conversation.listingId.toString(),
     listingTitle: conversation.listingTitle,
+    listingImage: conversation.listingImage,
     partnerId: partner?.user.toString() ?? '',
     partnerName: partner?.name ?? '',
     partnerAvatar: partner?.avatar ?? '',

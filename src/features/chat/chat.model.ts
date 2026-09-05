@@ -1,13 +1,20 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
-import { tenantPlugin } from '../../common/tenant/tenantPlugin'
 
 /**
  * Hội thoại 1-1 giữa người mua và người bán, gắn vào đúng một tin đăng.
  *
- * Hội thoại nằm gọn trong một org: cả hai phía đều phải là thành viên cùng org.
- * Nhắn tin xuyên org (khi tin đăng đến từ trục danh mục công khai) vẫn CHƯA mở — xem mục
- * "Còn nợ" trong `v2-org-permission.plan.md`. Mở nó không phải là nới scope đọc ở đây, vì
- * chiều ghi cũng phải đổi theo.
+ * **KHÔNG gắn `tenantPlugin`** — hội thoại thuộc về HAI CON NGƯỜI, không thuộc về một tổ chức.
+ * Cùng ngoại lệ đã duyệt với `Favorite`, `Notification`, `JoinRequest` và `UserTrust`: cái gì
+ * thuộc về tài khoản thì không mang trục org, vì tài khoản ở v2 là toàn cục.
+ *
+ * Bản trước thì có, và nó khoá chặt đúng nhóm người dùng đông nhất: 110/160 tin đang chạy nằm
+ * trên trục danh mục (`organizationId: null`), mà một hội thoại bắt buộc có org thì không có
+ * chỗ nào để đặt chúng vào. Người mua không thuộc nhóm nào bấm "Nhắn tin" nhận
+ * `Missing tenant context for "chat.open"` — lỗi của tầng hạ tầng, rò thẳng ra mặt người dùng.
+ *
+ * Chốt quyền thay thế nằm ở `participants`: đọc/ghi được một hội thoại khi và chỉ khi mình có
+ * tên trong đó (`requireMembership` ở `chat.service`). Đó vốn đã là chốt THẬT — `tenantPlugin`
+ * chỉ là một lớp thừa bên trên, và là lớp duy nhất từ chối người ngoài tổ chức.
  */
 
 export interface IParticipant {
@@ -21,10 +28,22 @@ export interface IParticipant {
 }
 
 export interface IConversation {
-  organizationId: Types.ObjectId
+  /**
+   * Nhóm mà tin đăng thuộc về lúc mở hội thoại — chỉ để ATTRIBUTION, không còn là chốt quyền.
+   * `null` khi tin nằm trên trục danh mục công khai, y như `Listing.organizationId`.
+   */
+  organizationId: Types.ObjectId | null
   listingId: Types.ObjectId
   /** Snapshot: tin có thể bị gỡ mà hội thoại vẫn phải đọc được. */
   listingTitle: string
+  /**
+   * Ảnh đầu của tin, snapshot cùng lúc với `listingTitle` — `''` khi tin không có ảnh nào.
+   *
+   * Snapshot chứ không populate sang `Listing` (§2.3), và cũng không phải để tiết kiệm một
+   * lượt join: danh sách hội thoại trả 20 dòng một trang, mà mỗi dòng đi hỏi ảnh của tin
+   * riêng là 20 truy vấn nữa trên đúng màn người dùng mở thường xuyên nhất.
+   */
+  listingImage: string
   buyerId: Types.ObjectId
   sellerId: Types.ObjectId
   participants: IParticipant[]
@@ -52,8 +71,18 @@ const participantSchema = new Schema<IParticipant>(
 
 const conversationSchema = new Schema<IConversationDocument>(
   {
+    // Khai TƯỜNG MINH, vì `tenantPlugin` không còn thêm nó hộ nữa — cùng cách `Notification`
+    // đang làm. `default: null` để hội thoại về tin công khai không cần ai nhớ gán.
+    organizationId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Organization',
+      default: null,
+    },
     listingId: { type: Schema.Types.ObjectId, ref: 'Listing', required: true },
     listingTitle: { type: String, required: true, trim: true, maxlength: 150 },
+    // `default: ''` chứ không `required`: tin không có ảnh là hợp lệ, và hội thoại cũ (mở
+    // trước khi có field này) cũng phải đọc được — client rơi về dải màu suy từ id.
+    listingImage: { type: String, default: '', trim: true },
 
     // Vai tường minh: người mua là người mở hội thoại, người bán không tự mở với chính mình.
     // Hai field này còn là thứ duy nhất dựng được unique index chặn hội thoại trùng.
@@ -76,20 +105,25 @@ const conversationSchema = new Schema<IConversationDocument>(
   { timestamps: true },
 )
 
-conversationSchema.plugin(tenantPlugin)
-
-conversationSchema.index({ organizationId: 1, 'participants.user': 1, lastMessageAt: -1 })
+/*
+ * Cả hai index bỏ tiền tố `organizationId`.
+ *
+ * Không phải dọn dẹp mà là điều kiện để chúng còn dùng được: câu hỏi "hội thoại của tôi" giờ
+ * lọc theo `participants.user` mà KHÔNG kèm org (người mua có thể chẳng thuộc org nào), nên
+ * mọi index mở đầu bằng `organizationId` đều không khớp được nữa và Mongo sẽ quét cả bảng.
+ */
+conversationSchema.index({ 'participants.user': 1, lastMessageAt: -1 })
 // Một người mua chỉ có đúng một hội thoại cho mỗi tin — bấm "Nhắn tin" lần hai là mở lại
-// cái cũ chứ không đẻ thêm.
+// cái cũ chứ không đẻ thêm. Bỏ `organizationId` khỏi khoá KHÔNG nới lỏng gì: một tin chỉ
+// thuộc đúng một org, nên (tin, người mua) vốn đã xác định duy nhất cặp đó.
 conversationSchema.index(
-  { organizationId: 1, listingId: 1, buyerId: 1 },
+  { listingId: 1, buyerId: 1 },
   { unique: true, partialFilterExpression: { deletedAt: null } },
 )
 
 // ── MESSAGE ─────────────────────────────────────────────────────────
 
 export interface IMessage {
-  organizationId: Types.ObjectId
   conversationId: Types.ObjectId
   senderId: Types.ObjectId
   senderName: string
@@ -124,11 +158,15 @@ const messageSchema = new Schema<IMessageDocument>(
   { timestamps: true },
 )
 
-// Collection riêng chứ không nhúng mảng vào Conversation: một hội thoại dài sẽ đụng trần
-// 16MB của document, và phân trang lịch sử thì không cắt được mảng nhúng.
-messageSchema.plugin(tenantPlugin)
-
-messageSchema.index({ organizationId: 1, conversationId: 1, createdAt: -1 })
+/*
+ * Collection riêng chứ không nhúng mảng vào Conversation: một hội thoại dài sẽ đụng trần
+ * 16MB của document, và phân trang lịch sử thì không cắt được mảng nhúng.
+ *
+ * KHÔNG có `organizationId`, kể cả để attribution: tin nhắn chỉ tới được qua `conversationId`,
+ * mà quyền đọc hội thoại đó đã kiểm ở `requireMembership` trước khi truy vấn này chạy. Một
+ * bản sao thứ hai của cùng thông tin chỉ là thứ để lệch khỏi hội thoại cha.
+ */
+messageSchema.index({ conversationId: 1, createdAt: -1 })
 
 function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
   if (!this.getOptions().withDeleted) {

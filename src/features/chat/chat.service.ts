@@ -5,20 +5,27 @@ import { toConversationDto, toMessageDto } from './chat.types'
 import { IConversationDocument } from './chat.model'
 import { listingService } from '../listing/listing.service'
 import { userRepository } from '../user/user.repository'
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
+import { BadRequestError, NotFoundError } from '../../common/errors'
 import { PUBLIC_LISTING_STATUSES } from '../../common/constants'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToConversation } from '../../sockets/emit'
 
+/**
+ * CHỈ có danh tính, không kèm org.
+ *
+ * Quyền trong chat đến từ QUAN HỆ (`participants`), không từ tenant — xem `chat.model.ts`.
+ * Nhét `organizationId` vào đây là mời người sau dùng nó làm chốt quyền lần nữa.
+ */
 export interface ChatActor {
   id: string
-  organizationId: string
 }
 
 /**
  * Ai không phải thành viên thì nhận **404**, không phải 403 — 403 là xác nhận hội thoại đó
- * có tồn tại (convention §8). Hội thoại của org khác đã bị `tenantPlugin` loại từ tầng dưới
- * nên cũng rơi vào đúng nhánh này.
+ * có tồn tại (convention §8).
+ *
+ * Đây giờ là chốt quyền DUY NHẤT của cả feature, sau khi `tenantPlugin` được gỡ khỏi
+ * `Conversation`. Trước đây nó là lớp thứ hai nên sửa nhầm cũng còn lớp dưới đỡ; giờ thì không.
  */
 async function requireMembership(id: string, actor: ChatActor): Promise<IConversationDocument> {
   const conversation = await chatRepository.findById(id)
@@ -44,12 +51,15 @@ export const chatService = {
       throw new NotFoundError('Listing not found')
     }
 
-    // Chat chưa mở xuyên org, và cũng chưa mở cho trục danh mục (tin `organizationId: null`):
-    // hội thoại nằm trong một org nên phải có org để đặt nó vào. Người mua liên hệ tin công
-    // khai thì dùng `posterContact` — mở chat ở đó là việc của vòng sau.
-    if (!listing.organizationId || listing.organizationId.toString() !== actor.organizationId) {
-      throw new ForbiddenError('Chưa nhắn tin được với người bán ngoài tổ chức của bạn')
-    }
+    /*
+     * KHÔNG kiểm org nữa — nhắn cho người đăng tin không đòi phải cùng nhóm, cũng không đòi
+     * phải thuộc nhóm nào.
+     *
+     * Chốt thay thế đã nằm sẵn ở dòng `getById` phía trên và nó chặt hơn: `Listing` vẫn gắn
+     * `tenantPlugin` dual-axis, nên một tin NỘI BỘ của nhóm mình không thuộc về sẽ 404 ngay từ
+     * lúc đọc — chưa tới được đây. Còn tin công khai thì ai đọc được cũng nhắn được, đúng như
+     * mọi sàn rao vặt. Nói gọn: mở hội thoại được với đúng những tin mình XEM được.
+     */
     if (listing.seller.toString() === actor.id) {
       throw new BadRequestError('Đây là tin của bạn')
     }
@@ -66,8 +76,14 @@ export const chatService = {
     if (!seller) throw new NotFoundError('Người bán không còn tài khoản trong trường này')
 
     const conversation = await chatRepository.create({
+      // Chụp lại nhóm của tin để còn biết hội thoại này đến từ bảng tin nào; `null` với tin
+      // công khai. Chỉ để đọc — không call-site nào được dùng nó làm điều kiện truy cập.
+      organizationId: listing.organizationId,
       listingId: listing._id,
       listingTitle: listing.title,
+      // Ảnh ĐẦU, cùng ảnh mà thẻ tin trên bảng đang hiện — để người dùng nhận ra ngay đây là
+      // món đồ nào mà không phải đọc tiêu đề.
+      listingImage: listing.images[0] ?? '',
       buyerId,
       sellerId: seller._id,
       participants: [
@@ -138,7 +154,7 @@ export const chatService = {
     await chatRepository.markRead(id, senderId)
 
     const dto = toMessageDto(message)
-    emitToConversation(actor.organizationId, id, 'chat:message', dto)
+    emitToConversation(id, 'chat:message', dto)
     return dto
   },
 

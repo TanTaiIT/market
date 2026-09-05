@@ -444,6 +444,31 @@ export const listingRepository = {
   },
 
   /**
+   * Khu vực các tin gần đây của một người — nguyên liệu cho `inferProvince`.
+   *
+   * MỌI trạng thái, kể cả `sold`/`expired`/`rejected`: câu hỏi ở đây là "người này ở đâu", mà
+   * một tin đã bán vẫn trả lời đúng câu đó. Lọc theo `status: active` sẽ làm người vừa bán hết
+   * hàng mất luôn khu vực.
+   *
+   * `.lean()` và chỉ lấy hai field: đây là đường chạy trên mỗi lượt `GET /users/me` của người
+   * chưa khai khu vực, nên nạp cả document về để đọc một chuỗi là lãng phí đúng chỗ đông nhất.
+   *
+   * `runUnscoped` + lọc `seller` cùng lý do `paginateMine`: khoá đã hẹp hơn mọi scope tenant,
+   * mà áp thêm trục sẽ bỏ sót chính những tin công khai của người không thuộc org nào — nhóm
+   * người cần suy khu vực nhất.
+   */
+  recentSellerProvinces(sellerId: string, limit: number) {
+    return runUnscoped('area hint: tin của chính chủ, scoped by seller', () =>
+      Listing.find({ seller: sellerId, 'location.province': { $exists: true, $ne: null } })
+        .select('location.province createdAt')
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean<{ location?: { province?: string }; createdAt: Date }[]>()
+        .exec(),
+    )
+  },
+
+  /**
    * Tin của MỘT người bán cần đối soát: đã hết hạn, hoặc sắp hết hạn trước `cutoff`.
    *
    * `runUnscoped` + lọc theo `seller` cùng lý do `paginateMine`: khoá đã hẹp hơn mọi scope

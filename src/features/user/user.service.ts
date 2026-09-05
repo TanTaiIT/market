@@ -6,6 +6,7 @@ import {
   UpdateProfileInput,
 } from './user.schema'
 import { toAdminUserDto } from './user.types'
+import { AREA_SAMPLE_LIMIT, inferProvince, isProvinceName, ProvinceSample } from './user.area'
 import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { usableMastersExcluding } from '../role-grant/role-grant.service'
@@ -15,7 +16,7 @@ import { listingService } from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { QUOTA } from '../listing/listing.quota'
 import { notificationService } from '../notification/notification.service'
-import { SYSTEM_ROLES } from '../../common/constants'
+import { SYSTEM_ROLES, VnProvinceName } from '../../common/constants'
 import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { logger } from '../../config/logger'
@@ -32,6 +33,44 @@ export const userService = {
     const user = await userRepository.findById(id)
     if (!user) throw new NotFoundError('User not found')
     return user
+  },
+
+  /**
+   * Khu vực HIỆU LỰC của một người: tự khai trước, không có thì suy từ nơi họ đã đăng tin.
+   *
+   * Thang này nằm ở BE chứ không ở client, dù client chỉ cần một chuỗi. Nếu để client tự nối
+   * `province ?? inferredProvince` thì mỗi màn dùng khu vực là một bản sao của cùng luật ưu
+   * tiên, và ngày thêm bậc thứ ba thì phải đi sửa từng chỗ — bỏ sót một chỗ là hai màn cạnh
+   * nhau nói hai khu vực khác nhau về cùng một người.
+   *
+   * Trả kèm `source` vì giao diện PHẢI nói ra mình đang đoán: một khu vực suy ngầm mà người
+   * dùng không thấy và không sửa được thì lúc đoán sai họ chỉ biết là app hỏng.
+   */
+  async resolveArea(user: {
+    _id: { toString(): string }
+    location?: { province?: string }
+  }): Promise<{ province: VnProvinceName; source: 'profile' | 'listings' } | null> {
+    // Người đã tự khai thì dừng ngay — không tốn truy vấn nào, và đây là ca của mọi người dùng
+    // đã đi qua form đăng tin (nó điền sẵn rồi lưu lại khu vực).
+    const declared = user.location?.province
+    if (isProvinceName(declared)) return { province: declared, source: 'profile' }
+
+    const rows = await listingRepository.recentSellerProvinces(
+      user._id.toString(),
+      AREA_SAMPLE_LIMIT,
+    )
+
+    // Bỏ tin mang tên tỉnh đã bị nhập từ 01/07/2025 — xem `isProvinceName`. Lọc và gán trong
+    // MỘT vòng để `isProvinceName` thu hẹp được kiểu; tách `.filter().map()` thì TypeScript
+    // quên mất phép thu hẹp và call-site phải `!` từng field.
+    const samples: ProvinceSample[] = []
+    for (const row of rows) {
+      const province = row.location?.province
+      if (isProvinceName(province)) samples.push({ province, postedAt: row.createdAt })
+    }
+
+    const province = inferProvince(samples, new Date())
+    return province ? { province, source: 'listings' } : null
   },
 
   /**

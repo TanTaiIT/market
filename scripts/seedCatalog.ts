@@ -384,6 +384,138 @@ export const FIELD_DEFS: FieldSeed[] = [
     filterable: true,
     placeholder: 'VD: đã dùng 2 năm',
   },
+
+  /* --- nhóm Thời trang + Thể thao (cùng dùng cỡ và đối tượng) --- */
+  {
+    /*
+     * Một `size` cho cả áo quần lẫn đồ thể thao, không tách `clothingSize`/`shoeSize`.
+     *
+     * Giày cỡ số và áo cỡ chữ nằm chung một dropdown vì chúng KHÔNG BAO GIỜ xuất hiện cùng
+     * lúc: mỗi tin là một món, người bán chọn đúng một giá trị. Tách đôi thì template phải
+     * mang cả hai field rồi dùng `showIf` để giấu một cái — một luật nữa để lệch, đổi lại
+     * chỉ được một dropdown ngắn hơn.
+     */
+    key: 'size',
+    label: 'Kích cỡ',
+    type: FIELD_TYPE.SELECT,
+    filterable: true,
+    options: opts(
+      ['xs', 'XS'],
+      ['s', 'S'],
+      ['m', 'M'],
+      ['l', 'L'],
+      ['xl', 'XL'],
+      ['xxl', 'XXL'],
+      ['36', '36'],
+      ['37', '37'],
+      ['38', '38'],
+      ['39', '39'],
+      ['40', '40'],
+      ['41', '41'],
+      ['42', '42'],
+      ['43', '43'],
+      ['freesize', 'Freesize'],
+    ),
+  },
+  {
+    key: 'targetGender',
+    label: 'Dành cho',
+    type: FIELD_TYPE.SELECT,
+    filterable: true,
+    options: opts(['male', 'Nam'], ['female', 'Nữ'], ['unisex', 'Unisex'], ['kids', 'Trẻ em']),
+  },
+  {
+    key: 'material',
+    label: 'Chất liệu',
+    type: FIELD_TYPE.TEXT,
+    filterable: false,
+    placeholder: 'VD: cotton, da bò, polyester',
+  },
+
+  /* --- riêng Sách vở --- */
+  { key: 'author', label: 'Tác giả', type: FIELD_TYPE.TEXT, filterable: true },
+  { key: 'publisher', label: 'Nhà xuất bản', type: FIELD_TYPE.TEXT, filterable: false },
+  {
+    key: 'bookType',
+    label: 'Loại sách',
+    type: FIELD_TYPE.SELECT,
+    filterable: true,
+    options: opts(
+      ['textbook', 'Sách giáo khoa'],
+      ['reference', 'Sách tham khảo'],
+      ['novel', 'Tiểu thuyết / Văn học'],
+      ['comic', 'Truyện tranh'],
+      ['skill', 'Kỹ năng / Kinh tế'],
+      ['magazine', 'Tạp chí'],
+      ['other', 'Khác'],
+    ),
+  },
+  {
+    key: 'language',
+    label: 'Ngôn ngữ',
+    type: FIELD_TYPE.SELECT,
+    filterable: true,
+    options: opts(['vi', 'Tiếng Việt'], ['en', 'Tiếng Anh'], ['other', 'Ngôn ngữ khác']),
+  },
+  {
+    // Tách khỏi `yearBought`: năm xuất bản là thuộc tính của CUỐN SÁCH (bản in nào), còn năm
+    // mua là của món đồ cụ thể. Gộp lại thì lọc "bản in sau 2020" trả về cả sách in 2005.
+    key: 'publishYear',
+    label: 'Năm xuất bản',
+    type: FIELD_TYPE.YEAR,
+    min: 1950,
+    filterable: false,
+  },
+
+  /* --- riêng Thú cưng --- */
+  {
+    key: 'petSpecies',
+    label: 'Loài',
+    type: FIELD_TYPE.SELECT,
+    filterable: true,
+    options: opts(
+      ['dog', 'Chó'],
+      ['cat', 'Mèo'],
+      ['bird', 'Chim'],
+      ['fish', 'Cá cảnh'],
+      ['rodent', 'Hamster / Thỏ'],
+      ['other', 'Khác'],
+    ),
+  },
+  { key: 'breed', label: 'Giống', type: FIELD_TYPE.TEXT, filterable: true },
+  {
+    key: 'petAge',
+    label: 'Tuổi',
+    type: FIELD_TYPE.TEXT,
+    filterable: false,
+    placeholder: 'VD: 3 tháng / 2 năm',
+  },
+  {
+    // Bắt buộc trong template Thú cưng: cùng lý do danh mục đó `requireManualReview` — người
+    // duyệt cần một câu trả lời tường minh, không phải suy từ phần mô tả tự do.
+    key: 'vaccinated',
+    label: 'Đã tiêm phòng',
+    type: FIELD_TYPE.BOOLEAN,
+    filterable: true,
+  },
+
+  /* --- riêng Thể thao & Dã ngoại --- */
+  {
+    key: 'sportType',
+    label: 'Môn / Hoạt động',
+    type: FIELD_TYPE.SELECT,
+    filterable: true,
+    options: opts(
+      ['football', 'Bóng đá'],
+      ['badminton', 'Cầu lông'],
+      ['gym', 'Gym / Thể hình'],
+      ['cycling', 'Đạp xe'],
+      ['running', 'Chạy bộ'],
+      ['swimming', 'Bơi lội'],
+      ['camping', 'Cắm trại / Dã ngoại'],
+      ['other', 'Khác'],
+    ),
+  },
 ]
 
 // ── DANH MỤC ────────────────────────────────────────────────────────────────
@@ -400,9 +532,12 @@ interface CategorySeed {
 export const CATEGORIES: CategorySeed[] = [
   { name: 'Điện thoại', slug: 'dien-thoai', icon: '📱', order: 10 },
   { name: 'Đồ điện tử', slug: 'do-dien-tu', icon: '💻', order: 20 },
+  { name: 'Thời trang', slug: 'thoi-trang', icon: '👗', order: 25 },
   { name: 'Bất động sản', slug: 'bat-dong-san', icon: '🏠', order: 30 },
   { name: 'Xe cộ', slug: 'xe-co', icon: '🛵', order: 40 },
+  { name: 'Sách vở', slug: 'sach-vo', icon: '📚', order: 45 },
   { name: 'Đồ gia dụng', slug: 'do-gia-dung', icon: '🔌', order: 50 },
+  { name: 'Thể thao & Dã ngoại', slug: 'the-thao', icon: '⚽', order: 55 },
   /*
    * Thú cưng ra đời ở trạng thái TẮT, cố ý.
    *
@@ -764,6 +899,136 @@ export const TEMPLATES: TemplateSeed[] = [
       },
       { key: 'warranty', order: 110, required: false, filterable: true },
       { key: 'warrantyUntil', order: 120, required: false, showIf: { key: 'warranty', eq: true } },
+    ],
+  },
+
+  {
+    slug: 'thoi-trang',
+    version: 1,
+    fieldKeys: [
+      { key: 'targetGender', order: 10, required: true, filterable: true },
+      {
+        key: 'size',
+        order: 20,
+        required: true,
+        filterable: true,
+        // Quần áo chỉ hiện cỡ CHỮ: cỡ số của từ điển là để giày dùng, bày cả 15 lựa chọn ở
+        // một tin bán áo là bắt người bán đọc qua thứ họ không bao giờ chọn.
+        override: {
+          options: opts(
+            ['xs', 'XS'],
+            ['s', 'S'],
+            ['m', 'M'],
+            ['l', 'L'],
+            ['xl', 'XL'],
+            ['xxl', 'XXL'],
+            ['36', 'Giày 36'],
+            ['37', 'Giày 37'],
+            ['38', 'Giày 38'],
+            ['39', 'Giày 39'],
+            ['40', 'Giày 40'],
+            ['41', 'Giày 41'],
+            ['42', 'Giày 42'],
+            ['43', 'Giày 43'],
+            ['freesize', 'Freesize'],
+          ),
+        },
+      },
+      { key: 'brand', order: 30, required: false, filterable: true },
+      { key: 'condition', order: 40, required: true, filterable: true },
+      { key: 'material', order: 50, required: false },
+      { key: 'color', order: 60, required: false },
+      { key: 'quantity', order: 70, required: false },
+      { key: 'origin', order: 80, required: false },
+    ],
+  },
+
+  {
+    slug: 'sach-vo',
+    version: 1,
+    fieldKeys: [
+      { key: 'bookType', order: 10, required: true, filterable: true },
+      { key: 'author', order: 20, required: false, filterable: true },
+      { key: 'publisher', order: 30, required: false },
+      { key: 'language', order: 40, required: false, filterable: true },
+      { key: 'publishYear', order: 50, required: false },
+      {
+        key: 'condition',
+        order: 60,
+        required: true,
+        filterable: true,
+        // Sách không "hỏng, bán xác" mà rách/ố/ghi chú — mức của từ điển mô tả đồ điện tử,
+        // đọc trên một tin bán sách thì vô nghĩa.
+        override: {
+          options: opts(
+            ['new', 'Mới, còn seal'],
+            ['like_new', 'Như mới, chưa viết'],
+            ['good', 'Còn tốt, ít ghi chú'],
+            ['fair', 'Cũ, có ghi chú / ố vàng'],
+          ),
+        },
+      },
+      { key: 'quantity', order: 70, required: false },
+    ],
+  },
+
+  {
+    slug: 'the-thao',
+    version: 1,
+    fieldKeys: [
+      { key: 'sportType', order: 10, required: true, filterable: true },
+      { key: 'brand', order: 20, required: false, filterable: true },
+      { key: 'condition', order: 30, required: true, filterable: true },
+      { key: 'size', order: 40, required: false, filterable: true },
+      { key: 'targetGender', order: 50, required: false, filterable: false },
+      { key: 'material', order: 60, required: false },
+      { key: 'usageDuration', order: 70, required: false, filterable: false },
+      { key: 'quantity', order: 80, required: false },
+      { key: 'origin', order: 90, required: false },
+    ],
+  },
+
+  {
+    /*
+     * Thú cưng có template dù danh mục ra đời ở trạng thái TẮT — hai việc độc lập nhau.
+     * Template là thứ phải sẵn sàng TRƯỚC ngày ai đó bật danh mục, còn bật hay không là một
+     * quyết định policy (xem khối ghi chú ở `CATEGORIES`). Bật một danh mục chưa có template
+     * nghĩa là người bán đầu tiên gặp form trống rỗng của bản fallback.
+     */
+    slug: 'thu-cung',
+    version: 1,
+    fieldKeys: [
+      { key: 'petSpecies', order: 10, required: true, filterable: true },
+      { key: 'breed', order: 20, required: false, filterable: true },
+      { key: 'petAge', order: 30, required: false },
+      { key: 'vaccinated', order: 40, required: true, filterable: true },
+      // KHÔNG dùng lại `targetGender` ở đây: nhãn của nó là "Dành cho" (Nam/Nữ/Unisex/Trẻ em),
+      // nói về NGƯỜI MUA quần áo. Giới tính con vật là chuyện khác hẳn — mượn field cho gần
+      // đúng là cách dữ liệu hai danh mục trộn vào nhau trong cùng một khoá `attrs`.
+      { key: 'quantity', order: 50, required: false },
+      { key: 'origin', order: 60, required: false },
+    ],
+  },
+
+  {
+    /*
+     * "Khác" có template RIÊNG dù đã có bản fallback — và khác nó ở đúng một điểm đáng giá:
+     * `condition` bắt buộc.
+     *
+     * Fallback phải phục vụ được cả danh mục chưa ai soạn template, nên nó không dám bắt buộc
+     * field nào. "Khác" thì ngược lại: người mua không suy ra được gì từ tên danh mục, nên
+     * tình trạng món đồ là thứ tối thiểu phải có để tin đọc được.
+     */
+    slug: 'khac',
+    version: 1,
+    fieldKeys: [
+      { key: 'condition', order: 10, required: true, filterable: true },
+      { key: 'brand', order: 20, required: false, filterable: true },
+      { key: 'usageDuration', order: 30, required: false, filterable: true },
+      { key: 'quantity', order: 40, required: false },
+      { key: 'origin', order: 50, required: false },
+      { key: 'warranty', order: 60, required: false, filterable: true },
+      { key: 'warrantyUntil', order: 70, required: false, showIf: { key: 'warranty', eq: true } },
     ],
   },
 ]

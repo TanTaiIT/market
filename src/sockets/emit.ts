@@ -14,12 +14,16 @@ export function setSocketServer(next: SocketServer | null): void {
 }
 
 /**
- * Tên phòng luôn mang `organizationId` của chính socket, không phải giá trị client gửi lên.
- * Đây là chỗ chặn rò rỉ xuyên tenant ở tầng realtime: đoán trúng id hội thoại của trường
- * khác cũng chỉ vào được một phòng rỗng trong trường của mình.
+ * Phòng của một hội thoại. KHÔNG mang `organizationId` nữa — hội thoại không thuộc org nào
+ * (xem `chat.model.ts`), và một tiền tố org sẽ chia đôi cùng một phòng khi hai người ở hai
+ * nhóm khác nhau: tin nhắn phát vào phòng của người này thì người kia không bao giờ nghe thấy.
+ *
+ * Chốt rò rỉ chuyển sang `chat:join`: vào phòng được hay không do `chatService.getById` phán,
+ * và nó chỉ trả về hội thoại mà người gọi CÓ TÊN trong `participants`. Đoán trúng id của một
+ * hội thoại người khác vẫn không join được.
  */
-export function conversationRoom(organizationId: string, conversationId: string): string {
-  return `org:${organizationId}:conversation:${conversationId}`
+export function conversationRoom(conversationId: string): string {
+  return `conversation:${conversationId}`
 }
 
 /** Phòng chung của quản trị một trường — dòng "Vừa diễn ra" ở bàn quản trị nghe ở đây. */
@@ -32,11 +36,6 @@ export function emitToOrgAdmins(organizationId: string, event: string, payload: 
 }
 
 /** No-op khi chưa init socket (vd trong test HTTP) — gửi tin nhắn không được phép vì thế mà hỏng. */
-export function emitToConversation(
-  organizationId: string,
-  conversationId: string,
-  event: string,
-  payload: unknown,
-): void {
-  io?.to(conversationRoom(organizationId, conversationId)).emit(event, payload)
+export function emitToConversation(conversationId: string, event: string, payload: unknown): void {
+  io?.to(conversationRoom(conversationId)).emit(event, payload)
 }

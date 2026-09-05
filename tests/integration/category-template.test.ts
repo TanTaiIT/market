@@ -36,7 +36,18 @@ beforeAll(async () => {
   const { upsertCatalog } = await import('../../scripts/seedCatalog')
   const idBySlug = await upsertCatalog()
   phoneCategoryId = idBySlug.get('dien-thoai')!
-  otherCategoryId = idBySlug.get('khac')!
+
+  /*
+   * Danh mục dựng TẠI CHỖ, không mượn một slug của `seedCatalog`.
+   *
+   * Trước đây test này mượn `khac` vì từ điển tình cờ chưa soạn template cho nó — tức là nó
+   * neo vào một chỗ THIẾU của dữ liệu seed. Từ điển nay có template cho cả 10 danh mục, nên
+   * cái neo đó gãy; và kể cả chưa gãy thì nó vẫn sai kiểu, vì một test về đường fallback không
+   * được phụ thuộc vào việc ai đó quên soạn template.
+   */
+  const { Category } = await import('../../src/features/category/category.model')
+  const bare = await Category.create({ name: 'Danh mục trống', slug: 'danh-muc-trong' })
+  otherCategoryId = bare._id.toString()
 
   const owner = await registerUser(app, 'owner@tpl-org.local', 'Tpl Owner')
   const org = await createOrg(app, masterToken, {

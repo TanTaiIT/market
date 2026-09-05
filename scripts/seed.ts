@@ -2,6 +2,8 @@
 import mongoose, { Types } from 'mongoose'
 import { faker } from '@faker-js/faker'
 import { env } from '../src/config/env'
+// Side-effect: bơm `DNS_SERVERS` cho c-ares trước lượt tra SRV đầu — xem `applyDnsOverride`.
+import '../src/config/database'
 import { generateJoinCode } from '../src/common/utils/joinCode'
 import { User } from '../src/features/user/user.model'
 import { Listing } from '../src/features/listing/listing.model'

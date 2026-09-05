@@ -101,7 +101,13 @@ describe('GET /users/me — response khớp với schema đã công bố', () =>
 
     // `location` không có mặt vì tài khoản mới chưa điền — đúng: field vắng mặt mang nghĩa
     // "chưa có", khác hẳn một subdoc rỗng.
+    //
+    // `area` thì NGƯỢC LẠI, luôn có mặt và ở đây là `null`: nó không phải dữ liệu người dùng
+    // nhập mà là kết quả đã giải (`resolveArea`), nên "chưa đủ căn cứ" phải nói ra tường minh.
+    // Tài khoản mới chưa khai khu vực và chưa đăng tin nào nên cả hai bậc đều trượt.
+    expect(res.body.data.area).toBeNull()
     expect(Object.keys(res.body.data).sort()).toEqual([
+      'area',
       'avatar',
       'createdAt',
       'email',

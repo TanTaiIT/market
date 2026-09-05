@@ -1,6 +1,8 @@
 /* eslint-disable no-console */
 import mongoose from 'mongoose'
 import { env } from '../src/config/env'
+// Side-effect: bơm `DNS_SERVERS` cho c-ares trước lượt tra SRV đầu — xem `applyDnsOverride`.
+import '../src/config/database'
 import { User } from '../src/features/user/user.model'
 import { RoleGrant } from '../src/features/role-grant/role-grant.model'
 import { MASTER_DISPLAY_NAME, SCOPE_TYPES, SYSTEM_ROLES } from '../src/common/constants'

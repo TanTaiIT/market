@@ -12,6 +12,11 @@ mongoose.set('strictQuery', true)
  * Nằm ở tầng module, không nằm trong `connectDB`: `dns.setServers` là trạng thái toàn tiến
  * trình, và mọi thứ khác dùng c-ares (Redis, S3, webhook) cũng hỏng vì đúng nguyên nhân đó —
  * đặt trong hàm connect là chỉ chữa được một chỗ.
+ *
+ * Và đó cũng là lý do mọi script trong `scripts/` mở `import '../src/config/database'` trần: chúng
+ * tự gọi `mongoose.connect` chứ không đi qua `connectDB`, nên thứ duy nhất chúng cần ở module này
+ * là lượt gọi bên dưới. Thiếu nó, script chết bằng `querySrv ECONNREFUSED` trên đúng cái máy mà
+ * `npm run dev` chạy trơn tru — sai lệch khó ngờ nhất trong cả nhóm lỗi này.
  */
 function applyDnsOverride(): void {
   const servers = (env.DNS_SERVERS ?? '')

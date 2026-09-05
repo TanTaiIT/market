@@ -32,9 +32,17 @@ export function initSockets(httpServer: HttpServer): SocketServer {
       return next(new Error('Invalid token'))
     }
 
-    // Token không còn mang org, mà socket sống lâu và cần đúng một org để join room. Client
-    // gửi kèm `orgSlug`… nhưng ở đây chỉ chấp nhận khi người đó THỰC SỰ là thành viên: đọc
-    // membership lúc bắt tay, không tin dữ liệu client gửi lên.
+    /*
+     * Org là TUỲ CHỌN của phiên socket, không còn là điều kiện để bắt tay.
+     *
+     * Bản trước từ chối kết nối khi không xác định được đúng một org — nghĩa là người chưa vào
+     * nhóm nào, và cả người vào từ hai nhóm trở lên (đo trên dữ liệu thật: 20/20 tài khoản),
+     * đều không mở nổi socket. Chat realtime chết im lặng với gần như mọi người dùng, trong
+     * khi thứ duy nhất còn cần tới org ở tầng này là phòng quản trị `admin:join`.
+     *
+     * Vẫn đọc membership từ DB chứ không tin `auth.organizationId` client gửi lên: nó chỉ dùng
+     * để CHỌN trong số nhóm mình thật sự thuộc về.
+     */
     const memberships = await membershipRepository.listActiveByUser(userId)
     const requested = socket.handshake.auth?.organizationId as string | undefined
     const membership = requested
@@ -43,10 +51,8 @@ export function initSockets(httpServer: HttpServer): SocketServer {
         ? memberships[0]
         : undefined
 
-    if (!membership) return next(new Error('Missing or invalid organization'))
-
     socket.data.userId = userId
-    socket.data.organizationId = membership.organizationId.toString()
+    socket.data.organizationId = membership?.organizationId.toString() ?? null
     next()
   })
 

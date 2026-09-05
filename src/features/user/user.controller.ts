@@ -13,13 +13,21 @@ export const userController = {
   // GET /users/me
   getMe: catchAsync(async (req, res) => {
     const user = await userService.getById(req.user!.id)
-    success(res, { message: 'Current user', data: toMeProfileDto(user) })
+    success(res, {
+      message: 'Current user',
+      data: toMeProfileDto(user, await userService.resolveArea(user)),
+    })
   }),
 
   // PATCH /users/me
   updateMe: catchAsync(async (req, res) => {
     const user = await userService.updateProfile(req.user!.id, req.body)
-    success(res, { message: 'Profile updated', data: toMeProfileDto(user) })
+    // Giải lại sau khi lưu, không tái dùng giá trị cũ: lượt PATCH này có thể vừa đặt
+    // `location.province` — trả về khu vực suy ra từ tin cũ là mâu thuẫn ngay trong một response.
+    success(res, {
+      message: 'Profile updated',
+      data: toMeProfileDto(user, await userService.resolveArea(user)),
+    })
   }),
 
   // DELETE /users/me

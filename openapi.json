@@ -398,13 +398,70 @@
               },
               "isActive": {
                 "type": "boolean"
+              },
+              "area": {
+                "type": "object",
+                "nullable": true,
+                "properties": {
+                  "province": {
+                    "type": "string",
+                    "enum": [
+                      "Hà Nội",
+                      "Cao Bằng",
+                      "Tuyên Quang",
+                      "Lào Cai",
+                      "Điện Biên",
+                      "Lai Châu",
+                      "Sơn La",
+                      "Thái Nguyên",
+                      "Lạng Sơn",
+                      "Quảng Ninh",
+                      "Bắc Ninh",
+                      "Phú Thọ",
+                      "Hải Phòng",
+                      "Hưng Yên",
+                      "Ninh Bình",
+                      "Thanh Hóa",
+                      "Nghệ An",
+                      "Hà Tĩnh",
+                      "Quảng Trị",
+                      "Huế",
+                      "Đà Nẵng",
+                      "Quảng Ngãi",
+                      "Gia Lai",
+                      "Đắk Lắk",
+                      "Khánh Hòa",
+                      "Lâm Đồng",
+                      "Đồng Nai",
+                      "Tây Ninh",
+                      "Hồ Chí Minh",
+                      "Đồng Tháp",
+                      "Vĩnh Long",
+                      "An Giang",
+                      "Cần Thơ",
+                      "Cà Mau"
+                    ]
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "profile",
+                      "listings"
+                    ]
+                  }
+                },
+                "required": [
+                  "province",
+                  "source"
+                ]
               }
             },
             "required": [
               "email",
               "showPhone",
               "isEmailVerified",
-              "isActive"
+              "isActive",
+              "area"
             ]
           }
         ]
@@ -558,6 +615,10 @@
             "type": "string",
             "nullable": true
           },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
           "memberCount": {
             "type": "number"
           },
@@ -581,6 +642,7 @@
           "slug",
           "joinCode",
           "avatarUrl",
+          "coverUrl",
           "memberCount",
           "district",
           "provinceCode",
@@ -682,6 +744,10 @@
             "type": "string",
             "nullable": true
           },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
           "provinceCode": {
             "type": "string",
             "nullable": true
@@ -714,6 +780,7 @@
           "name",
           "slug",
           "avatarUrl",
+          "coverUrl",
           "provinceCode",
           "role",
           "unitId",
@@ -2830,6 +2897,9 @@
           "listingTitle": {
             "type": "string"
           },
+          "listingImage": {
+            "type": "string"
+          },
           "partnerId": {
             "type": "string",
             "pattern": "^[0-9a-fA-F]{24}$"
@@ -2856,6 +2926,7 @@
           "id",
           "listingId",
           "listingTitle",
+          "listingImage",
           "partnerId",
           "partnerName",
           "partnerAvatar",

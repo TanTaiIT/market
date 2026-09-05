@@ -101,6 +101,22 @@ export const meProfileSchema = publicProfileSchema
     showPhone: z.boolean(),
     isEmailVerified: z.boolean(),
     isActive: z.boolean(),
+    /**
+     * Khu vực ĐÃ GIẢI, dùng cho mọi thứ "quanh bạn". Khác `location.province` ở chỗ nó có thể
+     * được SUY RA thay vì tự khai — xem `userService.resolveArea`.
+     *
+     * `null` = chưa đủ căn cứ (chưa khai, chưa đăng tin nào có khu vực). Client phải ẩn hẳn
+     * các khối theo vị trí ở trạng thái này, đừng đoán bừa một tỉnh mặc định.
+     *
+     * `source` để giao diện nói ra mình đang đoán và mời sửa. Đọc nó, đừng bỏ qua: một khu vực
+     * suy ngầm mà người dùng không thấy thì lúc đoán sai họ chỉ biết là app hỏng.
+     */
+    area: z
+      .object({
+        province: z.enum(VN_PROVINCE_NAMES),
+        source: z.enum(['profile', 'listings']),
+      })
+      .nullable(),
   })
   .openapi('MeProfile')
 

@@ -1,6 +1,8 @@
 /* eslint-disable no-console */
 import mongoose, { PipelineStage, Types } from 'mongoose'
 import { env } from '../src/config/env'
+// Side-effect: bơm `DNS_SERVERS` cho c-ares trước lượt tra SRV đầu — xem `applyDnsOverride`.
+import '../src/config/database'
 
 import { Category } from '../src/features/category/category.model'
 import { Conversation } from '../src/features/chat/chat.model'

@@ -1,11 +1,15 @@
 import { Types } from 'mongoose'
 import { Conversation, Message, IConversation, IMessage } from './chat.model'
 import { PaginationParams } from '../../common/utils/pagination'
-import { runUnscoped } from '../../common/tenant/tenantContext'
 
 /**
- * Không có `organizationId` viết tay ở đâu trong file này — `tenantPlugin` chèn ở tầng dưới
- * (convention §2.1). Mọi hàm dưới đây đã tự động chỉ nhìn thấy dữ liệu của org trong scope.
+ * KHÔNG có tầng lọc tenant nào dưới file này — `Conversation` đã bỏ `tenantPlugin`
+ * (xem `chat.model.ts`). Hệ quả phải nhớ khi sửa ở đây: các hàm dưới trả về đúng những gì
+ * filter viết ra, không có lưới nào đỡ phía sau.
+ *
+ * Vì vậy MỌI hàm nhận `id` của một hội thoại đều giả định người gọi đã đi qua
+ * `requireMembership` ở `chat.service` — đó là chốt quyền duy nhất. Thêm một hàm mới ở đây mà
+ * quên bước đó là mở đường đọc hội thoại của người lạ bằng cách đoán id.
  */
 export const chatRepository = {
   create(data: Partial<IConversation>) {
@@ -67,16 +71,16 @@ export const chatRepository = {
   /**
    * Xoá avatar snapshot bị máy kiểm ảnh từ chối (webhook `moderation.webhook.service.ts`).
    * `arrayFilters` vì một hội thoại có nhiều participant — chỉ phần tử khớp mới bị xoá.
-   * `runUnscoped` cùng lý do với `allConversationAvatars` ngay dưới: sự kiện không thuộc org nào.
+   *
+   * Không còn bọc `runUnscoped`: nó từng cần để vượt qua `tenantPlugin` cho một sự kiện không
+   * thuộc org nào. Plugin đã gỡ, nên bọc thêm chỉ là hứa hẹn sai về một hàng rào không có.
    */
   async clearParticipantAvatarRef(pattern: RegExp): Promise<number> {
-    const res = await runUnscoped('image moderation: xoá avatar snapshot bị từ chối', () =>
-      Conversation.updateMany(
-        { 'participants.avatar': pattern },
-        { $set: { 'participants.$[p].avatar': '' } },
-        { arrayFilters: [{ 'p.avatar': pattern }] },
-      ).exec(),
-    )
+    const res = await Conversation.updateMany(
+      { 'participants.avatar': pattern },
+      { $set: { 'participants.$[p].avatar': '' } },
+      { arrayFilters: [{ 'p.avatar': pattern }] },
+    ).exec()
     return res.modifiedCount
   },
 
@@ -87,9 +91,7 @@ export const chatRepository = {
    * ảnh ngay trong khung chat.
    */
   async allConversationAvatars(): Promise<string[]> {
-    const rows = await runUnscoped('image cleanup: gom avatar snapshot của mọi hội thoại', () =>
-      Conversation.find().select('participants.avatar').lean().exec(),
-    )
+    const rows = await Conversation.find().select('participants.avatar').lean().exec()
     return rows.flatMap((r) => r.participants.map((p) => p.avatar)).filter(Boolean)
   },
 }

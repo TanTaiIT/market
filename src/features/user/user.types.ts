@@ -43,7 +43,11 @@ export function toAdminUserDto(user: IUserDocument, trustLevel: number) {
   }
 }
 
-export function toMeProfileDto(user: IUserDocument): MeProfileDto {
+export function toMeProfileDto(
+  user: IUserDocument,
+  /** Khu vực đã giải theo thang ưu tiên — xem `userService.resolveArea`. */
+  area: MeProfileDto['area'],
+): MeProfileDto {
   return {
     ...toPublicProfileDto(user),
     email: user.email,
@@ -52,5 +56,6 @@ export function toMeProfileDto(user: IUserDocument): MeProfileDto {
     showPhone: user.showPhone,
     isEmailVerified: Boolean(user.emailVerifiedAt),
     isActive: user.isActive,
+    area,
   }
 }

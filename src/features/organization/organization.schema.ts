@@ -49,6 +49,13 @@ export const organizationLookupSchema = z
     slug: z.string(),
     joinCode: z.string(),
     avatarUrl: z.string().nullable(),
+    /**
+     * Ảnh bìa — client dùng làm ẢNH THAY THẾ cho avatar khi nhóm chưa đặt avatar.
+     *
+     * Nhóm mới tạo hầu như luôn có bìa trước avatar (màn sửa hồ sơ hỏi bìa đầu tiên), nên thiếu
+     * field này thì mọi dải "nhóm quanh bạn" hiện chữ viết tắt cho một nhóm ĐANG CÓ ảnh.
+     */
+    coverUrl: z.string().nullable(),
     memberCount: z.number(),
     district: z.string().nullable(),
     provinceCode: z.string().nullable(),
@@ -146,6 +153,14 @@ export const myOrganizationSchema = z
     name: z.string(),
     slug: z.string(),
     avatarUrl: z.string().nullable(),
+    /**
+     * Ảnh bìa — ẢNH THAY THẾ khi nhóm chưa đặt avatar, cùng lý do với `organizationLookupSchema`.
+     *
+     * Thiếu nó thì các màn đọc `/organizations/mine` (danh sách "Nhóm của bạn", hàng nhóm trên
+     * trang chủ) rơi thẳng về chữ viết tắt, trong khi đúng những nhóm đó đang có ảnh — và người
+     * dùng thấy nhóm của MÌNH nhạt hơn nhóm người lạ ở danh sách ngay bên dưới.
+     */
+    coverUrl: z.string().nullable(),
     provinceCode: z.string().nullable(),
     role: z.string(),
     unitId: z.string().nullable(),

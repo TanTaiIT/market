@@ -32,10 +32,15 @@
     "migrate:rank-at": "cross-env NODE_ENV=development tsx scripts/migrate-rank-at.ts",
     "migrate:outsider-posts": "cross-env NODE_ENV=development tsx scripts/migrate-outsider-posts.ts",
     "migrate:trust-default": "cross-env NODE_ENV=development tsx scripts/migrate-trust-default.ts",
+    "reset:keep-master": "cross-env NODE_ENV=development tsx scripts/reset-keep-master.ts",
     "migrate:master": "cross-env NODE_ENV=development tsx scripts/migrate-master.ts",
     "migrate:ward-axis": "cross-env NODE_ENV=development tsx scripts/migrate-ward-axis.ts",
     "migrate:listing-expiry": "cross-env NODE_ENV=development tsx scripts/migrate-listing-expiry.ts",
-    "migrate:listing-expiry:prod": "cross-env NODE_ENV=production tsx scripts/migrate-listing-expiry.ts"
+    "migrate:listing-expiry:prod": "cross-env NODE_ENV=production tsx scripts/migrate-listing-expiry.ts",
+    "seed:demo": "cross-env NODE_ENV=development tsx scripts/seed-demo.ts",
+    "migrate:password": "cross-env NODE_ENV=development tsx scripts/migrate-password.ts",
+    "migrate:chat-open": "cross-env NODE_ENV=development tsx scripts/migrate-chat-open.ts",
+    "migrate:chat-listing-image": "cross-env NODE_ENV=development tsx scripts/migrate-chat-listing-image.ts"
   },
   "keywords": [
     "marketplace",

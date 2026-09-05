@@ -16,6 +16,10 @@ const outsiderSameOrg = { token: '', id: '', slug: '' }
 const otherOrg = { token: '', id: '', slug: '' }
 
 let listingId = ''
+/** Tin trên trục danh mục (`organizationId: null`) — người ngoài mọi nhóm vẫn đọc được. */
+let publicListingId = ''
+/** Tin không có ảnh nào — để kiểm `listingImage` rỗng chứ không vắng mặt. */
+let noPhotoListingId = ''
 let conversationId = ''
 
 let masterToken = ''
@@ -85,6 +89,46 @@ beforeAll(async () => {
   await runUnscoped('test fixture: publish', () =>
     Listing.updateOne({ _id: listingId }, { status: 'active' }).exec(),
   )
+
+  /*
+   * Tin thứ hai trên TRỤC DANH MỤC (`organizationId: null`, `visibility: public`) — thứ mà
+   * người không thuộc nhóm nào đọc được. Dựng thẳng ở tầng model chứ không qua API: đường API
+   * đòi người đăng phải có org scope, mà ở đây cần đúng một tin không thuộc org nào.
+   */
+  const publicListing = await runUnscoped('test fixture: tin trục công khai', () =>
+    Listing.create({
+      organizationId: null,
+      visibility: 'public',
+      provinceCode: 'Hồ Chí Minh',
+      wardCode: 'Phường Bến Thành',
+      title: 'Bàn học gỗ thông còn mới',
+      description: 'Bàn gỗ thông 1m2, dùng một năm, không mối mọt',
+      price: 850000,
+      category: categoryId,
+      seller: seller.id,
+      posterName: 'Owner chat-a',
+      status: 'active',
+      location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
+    }),
+  )
+  publicListingId = publicListing._id.toString()
+
+  /** Tin KHÔNG ảnh — `images` là mảng rỗng hợp lệ, và snapshot phải chịu được ca đó. */
+  const noPhoto = await runUnscoped('test fixture: tin không ảnh', () =>
+    Listing.create({
+      organizationId: orgIds['chat-a'],
+      visibility: 'org_internal',
+      title: 'Ghế nhựa cũ cho ai cần',
+      description: 'Ghế nhựa còn chắc, cho tặng, tới lấy tại nhà',
+      price: 0,
+      category: categoryId,
+      seller: seller.id,
+      posterName: 'Owner chat-a',
+      status: 'active',
+      images: [],
+    }),
+  )
+  noPhotoListingId = noPhoto._id.toString()
 }, 120_000)
 
 afterAll(async () => {
@@ -103,8 +147,24 @@ describe('Chat — mở hội thoại', () => {
     expect(res.status).toBe(201)
     expect(res.body.data.partnerName).toBe('Owner chat-a')
     expect(res.body.data.listingTitle).toMatch(/Đèn học/)
+    // Ảnh đầu của tin đi kèm hội thoại: danh sách tin nhắn dựng thumbnail từ đây, không đi hỏi
+    // lại từng tin một. Snapshot nên nó còn nguyên cả khi tin bị gỡ.
+    expect(res.body.data.listingImage).toBe(
+      'https://res.cloudinary.com/demo/image/upload/v1/sample.jpg',
+    )
     expect(res.body.data.unread).toBe(false)
     conversationId = res.body.data.id
+  })
+
+  it('tin KHÔNG có ảnh thì `listingImage` rỗng, không phải thiếu field', async () => {
+    // Client phân biệt "chưa có ảnh" (vẽ dải màu) với "field không tồn tại" (lỗi hợp đồng) —
+    // nên chuỗi rỗng phải luôn có mặt.
+    const res = await request(app)
+      .post('/api/v1/chats')
+      .set(as(outsiderSameOrg))
+      .send({ listingId: noPhotoListingId })
+      .expect(201)
+    expect(res.body.data.listingImage).toBe('')
   })
 
   it('bấm lần hai trả lại đúng hội thoại cũ, không đẻ thêm', async () => {
@@ -129,6 +189,54 @@ describe('Chat — mở hội thoại', () => {
       .post('/api/v1/chats')
       .set(as(buyer))
       .send({ listingId: new Types.ObjectId().toString() })
+    expect(res.status).toBe(404)
+  })
+
+  /*
+   * Đây là ca mà cả feature tồn tại vì nó, và là ca từng CHẾT ở tầng hạ tầng: người mua không
+   * thuộc nhóm nào bấm "Nhắn tin" nhận `Missing tenant context for "chat.open"`, vì `orgActor`
+   * đòi một org mà họ không có. Trên trục danh mục công khai thì đó là đa số người mua.
+   *
+   * Không gửi `X-Org-Slug` là CỐ Ý — nó tái hiện đúng client của một người chưa vào nhóm nào.
+   */
+  it('người KHÔNG thuộc nhóm nào vẫn nhắn được cho người đăng tin công khai', async () => {
+    const { registerUser } = await import('../helpers/fixtures')
+    const stranger = await registerUser(app, 'stranger@ngoai.local', 'Khách vãng lai')
+
+    const { Membership } = await import('../../src/features/membership/membership.model')
+    expect(await Membership.countDocuments({ userId: stranger.id })).toBe(0)
+
+    const res = await request(app)
+      .post('/api/v1/chats')
+      .set({ Authorization: `Bearer ${stranger.token}` })
+      .send({ listingId: publicListingId })
+
+    expect(res.status).toBe(201)
+    expect(res.body.data.partnerName).toBe('Owner chat-a')
+
+    // Và nhắn được thật, không chỉ mở được hội thoại rỗng.
+    const sent = await request(app)
+      .post(`/api/v1/chats/${res.body.data.id}/messages`)
+      .set({ Authorization: `Bearer ${stranger.token}` })
+      .send({ text: 'Còn hàng không bạn?' })
+      .expect(201)
+    expect(sent.body.data.senderName).toBe('Khách vãng lai')
+  })
+
+  /*
+   * Mặt kia của cùng một luật: mở hội thoại được với đúng những tin MÌNH XEM ĐƯỢC. Tin nội bộ
+   * của một nhóm người lạ không đọc được (`tenantPlugin` của `Listing` chặn từ lượt `getById`),
+   * nên cũng không mở hội thoại được — và trả 404 chứ không 403, để không xác nhận tin tồn tại.
+   */
+  it('người ngoài KHÔNG mở được hội thoại với tin nội bộ của một nhóm', async () => {
+    const { registerUser } = await import('../helpers/fixtures')
+    const stranger = await registerUser(app, 'stranger2@ngoai.local', 'Khách khác')
+
+    const res = await request(app)
+      .post('/api/v1/chats')
+      .set({ Authorization: `Bearer ${stranger.token}` })
+      .send({ listingId })
+
     expect(res.status).toBe(404)
   })
 })

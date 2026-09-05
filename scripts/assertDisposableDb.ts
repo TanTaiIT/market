@@ -54,14 +54,24 @@ function dbNameOf(uri: string): string | null {
  * Không kiểm `NODE_ENV` là đủ: một file `.env.*` cũ vẫn để `NODE_ENV=development` trong khi
  * URI là Atlas, nên HOST và TÊN DB của URI mới là dấu hiệu đáng tin.
  */
-export function assertDisposableDb(scriptName: string): void {
+export function assertDisposableDb(
+  scriptName: string,
+  /**
+   * Việc script sắp làm, một mệnh đề nối được sau "Script này …".
+   *
+   * Có tham số vì không phải script nào qua cửa này cũng xoá sạch: `seed:demo` chỉ thay dữ
+   * liệu của chính nó, `migrate:password` không xoá gì mà ghi đè mật khẩu. In sai việc làm
+   * người đọc đánh giá sai mức nguy hiểm — theo cả hai chiều.
+   */
+  effect = 'xoá sạch mọi collection trước khi ghi',
+): void {
   const host = hostOf(env.MONGO_URI)
   const dbName = dbNameOf(env.MONGO_URI)
 
   if (dbName !== null && PROTECTED_DB_NAMES.has(dbName)) {
     throw new Error(
       `${scriptName} từ chối chạy: MONGO_URI trỏ database giữ dữ liệu thật ("${dbName}").\n` +
-        `Script này xoá sạch mọi collection trước khi ghi.\n` +
+        `Script này ${effect}.\n` +
         `${OVERRIDE} KHÔNG mở được chốt này — đổi MONGO_URI sang db develop rồi chạy lại.`,
     )
   }
@@ -87,7 +97,7 @@ export function assertDisposableDb(scriptName: string): void {
 
   throw new Error(
     `${scriptName} từ chối chạy vì ${risks.join(' · ')}.\n` +
-      `Script này xoá sạch mọi collection trước khi seed.\n` +
+      `Script này ${effect}.\n` +
       `Trỏ MONGO_URI về mongo local rồi chạy lại, hoặc ép chạy: ${OVERRIDE}=yes npm run <lệnh>`,
   )
 }
