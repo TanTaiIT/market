@@ -1,10 +1,11 @@
 import { Types } from 'mongoose'
 import { notificationRepository } from './notification.repository'
-import type { NotificationAudience } from './notification.repository'
+import type { ManagedAudience } from './notification.repository'
 import { CreateNotificationInput, NotificationQuery } from './notification.schema'
 import { toNotificationDto } from './notification.types'
 import { canModerateOrg } from '../../common/authz/policy'
-import { SCOPE_TYPES } from '../../common/constants'
+import { POST_VISIBILITY, SCOPE_TYPES } from '../../common/constants'
+import type { PostVisibility } from '../../common/constants'
 import type { Grant } from '../../common/authz/policy'
 import type { OrgActor } from '../../common/utils/actor'
 import { membershipRepository } from '../membership/membership.repository'
@@ -12,25 +13,22 @@ import { orgUnitRepository } from '../org-unit/org-unit.repository'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 
-/** Người đọc hộp thư. `organizationId: null` = không thuộc tổ chức nào, chỉ có tin đích danh. */
+/** Người đọc hộp thư. `organizationId` chỉ còn dùng cho `scope=managed` (bàn quản trị). */
 type Viewer = { id: string; organizationId: string | null; grants: Grant[] }
 
-/**
- * Nhóm mà người này ĐỨNG TRONG — quyết định họ nhận được thông báo nào. Kèm `recipientId` để
- * hộp thư có cả tin đích danh; `managedAudience` cố tình KHÔNG có, vì bàn quản trị liệt kê thứ
- * mình gửi được chứ không phải hộp thư riêng của người khác.
+/*
+ * Hộp thư đọc từ MỌI nhóm người ta tham gia — xem `list` bên dưới, nơi nó được dựng.
+ *
+ * Bản trước có một hàm `inboxAudience(viewer)` đọc `viewer.organizationId`, tức org của
+ * request. Hai hệ quả đều sai: người thuộc ba nhóm chỉ thấy thông báo của một nhóm, và người
+ * không có org đang thao tác (ai thuộc từ HAI nhóm trở lên, vì bộ chuyển tổ chức chỉ dành cho
+ * master) không thấy nhánh phát chung nào cả. Hộp thư là của con người, không phải của một
+ * phiên làm việc trong một nhóm.
+ *
+ * Không tách thành hàm riêng nữa: `list` cần chính danh sách `memberships` đó hai lần — một
+ * lần dựng phạm vi đọc, một lần lấy mốc `notificationsSeenAt` của từng nhóm. Tách ra là đọc
+ * `memberships` hai lượt cho cùng một câu hỏi.
  */
-async function inboxAudience(viewer: Viewer): Promise<NotificationAudience> {
-  const recipientId = new Types.ObjectId(viewer.id)
-  if (!viewer.organizationId) return { organizationId: null, recipientId }
-
-  const membership = await membershipRepository.findActive(viewer.id, viewer.organizationId)
-  return {
-    organizationId: new Types.ObjectId(viewer.organizationId),
-    units: membership?.unitId ? [membership.unitId] : [],
-    recipientId,
-  }
-}
 
 /**
  * Nhóm mà người này GỬI TỚI ĐƯỢC.
@@ -39,10 +37,10 @@ async function inboxAudience(viewer: Viewer): Promise<NotificationAudience> {
  * điều kiện nhóm. Còn staff nhóm con chỉ thấy phần trong tầm với của họ, đúng bằng thứ họ gửi
  * được, nên bàn quản trị không thành đường vòng đọc thông báo của nhóm khác.
  */
-async function managedAudience(viewer: Viewer): Promise<NotificationAudience> {
+async function managedAudience(viewer: Viewer): Promise<ManagedAudience | null> {
   const { organizationId } = viewer
-  // Bàn quản trị luôn đi kèm một org — `requireOrgModerator` ở route đã chốt.
-  if (!organizationId) return { organizationId: null, units: [] }
+  if (!organizationId) return null
+
   const orgObjectId = new Types.ObjectId(organizationId)
   if (canModerateOrg(viewer.grants, { orgId: organizationId, unitId: null })) {
     return { organizationId: orgObjectId, all: true }
@@ -54,6 +52,22 @@ async function managedAudience(viewer: Viewer): Promise<NotificationAudience> {
         g.scopeType === SCOPE_TYPES.ORG_UNIT && g.orgId?.toString() === organizationId && g.unitId,
     )
     .map((g) => new Types.ObjectId(g.unitId!.toString()))
+
+  /*
+   * KHÔNG phụ trách gì trong org này → không quản lý dòng thông báo nào. `null`, chứ không phải
+   * `units: []`.
+   *
+   * Đây là một lỗ hổng đọc thật, và nó KHÔNG đi qua `memberships`. `units: []` khiến
+   * `managedFilter` trả về `{ organizationId, userId: null, unitId: null }` — tức TOÀN BỘ thông
+   * báo phát chung của tổ chức. Cộng với việc `resolveTenant` cố ý mở scope đọc của một org cho
+   * người NGOÀI nhóm khi request là `GET` (để họ xem được trang công khai của nhóm), một người
+   * lạ chỉ cần gửi `X-Org-Slug` của nhóm rồi thêm `?scope=managed` là đọc được cả dòng thông
+   * báo nội bộ: thông báo của quản trị, và từ nay cả "ai vừa đăng tin gì".
+   *
+   * Route `GET /notifications` cố tình KHÔNG có `requireOrgModerator` — nó phục vụ cả
+   * `scope=inbox` mà mọi người dùng đều gọi. Nên chốt phải nằm đúng ở đây.
+   */
+  if (units.length === 0) return null
 
   return { organizationId: orgObjectId, units }
 }
@@ -105,16 +119,97 @@ export const notificationService = {
    * lưng chừng, có trang đầy có trang gần rỗng, mà tổng số thì luôn sai.
    */
   async list(query: NotificationQuery, viewer: Viewer) {
-    const audience =
-      query.scope === 'managed' ? await managedAudience(viewer) : await inboxAudience(viewer)
-
     const pagination = parsePagination(query)
-    const { items, total } = await notificationRepository.paginate(audience, pagination)
+
+    if (query.scope === 'managed') {
+      const audience = await managedAudience(viewer)
+      // Không quản lý dòng nào thì trả trang RỖNG, không phải 403: `scope` là tham số của một
+      // route ai cũng gọi được, và 403 ở đây sẽ làm màn thông báo thường vỡ nếu client gõ nhầm.
+      if (!audience) {
+        return {
+          items: [],
+          meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total: 0 }),
+        }
+      }
+
+      const { items, total } = await notificationRepository.paginateManaged(audience, pagination)
+      return {
+        // Bàn quản trị đọc thông báo do NGƯỜI soạn, nên `readBy` vẫn là nguồn của `isRead` —
+        // không có mốc nhóm nào ở đây, và cũng không cần: nó chỉ vài dòng mỗi tháng.
+        items: items.map((doc) => toNotificationDto(doc, { id: viewer.id, seenAt: new Map() })),
+        meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
+      }
+    }
+
+    const memberships = await membershipRepository.listActiveByUser(viewer.id)
+    const { items, total } = await notificationRepository.paginateInbox(
+      {
+        recipientId: new Types.ObjectId(viewer.id),
+        groups: memberships.map((m) => ({
+          organizationId: m.organizationId,
+          unitId: m.unitId,
+          joinedAt: m.joinedAt,
+        })),
+      },
+      pagination,
+    )
+
+    /*
+     * Mốc "đã xem tới đâu" của TỪNG nhóm, để `toNotificationDto` chấm trạng thái đọc của dòng
+     * sinh tự động. Map thay vì một mốc chung: mở hộp thư ở nhóm A không được xoá dấu chưa-đọc
+     * của nhóm B.
+     */
+    const seenAt = new Map(
+      memberships.map((m) => [m.organizationId.toString(), m.notificationsSeenAt]),
+    )
 
     return {
-      items: items.map((doc) => toNotificationDto(doc, viewer.id)),
+      items: items.map((doc) => toNotificationDto(doc, { id: viewer.id, seenAt })),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
+  },
+
+  /**
+   * Báo cho CẢ NHÓM rằng một thành viên vừa có tin lên bảng.
+   *
+   * MỘT document cho mỗi tin, không phải một document cho mỗi thành viên: nhóm 500 người, 10
+   * tin/ngày là 5.000 dòng/ngày nếu fan-out — khoảng 84 MB/tháng cho một nhóm trên cluster
+   * 512 MB. Phát chung thì con số đó là 0,17 MB, và `actorId` lo phần "đừng báo cho chính người
+   * vừa đăng" mà fan-out vốn dùng để đổi lấy cái giá kia.
+   *
+   * Gọi lúc tin THÀNH `active`, không phải lúc tạo: tin `pending` chưa ai xem được, báo sớm là
+   * mời cả nhóm bấm vào một trang 404.
+   *
+   * Chốt là `visibility`, KHÔNG phải `organizationId` — và đây là chỗ tôi làm sai trước khi
+   * test bắt được. Tin CÔNG KHAI do một thành viên đăng vẫn giữ `organizationId`, nhưng chỉ để
+   * attribution (badge "đăng bởi nhóm X" — xem `listing.routing.ts`); nó nằm trên trục danh mục
+   * chứ không nằm trên bảng tin của nhóm. Lọc theo org thì cả nhóm bị báo về những tin không
+   * hề xuất hiện trong nhóm mình.
+   */
+  async notifyGroupOfListing(listing: {
+    _id: Types.ObjectId
+    organizationId: Types.ObjectId | null
+    visibility: PostVisibility
+    seller: Types.ObjectId
+    posterName: string
+    title: string
+  }) {
+    if (listing.visibility !== POST_VISIBILITY.ORG_INTERNAL) return null
+    // Tin nội bộ luôn có org, nhưng kiểu vẫn cho `null` — hỏi tường minh thay vì `!`.
+    if (!listing.organizationId) return null
+
+    return notificationRepository.create({
+      organizationId: listing.organizationId,
+      // Phát chung cho CẢ nhóm, không bó vào nhóm con của người đăng: bảng tin là của cả nhóm,
+      // `unitId` chỉ phân tầng quyền DUYỆT chứ không phân tầng quyền xem.
+      userId: null,
+      unitId: null,
+      actorId: listing.seller,
+      actorName: listing.posterName,
+      listingId: listing._id,
+      title: `${listing.posterName} vừa đăng một tin mới`,
+      body: listing.title,
+    })
   },
 
   /**
@@ -141,9 +236,38 @@ export const notificationService = {
     return notificationRepository.createForUser(input)
   },
 
+  /**
+   * Đánh dấu đã đọc. Hai cơ chế, chọn theo `actorId` — xem `readBy` trong `notification.model.ts`.
+   *
+   * Dòng SINH TỰ ĐỘNG không ghi vào `readBy` mà đẩy mốc `notificationsSeenAt` của nhóm lên tới
+   * `createdAt` của nó. Hệ quả có chủ ý: bấm vào dòng mới nhất đánh dấu luôn mọi dòng cũ hơn
+   * TRONG NHÓM ĐÓ là đã đọc. Đúng với cách người ta thật sự dùng hộp thư — "tôi đã xem qua rồi"
+   * — và là điều kiện để `readBy` không phình theo số thành viên.
+   */
   async markRead(id: string, userId: string) {
-    const notification = await notificationRepository.markRead(id, new Types.ObjectId(userId))
+    const viewerId = new Types.ObjectId(userId)
+    const existing = await notificationRepository.findById(id)
+    if (!existing) throw new NotFoundError('Notification not found')
+
+    if (existing.actorId && existing.organizationId) {
+      await membershipRepository.markNotificationsSeen(
+        viewerId,
+        existing.organizationId,
+        existing.createdAt,
+      )
+      // Đọc lại mốc vừa ghi thay vì tự dựng: người bấm có thể KHÔNG còn là thành viên nhóm đó
+      // (vừa rời nhóm), lúc ấy `updateOne` không khớp gì và mốc phải giữ nguyên `null`.
+      const membership = await membershipRepository.findActive(userId, existing.organizationId)
+      return toNotificationDto(existing, {
+        id: userId,
+        seenAt: new Map([
+          [existing.organizationId.toString(), membership?.notificationsSeenAt ?? null],
+        ]),
+      })
+    }
+
+    const notification = await notificationRepository.markRead(id, viewerId)
     if (!notification) throw new NotFoundError('Notification not found')
-    return toNotificationDto(notification, userId)
+    return toNotificationDto(notification, { id: userId, seenAt: new Map() })
   },
 }

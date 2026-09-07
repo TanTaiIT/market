@@ -24,6 +24,25 @@ export const membershipRepository = {
   },
 
   /**
+   * Đẩy mốc "đã xem hộp thư" của một người trong một nhóm — nguồn trạng thái đọc của thông báo
+   * phát chung sinh tự động (xem `notification.model.ts` → `readBy`).
+   *
+   * Điều kiện `$lt` trong FILTER, không phải `$max` trong update: mốc chỉ được TIẾN, không lùi.
+   * Thiếu nó thì bấm vào một thông báo cũ sẽ kéo mốc về quá khứ và mọi thông báo mới hơn lại
+   * thành chưa đọc — người dùng thấy dấu chưa-đọc mọc lại sau khi vừa đọc.
+   */
+  markNotificationsSeen(userId: Id, organizationId: Id, at: Date) {
+    return Membership.updateOne(
+      {
+        userId,
+        organizationId,
+        $or: [{ notificationsSeenAt: null }, { notificationsSeenAt: { $lt: at } }],
+      },
+      { $set: { notificationsSeenAt: at } },
+    ).exec()
+  },
+
+  /**
    * Danh bạ của một org. Xếp theo `joinedAt` TĂNG dần: chủ tổ chức vào trước nên đứng đầu,
    * và thứ tự không nhảy mỗi lần có người mới như khi xếp giảm dần.
    */

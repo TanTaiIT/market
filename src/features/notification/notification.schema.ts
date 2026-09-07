@@ -47,6 +47,13 @@ export const notificationResponseSchema = z
     organizationId: objectId.nullable(),
     /** `null` = gửi cho cả tổ chức. */
     unitId: objectId.nullable(),
+    /**
+     * Tên người GÂY RA việc này, để client dựng câu "Tài vừa đăng …". Vắng = do hệ thống hoặc
+     * do quản trị nhóm tự soạn, lúc đó `title` đã tự đủ nghĩa.
+     */
+    actorName: z.string().optional(),
+    /** Tin đăng để bấm vào mở. `null` = thông báo không dẫn tới tin nào. */
+    listingId: objectId.nullable(),
     title: z.string(),
     body: z.string(),
     /** Chính người đang gọi đã đọc chưa — dẫn xuất từ `readBy`, không phải cột riêng. */

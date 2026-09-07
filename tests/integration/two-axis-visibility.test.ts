@@ -123,6 +123,76 @@ describe('Người NGOÀI org đọc được gì', () => {
   })
 })
 
+/*
+ * Lỗ hổng mà cả file này SUÝT bỏ qua: mọi assertion phía trên gọi `GET /listings` mà KHÔNG gửi
+ * `X-Org-Slug`, nên chúng chỉ chứng minh scope mặc định là đúng.
+ *
+ * Gửi header đó là một chuyện khác hẳn: `resolveTenant` từng cấp `readableOrgIds: [org]` cho
+ * cả khách không token lẫn người ngoài trên request `GET`, tức nhánh org của `tenantPlugin` mở
+ * ra và tin `org_internal` chảy về cho người chỉ cần BIẾT SLUG — mà slug nằm trong mọi link
+ * chia sẻ. Đo trên dữ liệu thật trước khi sửa: 4/50 tin trả về là tin nội bộ.
+ */
+describe('Gửi X-Org-Slug KHÔNG mở được nhánh org cho người ngoài', () => {
+  it('người ngoài đã đăng nhập, gửi slug của trường → vẫn KHÔNG thấy tin nội bộ', async () => {
+    const titles = await titlesSeenBy(outsider, { 'X-Org-Slug': SLUG })
+    expect(titles).not.toContain('Tin NỘI BỘ của trường')
+    // Vẫn phải thấy tin công khai — siết quá tay thì gãy cả trục danh mục.
+    expect(titles).toContain('Tin CÔNG KHAI từ trường')
+  })
+
+  it('khách CHƯA đăng nhập, gửi slug của trường → vẫn KHÔNG thấy tin nội bộ', async () => {
+    const res = await request(app).get('/api/v1/listings').set({ 'X-Org-Slug': SLUG }).expect(200)
+    const titles = res.body.data.map((l: { title: string }) => l.title)
+
+    expect(titles).not.toContain('Tin NỘI BỘ của trường')
+    expect(titles).toContain('Tin CÔNG KHAI từ trường')
+  })
+
+  it('THÀNH VIÊN gửi slug thì VẪN thấy tin nội bộ — chốt không siết quá tay', async () => {
+    const titles = await titlesSeenBy(member, { 'X-Org-Slug': SLUG })
+    expect(titles).toContain('Tin NỘI BỘ của trường')
+  })
+
+  /*
+   * Master không thuộc trường nào nhưng có grant `master/system`, nên nhánh
+   * `canModerateAnyInOrg` phải giữ nguyên `withOrg()` — không có nó thì bàn duyệt tin của
+   * master trắng trơn.
+   */
+  it('MASTER gửi slug vẫn đọc được tin nội bộ để duyệt', async () => {
+    const titles = await titlesSeenBy(master, { 'X-Org-Slug': SLUG })
+    expect(titles).toContain('Tin NỘI BỘ của trường')
+  })
+})
+
+/*
+ * `?visibility=` — thứ mục "TIN TRONG NHÓM" ở hồ sơ nhóm cần.
+ *
+ * Scope đọc là "nhánh org HOẶC nhánh công khai", nên không lọc gì thì mục đó hứng luôn cả trục
+ * công khai: một nhóm vừa tạo, chưa mời ai, chưa có tin nào, vẫn bày ra 6 tin lạ.
+ */
+describe('?visibility= thu hẹp về đúng tin của nhóm', () => {
+  it('org_internal cho thành viên → chỉ tin nội bộ, không lẫn tin công khai', async () => {
+    const res = await request(app)
+      .get('/api/v1/listings?visibility=org_internal')
+      .set({ ...bearer(member), 'X-Org-Slug': SLUG })
+      .expect(200)
+    const titles = res.body.data.map((l: { title: string }) => l.title)
+
+    expect(titles).toContain('Tin NỘI BỘ của trường')
+    expect(titles).not.toContain('Tin CÔNG KHAI từ trường')
+    expect(titles).not.toContain('Tin CÔNG KHAI không thuộc trường nào')
+  })
+
+  it('org_internal cho người ngoài → RỖNG, bộ lọc không thành cửa hậu', async () => {
+    const res = await request(app)
+      .get('/api/v1/listings?visibility=org_internal')
+      .set({ ...bearer(outsider), 'X-Org-Slug': SLUG })
+      .expect(200)
+
+    expect(res.body.data).toHaveLength(0)
+  })
+})
+
 describe('THÀNH VIÊN org đọc được gì', () => {
   it('thấy tin nội bộ của trường mình', async () => {
     const titles = await titlesSeenBy(member, { 'X-Org-Slug': SLUG })

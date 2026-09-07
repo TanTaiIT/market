@@ -39,7 +39,10 @@ export const notificationController = {
       ...orgActor(req, 'notification.create'),
       grants: req.grants!,
     })
-    created(res, { message: 'Notification sent', data: toNotificationDto(doc, req.user!.id) })
+    created(res, {
+      message: 'Notification sent',
+      data: toNotificationDto(doc, { id: req.user!.id, seenAt: new Map() }),
+    })
   }),
 
   // PATCH /notifications/:id/read

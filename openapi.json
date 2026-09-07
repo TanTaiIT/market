@@ -3015,6 +3015,14 @@
             "nullable": true,
             "pattern": "^[0-9a-fA-F]{24}$"
           },
+          "actorName": {
+            "type": "string"
+          },
+          "listingId": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
           "title": {
             "type": "string"
           },
@@ -3036,6 +3044,7 @@
           "id",
           "organizationId",
           "unitId",
+          "listingId",
           "title",
           "body",
           "isRead",
@@ -5196,6 +5205,18 @@
           },
           {
             "schema": {
+              "type": "string",
+              "enum": [
+                "org_internal",
+                "public"
+              ]
+            },
+            "required": false,
+            "name": "visibility",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "number",
               "nullable": true,
               "minimum": 0
@@ -5512,6 +5533,18 @@
             },
             "required": false,
             "name": "condition",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "org_internal",
+                "public"
+              ]
+            },
+            "required": false,
+            "name": "visibility",
             "in": "query"
           },
           {

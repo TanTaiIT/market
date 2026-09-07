@@ -587,6 +587,18 @@ export const listingService = {
       })
     }
 
+    /*
+     * Tin TỰ ĐĂNG (uy tín đủ bậc) lên bảng ngay tại đây, không đi qua bàn duyệt — nên đây là
+     * một trong HAI chỗ báo cho cả nhóm. Chỗ còn lại là `notifyPoster` nhánh `ACTIVE`, cho tin
+     * phải chờ quản trị bấm duyệt.
+     *
+     * Ràng `status === ACTIVE` chứ không báo vô điều kiện: tin `pending`/`rejected` chưa ai xem
+     * được, báo sớm là mời cả nhóm bấm vào một trang không mở ra được.
+     */
+    if (listing.status === LISTING_STATUS.ACTIVE) {
+      await notificationService.notifyGroupOfListing(listing)
+    }
+
     return listing
   },
 

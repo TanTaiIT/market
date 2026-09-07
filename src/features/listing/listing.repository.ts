@@ -44,6 +44,9 @@ export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDo
 
   if (params.category) filter.category = params.category
   if (params.seller) filter.seller = params.seller
+  // Chỉ THU HẸP. `tenantPlugin` vẫn `$and` scope đọc lên trên, nên xin `org_internal` của một
+  // nhóm mình không đọc được thì ra rỗng, không ra dữ liệu.
+  if (params.visibility) filter.visibility = params.visibility
 
   /*
    * Lọc thuộc tính động qua bản phẳng `attrs`, KHÔNG qua `attributes`.

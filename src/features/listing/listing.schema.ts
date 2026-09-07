@@ -200,6 +200,18 @@ export const listingQuerySchema = z.object({
   seller: objectId.optional(),
   province: z.enum(VN_PROVINCE_NAMES).optional(),
   condition: z.nativeEnum(LISTING_CONDITION).optional(),
+  /**
+   * Chỉ tin nội bộ, hoặc chỉ tin công khai. Bỏ trống = cả hai, tuỳ scope đọc cho phép.
+   *
+   * Cần nó vì scope đọc của `tenantPlugin` là "nhánh org HOẶC nhánh công khai" — đúng cho bảng
+   * tin chính, nhưng mục "TIN TRONG NHÓM" ở hồ sơ nhóm thì hứng luôn cả trục công khai: một
+   * nhóm vừa tạo, chưa có tin nào, vẫn bày ra 6 tin `organizationId: null` không liên quan.
+   *
+   * Đây là bộ lọc, KHÔNG phải cửa hậu: `tenantPlugin` vẫn `$and` scope của nó lên trên, nên
+   * tham số này chỉ thu hẹp kết quả chứ không mở thêm gì. Xin `org_internal` mà không có quyền
+   * đọc nhánh org thì ra rỗng.
+   */
+  visibility: z.nativeEnum(POST_VISIBILITY).optional(),
   minPrice: z.coerce.number().nonnegative().optional(),
   maxPrice: z.coerce.number().nonnegative().optional(),
   /**

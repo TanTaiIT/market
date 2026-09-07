@@ -108,10 +108,22 @@ export const resolveTenant = catchAsync(async (req, _res, next) => {
     publicAxis: { mode: 'approved' },
   })
 
-  if (!actorId) {
-    // Khách xem trang công khai của org qua subdomain. Không có token thì không có đường ghi.
-    return runWithTenant(withOrg(), next)
-  }
+  /*
+   * KHÁCH (không token): chỉ trục công khai, KHÔNG `readableOrgIds`.
+   *
+   * Bản trước cấp `withOrg()` ở đây với lý do "khách xem trang công khai của org qua subdomain".
+   * Ý định đúng, cấp sai thứ: `withOrg()` mở luôn NHÁNH ORG của `tenantPlugin`, nên chỉ cần gửi
+   * `X-Org-Slug: <slug>` — mà slug nằm trong mọi link chia sẻ — là đọc được tin `org_internal`
+   * của nhóm đó, không cần đăng nhập. Đo được: 4/50 tin trả về là tin nội bộ của nhóm.
+   *
+   * Điều đó mâu thuẫn thẳng với lời app hứa ở hồ sơ nhóm: "Đây là nội dung riêng của nhóm.
+   * Tham gia để xem tin đăng bên trong."
+   *
+   * Trang công khai của org KHÔNG cần scope này: `organizationService.publicProfile` đọc
+   * `Organization`/`Membership` (hai model không gắn plugin) và đếm tin qua
+   * `countCreatedSinceForOrg`, vốn tự khai `runUnscoped`.
+   */
+  if (!actorId) return runWithTenant(publicOnlyScope(), next)
 
   const membership = await membershipRepository.findActive(actorId, org._id)
   if (membership) {
@@ -130,10 +142,20 @@ export const resolveTenant = catchAsync(async (req, _res, next) => {
     return runWithTenant(withOrg(), next)
   }
 
-  // Người ngoài: mở scope ĐỌC của org cho GET, còn ghi thì không. Không ném lỗi ở đây — không
-  // mở scope org thì `tenantPlugin` fail-closed tự chặn đường ghi vào org, và những route
-  // không cần org (gửi đơn tham gia, đăng tin trục công khai) vẫn chạy thay vì ăn 403 oan.
-  if (req.method === 'GET') return runWithTenant(withOrg(), next)
-
+  /*
+   * NGƯỜI NGOÀI đã đăng nhập: cũng chỉ trục công khai, bất kể method.
+   *
+   * Bản trước có một nhánh riêng `if (req.method === 'GET') return runWithTenant(withOrg(), ...)`
+   * — "mở scope ĐỌC của org cho GET, còn ghi thì không". Đó chính là lỗ hổng, chỉ khác ca khách
+   * ở chỗ có token: `readableOrgIds` mở nhánh org, nên `GET /listings` kèm `X-Org-Slug` trả về
+   * tin nội bộ của một nhóm mình không thuộc.
+   *
+   * Bỏ nhánh đó KHÔNG làm route nào hỏng oan: mọi GET thật sự cần `ownOrgId` đều đã gác thêm
+   * `requireOrgAdmin`/`requireOrgModerator`/`requireOrgReadOrMaster`, tức người ngoài vốn đã
+   * nhận 403 ở đó. Còn người ngoài CÓ quyền duyệt trong org thì đã rẽ ở nhánh trên.
+   *
+   * Các route không cần org (gửi đơn tham gia, đăng tin trục công khai, xem hồ sơ nhóm) vẫn
+   * chạy bình thường — chúng đọc những model không gắn `tenantPlugin`.
+   */
   runWithTenant(publicOnlyScope(), next)
 })

@@ -176,6 +176,15 @@ export async function notifyPoster(
       title: 'Tin của bạn đã được duyệt',
       body: `"${listing.title}" đã lên bảng tin.`,
     })
+    /*
+     * Tin vừa lên bảng thì CẢ NHÓM được báo — đây là chỗ thứ hai làm việc đó, chỗ đầu là nhánh
+     * tự-đăng trong `listingService.create`.
+     *
+     * Đứng SAU thông báo cho người đăng, không trước: hai dòng cùng nói về một tin, mà người
+     * đăng phải thấy "tin của bạn đã được duyệt" nằm trên. `notifyGroupOfListing` cũng đã tự
+     * loại họ khỏi nhánh phát chung (`actorId`), nên họ chỉ nhận đúng một dòng.
+     */
+    await notificationService.notifyGroupOfListing(listing)
     return
   }
 

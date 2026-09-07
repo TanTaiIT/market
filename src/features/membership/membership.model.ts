@@ -25,6 +25,18 @@ export interface IMembership {
   unitId: Types.ObjectId | null
   joinedVia: JoinedVia
   joinedAt: Date
+  /**
+   * Mốc người này xem hộp thư tới đâu — quyết định trạng thái đọc của thông báo PHÁT CHUNG
+   * sinh tự động (xem `notification.model.ts` → `readBy`).
+   *
+   * Nằm ở đây chứ không ở `User`: nó là quan hệ giữa MỘT người và MỘT nhóm, y như `unitId` bên
+   * trên. Đặt trên `User` thì mở hộp thư một lần là xoá dấu chưa-đọc của cả ba nhóm cùng lúc.
+   *
+   * `null` = chưa xem lần nào → mọi thông báo của nhóm đều là chưa đọc. Đúng cho thành viên
+   * mới: `joinedAt` không thay được nó, vì người vào nhóm hôm nay không nên thấy tin của
+   * năm trước là "chưa đọc" — `paginate` lọc theo `joinedAt` cho việc đó.
+   */
+  notificationsSeenAt: Date | null
   archivedAt: Date | null
   createdAt: Date
   updatedAt: Date
@@ -51,6 +63,7 @@ const membershipSchema = new Schema<IMembershipDocument>(
     unitId: { type: Schema.Types.ObjectId, ref: 'OrgUnit', default: null },
     joinedVia: { type: String, enum: Object.values(JOINED_VIA), default: JOINED_VIA.REQUEST },
     joinedAt: { type: Date, default: () => new Date() },
+    notificationsSeenAt: { type: Date, default: null },
     archivedAt: { type: Date, default: null },
   },
   { timestamps: true },
