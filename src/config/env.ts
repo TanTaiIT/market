@@ -64,6 +64,12 @@ const envSchema = z.object({
    */
   LISTING_EXPIRY_EVERY: z.string().default('1 hour'),
 
+  /*
+   * Nơi nhận lỗi 5xx. THIẾU = tắt hẳn, không phải lỗi cấu hình — dev và test không gửi gì đi
+   * đâu, và không ai phải có tài khoản Sentry để chạy `npm test`.
+   */
+  SENTRY_DSN: z.string().url().optional(),
+
   // Domain gốc để tách subdomain -> Organization.slug (vd 'app.com' => hungvuong.app.com).
   // Bỏ trống ở dev/test: khi đó org hoạt động đến từ header `X-Org-Slug`, hoặc suy ra khi
   // người dùng chỉ thuộc đúng một org.

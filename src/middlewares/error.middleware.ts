@@ -4,6 +4,7 @@ import { ApiError } from '../common/errors/ApiError'
 import { httpStatus } from '../common/constants/httpStatus'
 import { env } from '../config/env'
 import { logger } from '../config/logger'
+import { reportServerError } from '../config/sentry'
 
 /**
  * Chuyển mọi lỗi (Mongoose, JWT, lỗi thường...) về ApiError chuẩn.
@@ -47,6 +48,18 @@ export function errorHandler(err: ApiError, req: Request, res: Response, _next: 
 
   if (statusCode >= 500) {
     logger.error(err.message, { err, path: req.originalUrl, method: req.method })
+    /*
+     * Chỉ 5xx. 4xx là hệ thống đang làm ĐÚNG việc của nó (từ chối một yêu cầu sai) — đổ chúng
+     * vào chỗ nhận lỗi là dìm những lỗi thật xuống dưới hàng nghìn cú 401 của token hết hạn,
+     * rồi người ta tắt báo động, rồi báo động thành vô dụng.
+     *
+     * Dùng `req.route?.path` (mẫu `/:id`) chứ không `originalUrl` làm khoá gom nhóm: url
+     * thật mang id nên mỗi tin là một "lỗi mới", và một lỗi xảy ra 400 lần trông như 400 sự việc.
+     */
+    reportServerError(err, {
+      method: req.method,
+      route: (req.route?.path as string | undefined) ?? req.originalUrl,
+    })
   }
 
   res.status(statusCode).json({

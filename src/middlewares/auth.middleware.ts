@@ -3,6 +3,7 @@ import { verifyAccessToken } from '../common/utils/jwt'
 import { UnauthorizedError, ForbiddenError } from '../common/errors'
 import { catchAsync } from '../common/utils/catchAsync'
 import { currentScope, runWithTenant } from '../common/tenant/tenantContext'
+import { enrichRequestContext } from '../common/observability/requestContext'
 import { canAdminOrg, canModerateAnyInOrg, isMaster, Grant } from '../common/authz/policy'
 import { roleGrantService } from '../features/role-grant/role-grant.service'
 import { organizationRepository } from '../features/organization/organization.repository'
@@ -31,6 +32,8 @@ export const authenticate = catchAsync(async (req, _res, next) => {
   }
 
   req.user = { id: payload.sub }
+  // Từ đây mọi dòng log của request này mang `userId` — kể cả log sinh sâu trong repository.
+  enrichRequestContext({ userId: payload.sub })
   next()
 })
 
@@ -40,6 +43,7 @@ export const optionalAuth = catchAsync(async (req, _res, next) => {
   if (token) {
     try {
       req.user = { id: verifyAccessToken(token).sub }
+      enrichRequestContext({ userId: req.user.id })
     } catch {
       // token hỏng -> coi như khách
     }

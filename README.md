@@ -214,6 +214,12 @@ Script cần `.env` hợp lệ vì `src/config/env.ts` validate env lúc import 
 - **Soft delete**: `deletedAt` cho user & listing. Hook `pre(/^find/)` tự loại trừ, và
   `countDocuments` phải đăng ký hook riêng (regex `/^find/` không khớp).
 - **Response chuẩn**: `{ success, message, data, meta? }`.
+- **Quan sát hệ thống**: mọi request có `X-Request-Id` (nhận từ client nếu hợp lệ, không thì tự
+  sinh) sống trong `AsyncLocalStorage` và được `logger` tự gắn vào MỌI dòng log cùng `userId` +
+  `orgSlug` — không tầng nào phải truyền tay. Log ở production là **JSON + timestamp ISO** để
+  lọc theo field; ở dev là một dòng ngắn cho mắt người. Lỗi 5xx (chỉ 5xx) đi tới Sentry khi có
+  `SENTRY_DSN`, gom nhóm theo route mẫu chứ không theo URL có id. `GET /health` **ping Mongo
+  thật** và trả 503 khi DB chết.
 - **Đúng MỘT instance**: rate limit đếm trong bộ nhớ process, Socket.IO dùng adapter in-memory.
   Muốn scale ra nhiều instance thì cả hai cần một store dùng chung (Redis là bản chuẩn) —
   điểm cần sửa đã ghi ngay tại `rateLimiter.middleware.ts` và `sockets/index.ts`.

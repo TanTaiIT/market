@@ -11,6 +11,7 @@ import {
 } from '../features/organization/organization.repository'
 import { membershipRepository } from '../features/membership/membership.repository'
 import { roleGrantService } from '../features/role-grant/role-grant.service'
+import { enrichRequestContext } from '../common/observability/requestContext'
 
 /** Header cho client không chạy trên subdomain (app mobile, dev). Subdomain vẫn thắng. */
 const ORG_HEADER = 'x-org-slug'
@@ -63,7 +64,12 @@ async function resolveOrganization(
   actorId: string | null,
 ): Promise<OrgSummary | null> {
   const slug = subdomainSlug(req.hostname) ?? headerSlug(req)
-  if (slug) return resolveBySlug(slug)
+  if (slug) {
+    // Ghi vào ngữ cảnh log trước khi tra: slug KHÔNG tra ra org cũng là thông tin cần khi một
+    // nhóm báo "chúng tôi không vào được" — biết họ đã gửi slug gì mới lần được nguyên nhân.
+    enrichRequestContext({ orgSlug: slug })
+    return resolveBySlug(slug)
+  }
   if (!actorId) return null
 
   const memberships = await membershipRepository.listActiveByUser(actorId)

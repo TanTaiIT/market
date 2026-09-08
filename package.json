@@ -58,6 +58,7 @@
     "@asteasolutions/zod-to-openapi": "^7.1.1",
     "@node-rs/bcrypt": "^1.10.4",
     "@scalar/express-api-reference": "^0.4.170",
+    "@sentry/node": "^10.73.0",
     "agenda": "^6.2.6",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
