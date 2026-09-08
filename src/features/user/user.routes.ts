@@ -86,10 +86,15 @@ registry.registerPath({
   operationId: 'userDeleteMe',
   tags: ['User'],
   summary: 'Xoá tài khoản (soft delete)',
+  description:
+    'Thu hồi mọi quyền và lưu trữ mọi tư cách thành viên trước khi tắt tài khoản. Bị TỪ CHỐI ' +
+    'khi tài khoản là master cuối cùng của hệ thống, hoặc là quản trị duy nhất của một tổ ' +
+    'chức nào đó — lỗi nêu tên các tổ chức đó để biết phải trao quyền ở đâu.',
   ...protectedRoute,
   responses: {
     200: jsonResponse('Đã xoá tài khoản', envelope(z.null())),
     401: errorResponse('Thiếu hoặc sai access token'),
+    409: errorResponse('Master cuối cùng, hoặc quản trị duy nhất của một tổ chức'),
   },
 })
 

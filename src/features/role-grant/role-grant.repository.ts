@@ -1,4 +1,4 @@
-import { Types } from 'mongoose'
+import { FilterQuery, Types } from 'mongoose'
 import { RoleGrant, IRoleGrant, IRoleGrantDocument } from './role-grant.model'
 import { SCOPE_TYPES, SYSTEM_ROLES } from '../../common/constants'
 
@@ -59,6 +59,30 @@ export const roleGrantRepository = {
    * `revokeById` từng cái: đây là hệ quả của một thao tác duy nhất, gỡ nửa chừng rồi lỗi sẽ để
    * lại một tài khoản đã xoá mà vẫn còn quyền.
    */
+  /**
+   * Chủ nhân của mọi quyền quản trị CÒN HIỆU LỰC trong một org.
+   *
+   * Trả NGƯỜI chứ không phải số lượng grant, cùng lý do `listActiveMasterUserIds`: xoá mềm tài
+   * khoản không chạm tới grant, nên đếm trên grant sẽ báo "org vẫn có admin" trong khi không ai
+   * đăng nhập được nữa. Phép đếm thật (lọc tài khoản còn dùng được) nằm ở service.
+   *
+   * `excludeGrantId` cho ca "thu hồi chính grant này thì org còn ai?" — phải loại nó ra TRƯỚC
+   * khi ghi, chứ không thu hồi rồi mới đếm để còn kịp từ chối.
+   */
+  listActiveOrgAdminUserIds(
+    orgId: string | Types.ObjectId,
+    excludeGrantId?: string | Types.ObjectId,
+  ): Promise<Types.ObjectId[]> {
+    const filter: FilterQuery<IRoleGrantDocument> = {
+      role: SYSTEM_ROLES.MANAGER,
+      scopeType: SCOPE_TYPES.ORG,
+      orgId: new Types.ObjectId(orgId.toString()),
+      ...ACTIVE,
+    }
+    if (excludeGrantId) filter._id = { $ne: new Types.ObjectId(excludeGrantId.toString()) }
+    return RoleGrant.distinct('userId', filter).exec()
+  },
+
   revokeAllForUser(userId: string | Types.ObjectId) {
     return RoleGrant.updateMany(
       { userId, ...ACTIVE },

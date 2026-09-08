@@ -88,7 +88,8 @@ registry.registerPath({
   description:
     'Lưu trữ tư cách thành viên chứ không xoá bản ghi — danh bạ cũ là dữ liệu của tổ chức. ' +
     'KHÔNG gỡ được chính mình, và không gỡ được người cũng đang giữ quyền quản trị tổ chức ' +
-    '(cần master), nếu không hai quản trị sẽ gỡ lẫn nhau.',
+    '(cần master), nếu không hai quản trị sẽ gỡ lẫn nhau. Quản trị DUY NHẤT của tổ chức thì ' +
+    'không ai gỡ được, kể cả master — phải trao quyền cho người khác trước.',
   security: [{ [bearerAuth.name]: [] }],
   request: { params: memberParamsSchema },
   responses: {
@@ -97,5 +98,6 @@ registry.registerPath({
     401: errorResponse('Thiếu hoặc sai access token'),
     403: errorResponse('Cần quyền quản trị tổ chức, hoặc mục tiêu cũng là quản trị'),
     404: errorResponse('Người này không còn trong nhóm'),
+    409: errorResponse('Đây là quản trị duy nhất của tổ chức'),
   },
 })

@@ -4347,6 +4347,7 @@
           "User"
         ],
         "summary": "Xoá tài khoản (soft delete)",
+        "description": "Thu hồi mọi quyền và lưu trữ mọi tư cách thành viên trước khi tắt tài khoản. Bị TỪ CHỐI khi tài khoản là master cuối cùng của hệ thống, hoặc là quản trị duy nhất của một tổ chức nào đó — lỗi nêu tên các tổ chức đó để biết phải trao quyền ở đâu.",
         "security": [
           {
             "bearerAuth": []
@@ -4384,6 +4385,16 @@
           },
           "401": {
             "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Master cuối cùng, hoặc quản trị duy nhất của một tổ chức",
             "content": {
               "application/json": {
                 "schema": {
@@ -7626,8 +7637,8 @@
         "tags": [
           "JoinRequest"
         ],
-        "summary": "Gửi đơn xin vào một tổ chức",
-        "description": "Không cần thuộc tổ chức nào trước đó. Có trần số đơn đang chờ và cooldown sau khi bị từ chối để hàng đợi của tổ chức không bị rải đơn.",
+        "summary": "Xin vào một tổ chức (nhóm công khai: vào ngay)",
+        "description": "Không cần thuộc tổ chức nào trước đó. **Đọc `status` của phản hồi**: nhóm CÔNG KHAI trả `approved` — người gọi đã là thành viên ngay lúc đó, không có bước duyệt; nhóm RIÊNG TƯ trả `pending` và phải chờ người có quyền duyệt trong nhóm xử lý. Trần số đơn đang chờ chỉ áp cho nhóm riêng tư (nhóm công khai không sinh đơn chờ), còn cooldown sau khi bị từ chối áp cho cả hai.",
         "security": [
           {
             "bearerAuth": []
@@ -7644,7 +7655,7 @@
         },
         "responses": {
           "201": {
-            "description": "Đã gửi đơn",
+            "description": "Đã vào nhóm (công khai) hoặc đã gửi đơn (riêng tư)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8273,7 +8284,7 @@
           "Membership"
         ],
         "summary": "Gỡ một người khỏi tổ chức (quản trị nhóm)",
-        "description": "Lưu trữ tư cách thành viên chứ không xoá bản ghi — danh bạ cũ là dữ liệu của tổ chức. KHÔNG gỡ được chính mình, và không gỡ được người cũng đang giữ quyền quản trị tổ chức (cần master), nếu không hai quản trị sẽ gỡ lẫn nhau.",
+        "description": "Lưu trữ tư cách thành viên chứ không xoá bản ghi — danh bạ cũ là dữ liệu của tổ chức. KHÔNG gỡ được chính mình, và không gỡ được người cũng đang giữ quyền quản trị tổ chức (cần master), nếu không hai quản trị sẽ gỡ lẫn nhau. Quản trị DUY NHẤT của tổ chức thì không ai gỡ được, kể cả master — phải trao quyền cho người khác trước.",
         "security": [
           {
             "bearerAuth": []
@@ -8352,6 +8363,16 @@
           },
           "404": {
             "description": "Người này không còn trong nhóm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Đây là quản trị duy nhất của tổ chức",
             "content": {
               "application/json": {
                 "schema": {
@@ -9035,7 +9056,7 @@
             }
           },
           "409": {
-            "description": "Phải luôn còn ít nhất một master",
+            "description": "Phải luôn còn ít nhất một master, và mỗi tổ chức phải luôn còn ít nhất một quản trị",
             "content": {
               "application/json": {
                 "schema": {

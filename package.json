@@ -26,6 +26,8 @@
     "seed:listing-products": "cross-env NODE_ENV=development tsx scripts/seed-listing-products.ts",
     "migrate:v2": "cross-env NODE_ENV=development tsx scripts/migrate-v2.ts",
     "explain:indexes": "cross-env NODE_ENV=development tsx scripts/explain-indexes.ts",
+    "check:org-admins": "cross-env NODE_ENV=development tsx scripts/check-org-admins.ts",
+    "check:org-admins:prod": "cross-env NODE_ENV=production tsx scripts/check-org-admins.ts",
     "prepare": "husky",
     "migrate:trust": "cross-env NODE_ENV=development tsx scripts/migrate-trust-merge.ts",
     "migrate:org-admin": "cross-env NODE_ENV=development tsx scripts/migrate-org-admin.ts",

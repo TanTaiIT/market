@@ -294,6 +294,13 @@ describe('Thông báo đích danh', () => {
   it('duyệt đơn xin vào tổ chức thì người gửi đơn nhận được thông báo', async () => {
     const applicant = await registerUser(app, 'applicant@notice.local', 'Người xin vào')
 
+    /*
+     * Hạ org xuống RIÊNG TƯ cho đúng ca này: nhóm công khai cho vào ngay, không có bước duyệt
+     * nào để phát thông báo — mà thông báo khi được duyệt mới là thứ ca này kiểm.
+     */
+    const { Organization } = await import('../../src/features/organization/organization.model')
+    await Organization.updateOne({ slug: SLUG }, { isPublic: false }).exec()
+
     await request(app)
       .post('/api/v1/join-requests')
       .set({ Authorization: `Bearer ${applicant.token}` })

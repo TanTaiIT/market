@@ -22,6 +22,58 @@ function addDays(from: Date, days: number): Date {
   return new Date(from.getTime() + days * DAY_MS)
 }
 
+/**
+ * Vào NGAY, không qua duyệt — chỉ dành cho nhóm công khai.
+ *
+ * Vẫn ghi một bản `join_requests` với `status: approved`: đó là chỗ duy nhất trả lời được "ai
+ * vào nhóm lúc nào, bằng đường nào", và giữ nguyên hình dạng phản hồi của `POST /join-requests`
+ * nên client chỉ cần đọc `status` thay vì phải xử lý hai kiểu dữ liệu trả về.
+ */
+async function joinPublicNow(
+  actorId: string,
+  organizationId: Types.ObjectId,
+  input: CreateJoinRequestInput,
+) {
+  // Membership TRƯỚC, bản ghi đơn sau — cùng thứ tự và cùng lý do như `approve`: đứt gánh giữa
+  // chừng theo thứ tự này để lại "đã là thành viên, đơn còn chờ" (bấm lại là xong), còn thứ tự
+  // ngược lại để lại "đơn đã duyệt mà không có membership" — người dùng kẹt và không ai thấy.
+  await membershipRepository.create({
+    userId: new Types.ObjectId(actorId),
+    organizationId,
+    role: MEMBERSHIP_ROLES.MEMBER,
+    unitId: null,
+    joinedVia: JOINED_VIA.REQUEST,
+  })
+
+  const reviewed = {
+    status: JOIN_REQUEST_STATUS.APPROVED,
+    /*
+     * `reviewedBy: null` — KHÔNG có ai duyệt. Ghi `actorId` vào đây là bịa ra một phán quyết
+     * của chính người xin vào, và bàn quản trị sẽ hiện họ như người đã tự duyệt cho mình.
+     */
+    reviewedBy: null,
+    reviewedAt: new Date(),
+  }
+
+  // Đơn cũ còn chờ thì duyệt chính nó: người này có thể đã xin vào lúc nhóm còn riêng tư.
+  const pending = await joinRequestRepository.findPendingFor(actorId, organizationId)
+  const doc = pending
+    ? await joinRequestRepository.updateById(pending._id, reviewed)
+    : await joinRequestRepository.create({
+        userId: new Types.ObjectId(actorId),
+        organizationId,
+        claimedName: input.claimedName,
+        claimedUnit: input.claimedUnit ?? null,
+        note: input.note ?? null,
+        // Vô nghĩa với một đơn đã duyệt, nhưng model đòi — và để nó rỗng thì `expireStale`
+        // (`expiresAt < now`) sẽ vớt đúng những đơn này.
+        expiresAt: addDays(new Date(), JOIN_REQUEST_LIMITS.EXPIRES_IN_DAYS),
+        ...reviewed,
+      })
+
+  return toMyJoinRequestDto(doc!)
+}
+
 export const joinRequestService = {
   /**
    * Gửi đơn xin vào org. Người gửi CHƯA thuộc org nào nên hàm này không dùng tenant scope —
@@ -43,6 +95,14 @@ export const joinRequestService = {
     }
     const org = { _id: full._id }
 
+    /*
+     * `!== false` chứ không `=== true`: org tạo trước ngày có field `isPublic` không mang field
+     * đó, và cả hệ thống đang coi chúng là công khai (`PUBLIC = { isPublic: { $ne: false } }`
+     * trong repository). So `=== true` ở đây là bắt riêng nhóm cũ phải qua duyệt trong khi
+     * chúng vẫn hiện ở mọi danh sách công khai — hai câu trả lời khác nhau cho cùng một nhóm.
+     */
+    const isPrivate = full.isPublic === false
+
     if (!full.allowJoinRequests) {
       throw new ForbiddenError('Tổ chức này đang không nhận đơn tham gia')
     }
@@ -54,17 +114,31 @@ export const joinRequestService = {
     const now = new Date()
     await joinRequestRepository.expireStale(now)
 
-    // Trần số đơn đang chờ: một người rải đơn khắp nơi là cách rẻ nhất để làm ngập hàng đợi
-    // của nhiều org cùng lúc (§7.5).
+    /*
+     * Trần số đơn đang chờ: một người rải đơn khắp nơi là cách rẻ nhất để làm ngập hàng đợi
+     * của nhiều org cùng lúc (§7.5).
+     *
+     * CHỈ áp cho nhánh có duyệt. Nhóm công khai không đẻ ra đơn chờ nào nên chốt này không có
+     * gì để bảo vệ ở đó — chặn thì thành một lời từ chối vô cớ ("bạn đang có 5 đơn chờ") ngay
+     * lúc người ta bấm vào một nhóm mở cửa cho tất cả.
+     */
     if (
+      isPrivate &&
       (await joinRequestRepository.countPendingByUser(actorId)) >=
-      JOIN_REQUEST_LIMITS.MAX_PENDING_PER_USER
+        JOIN_REQUEST_LIMITS.MAX_PENDING_PER_USER
     ) {
       throw new ConflictError(
         `Bạn đang có ${JOIN_REQUEST_LIMITS.MAX_PENDING_PER_USER} đơn chờ duyệt — xử lý xong rồi gửi tiếp`,
       )
     }
 
+    /*
+     * Cooldown áp cho CẢ HAI nhánh, kể cả nhóm công khai.
+     *
+     * Một lượt từ chối là quyết định của người thật về đúng người này; nhóm mở cửa cho số đông
+     * không có nghĩa là quyết định đó bị xoá. Cho vào ngay ở đây là để người bị từ chối hôm
+     * qua tự quay lại hôm nay, và người duyệt không có cách nào ngăn ngoài việc khoá cả nhóm.
+     */
     const rejected = await joinRequestRepository.latestRejected(actorId, org._id)
     if (rejected?.reviewedAt) {
       const until = addDays(rejected.reviewedAt, JOIN_REQUEST_LIMITS.REJECT_COOLDOWN_DAYS)
@@ -74,6 +148,8 @@ export const joinRequestService = {
         )
       }
     }
+
+    if (!isPrivate) return joinPublicNow(actorId, org._id, input)
 
     try {
       const doc = await joinRequestRepository.create({

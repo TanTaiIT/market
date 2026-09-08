@@ -9,14 +9,15 @@ import { toAdminUserDto } from './user.types'
 import { AREA_SAMPLE_LIMIT, inferProvince, isProvinceName, ProvinceSample } from './user.area'
 import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
-import { usableMastersExcluding } from '../role-grant/role-grant.service'
+import { usableMastersExcluding, usableOrgAdmins } from '../role-grant/role-grant.service'
+import { organizationRepository } from '../organization/organization.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { INITIAL_TRUST } from '../trust/trust.policy'
 import { listingService } from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { QUOTA } from '../listing/listing.quota'
 import { notificationService } from '../notification/notification.service'
-import { SYSTEM_ROLES, VnProvinceName } from '../../common/constants'
+import { SCOPE_TYPES, SYSTEM_ROLES, VnProvinceName } from '../../common/constants'
 import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { logger } from '../../config/logger'
@@ -229,6 +230,30 @@ export const userService = {
     const isMaster = grants.some((g) => g.role === SYSTEM_ROLES.MASTER)
     if (isMaster && (await usableMastersExcluding(id)) === 0) {
       throw new ConflictError('Tài khoản master không xoá được')
+    }
+
+    /*
+     * Đây là đường DUY NHẤT còn lại có thể làm một org đang chạy mất người phụ trách: xoá tài
+     * khoản không đi qua `roleGrantService.revoke` mà gọi thẳng `revokeAllForUser`.
+     *
+     * Đường này TỰ PHỤC VỤ (`req.user.id`, không phải thao tác của master), nên người bấm là
+     * chính người phụ trách đó — họ có đủ ngữ cảnh để trao quyền lại, và là người duy nhất
+     * biết nên trao cho ai. Nêu TÊN nhóm trong lỗi: "bạn còn là quản trị ở đâu đó" thì họ
+     * không biết phải đi sửa chỗ nào.
+     */
+    const orgIds = grants
+      .filter((g) => g.scopeType === SCOPE_TYPES.ORG && g.orgId)
+      .map((g) => g.orgId!)
+    const orphaned: string[] = []
+    for (const orgId of orgIds) {
+      if ((await usableOrgAdmins(orgId, { userId: id })) > 0) continue
+      const org = await organizationRepository.findById(orgId)
+      orphaned.push(org?.name ?? orgId.toString())
+    }
+    if (orphaned.length > 0) {
+      throw new ConflictError(
+        `Bạn là quản trị duy nhất của ${orphaned.join(', ')} — trao quyền cho người khác trước khi xoá tài khoản`,
+      )
     }
 
     // Gỡ quyền TRƯỚC khi tắt tài khoản. Không có transaction ở đây, nên thứ tự chính là thứ

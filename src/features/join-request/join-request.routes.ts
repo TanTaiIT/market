@@ -82,14 +82,17 @@ registry.registerPath({
   path: '/join-requests',
   operationId: 'createJoinRequest',
   tags: ['JoinRequest'],
-  summary: 'Gửi đơn xin vào một tổ chức',
+  summary: 'Xin vào một tổ chức (nhóm công khai: vào ngay)',
   description:
-    'Không cần thuộc tổ chức nào trước đó. Có trần số đơn đang chờ và cooldown sau khi bị ' +
-    'từ chối để hàng đợi của tổ chức không bị rải đơn.',
+    'Không cần thuộc tổ chức nào trước đó. **Đọc `status` của phản hồi**: nhóm CÔNG KHAI ' +
+    'trả `approved` — người gọi đã là thành viên ngay lúc đó, không có bước duyệt; nhóm ' +
+    'RIÊNG TƯ trả `pending` và phải chờ người có quyền duyệt trong nhóm xử lý. Trần số ' +
+    'đơn đang chờ chỉ áp cho nhóm riêng tư (nhóm công khai không sinh đơn chờ), còn cooldown ' +
+    'sau khi bị từ chối áp cho cả hai.',
   ...protectedRoute,
   request: { body: { content: { 'application/json': { schema: createJoinRequestSchema } } } },
   responses: {
-    201: jsonResponse('Đã gửi đơn', myRequestResponse),
+    201: jsonResponse('Đã vào nhóm (công khai) hoặc đã gửi đơn (riêng tư)', myRequestResponse),
     403: errorResponse('Tổ chức đang không nhận đơn'),
     409: errorResponse('Đã là thành viên, đang có đơn chờ, hoặc chưa hết cooldown'),
   },

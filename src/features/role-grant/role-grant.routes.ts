@@ -73,7 +73,9 @@ registry.registerPath({
   responses: {
     200: jsonResponse('Đã thu hồi', grantResponse),
     403: errorResponse('Không đủ thẩm quyền'),
-    409: errorResponse('Phải luôn còn ít nhất một master'),
+    409: errorResponse(
+      'Phải luôn còn ít nhất một master, và mỗi tổ chức phải luôn còn ít nhất một quản trị',
+    ),
   },
 })
 

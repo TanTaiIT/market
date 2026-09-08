@@ -208,7 +208,7 @@ Script cần `.env` hợp lệ vì `src/config/env.ts` validate env lúc import 
 `JWT_SECRET` là `process.exit(1)`), nhưng **không** kết nối MongoDB.
 
 ## Ghi chú thiết kế
-- **Listing**: `status` (draft/pending/active/sold/expired/rejected/hidden), `location` GeoJSON + `2dsphere` (tìm gần), `images: string[]` (URL, ảnh thật ở S3/Cloudinary), `expiresAt` TTL index (tự hết hạn), text index (title+description), compound index `(category, status, createdAt)`.
+- **Listing**: `status` (draft/pending/active/sold/expired/rejected/hidden), `location` GeoJSON + `2dsphere` (tìm gần), `images: string[]` (URL, ảnh thật ở S3/Cloudinary), `expiresAt` + job `listing-expiry:sweep` hạ trạng thái (KHÔNG còn TTL index — tin hết hạn phải còn để gia hạn), text index (title+description), compound index `(category, status, createdAt)`.
 - **Visibility**: endpoint public chỉ trả tin có status trong `PUBLIC_LISTING_STATUSES`
   (`active`, `sold`, `expired`). Client không được tự truyền `?status=`.
 - **Soft delete**: `deletedAt` cho user & listing. Hook `pre(/^find/)` tự loại trừ, và

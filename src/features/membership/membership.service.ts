@@ -4,9 +4,9 @@ import { toMemberDto } from './membership.types'
 import { userRepository } from '../user/user.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { INITIAL_TRUST } from '../trust/trust.policy'
-import { roleGrantService } from '../role-grant/role-grant.service'
+import { roleGrantService, usableOrgAdmins } from '../role-grant/role-grant.service'
 import { canAdminOrg, isMaster, type Grant } from '../../common/authz/policy'
-import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 
@@ -74,6 +74,28 @@ export const membershipService = {
       if (canAdminOrg(targetGrants, organizationId.toString())) {
         throw new ForbiddenError('Người này cũng là quản trị nhóm — cần master để gỡ')
       }
+    }
+
+    /*
+     * Người đang GIỮ QUYỀN quản trị không bị gỡ khỏi danh bạ — kể cả bởi master.
+     *
+     * `grantAdmin` ghi hai thứ cùng nhau và nói rõ chúng không tách rời được: `Membership` là
+     * thân phận, `RoleGrant` là quyền. Gỡ thân phận mà để quyền còn hiệu lực tạo ra một
+     * "admin rỗng ruột" — `canAdminOrg` vẫn cho họ mở bàn duyệt và duyệt tin của một nhóm mà
+     * họ không còn là thành viên, còn danh bạ thì không còn ai để master nhìn ra chuyện đó.
+     *
+     * Chốt này KHÔNG trùng chốt 403 ở trên: chốt kia hỏi "ai được phép gỡ", chốt này hỏi "gỡ
+     * xong org còn đứng vững không". Bắt thu hồi quyền trước cũng đi qua chốt admin-cuối-cùng
+     * ở `roleGrantService.revoke`, nên không có đường nào lách được cả hai.
+     */
+    const targetOrgAdmins = await usableOrgAdmins(organizationId, { userId: targetUserId })
+    const targetIsAdmin = await roleGrantService
+      .grantsOf(targetUserId)
+      .then((grants) => canAdminOrg(grants, organizationId.toString()))
+    if (targetIsAdmin && targetOrgAdmins === 0) {
+      throw new ConflictError(
+        'Đây là quản trị duy nhất của nhóm — trao quyền cho người khác trước khi gỡ',
+      )
     }
 
     const removed = await membershipRepository.archiveOne(targetUserId, organizationId)

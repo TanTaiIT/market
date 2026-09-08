@@ -38,6 +38,19 @@ export const joinRequestRepository = {
       .exec()
   },
 
+  /**
+   * Đơn đang chờ của một người ở một org — nhiều nhất một bản (unique index partial trên
+   * `status: pending`). Dùng cho nhánh vào-ngay: có đơn cũ thì DUYỆT chính nó thay vì đẻ bản
+   * thứ hai, kẻo hàng đợi của nhóm treo một đơn cho người đã là thành viên.
+   */
+  findPendingFor(userId: Id, organizationId: Id): Promise<IJoinRequestDocument | null> {
+    return JoinRequest.findOne({
+      userId,
+      organizationId,
+      status: JOIN_REQUEST_STATUS.PENDING,
+    }).exec()
+  },
+
   updateById(id: Id, update: Partial<IJoinRequest>) {
     return JoinRequest.findOneAndUpdate({ _id: id }, update, { new: true }).exec()
   },

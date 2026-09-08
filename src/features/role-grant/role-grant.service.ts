@@ -30,6 +30,30 @@ export interface GrantInput {
  *
  * Master rất ít nên hai lượt truy vấn nhỏ rẻ hơn một `$lookup`, và đọc ra ý định rõ hơn hẳn.
  */
+/**
+ * Org PHẢI có ít nhất một quản trị còn dùng được — bất biến của hệ thống, không phải khuyến nghị.
+ *
+ * Phía sinh ra đã đúng từ trước: org mới nằm ở `TENANT_STATUS.PENDING_ADMIN` và chỉ `ACTIVE` khi
+ * `organizationService.grantAdmin` chạy, nên một org chưa có ai phụ trách thì phần còn lại của
+ * hệ thống không nhìn thấy nó. Ba hàm dưới đây khoá phía NGƯỢC LẠI — lấy đi người phụ trách cuối
+ * cùng của một org đang chạy — thứ mà trước đây không có gì chặn.
+ *
+ * Vì sao chặn thay vì tự hạ org về `PENDING_ADMIN`: hạ trạng thái nghĩa là một org đang hoạt
+ * động đột ngột đóng cửa với toàn bộ thành viên vì một thao tác quản trị ở chỗ khác — hậu quả
+ * lớn hơn hẳn nguyên nhân, và người gây ra nó không thấy gì. Từ chối kèm câu "trao quyền cho
+ * người khác trước" đặt việc sửa vào đúng tay người đang có ngữ cảnh.
+ *
+ * Đếm theo NGƯỜI CÒN DÙNG ĐƯỢC, không theo grant — xem `listActiveOrgAdminUserIds`.
+ */
+export async function usableOrgAdmins(
+  orgId: Types.ObjectId | string,
+  exclude: { userId?: Types.ObjectId | string; grantId?: Types.ObjectId | string } = {},
+): Promise<number> {
+  const ids = await roleGrantRepository.listActiveOrgAdminUserIds(orgId, exclude.grantId)
+  const others = exclude.userId ? ids.filter((id) => !id.equals(exclude.userId!)) : ids
+  return userRepository.countUsable(others)
+}
+
 export async function usableMastersExcluding(
   excludeUserId: Types.ObjectId | string,
 ): Promise<number> {
@@ -138,6 +162,22 @@ export const roleGrantService = {
     // Không còn chốt §5.4 ở đây: `canRevoke` đã chặn MỌI grant role `master` từ trên, nên
     // nhánh "thu hồi master cuối cùng" không tới được. Master là data mặc định của hệ
     // thống (`scripts/migrate-master.ts`), đổi nó là việc ở tầng dữ liệu chứ không ở API.
+
+    /*
+     * Không thu hồi quyền quản trị CUỐI CÙNG của một org.
+     *
+     * Chốt ở đây chứ không ở tầng route: chỉ tới lúc này mới biết grant đang thu hồi thuộc trục
+     * nào. Loại chính grant này ra khỏi phép đếm — câu hỏi là "sau khi thu hồi thì org còn ai",
+     * không phải "bây giờ org có ai".
+     */
+    if (doc.scopeType === SCOPE_TYPES.ORG && doc.orgId) {
+      const remaining = await usableOrgAdmins(doc.orgId, { grantId: doc._id })
+      if (remaining === 0) {
+        throw new ConflictError(
+          'Đây là quản trị duy nhất của nhóm — trao quyền cho người khác trước khi thu hồi',
+        )
+      }
+    }
 
     const revoked = await roleGrantRepository.revokeById(grantId, new Types.ObjectId(actorId))
     if (!revoked) throw new NotFoundError('Grant not found')
