@@ -49,7 +49,7 @@ import {
   type RejectionSeverity,
 } from '../../common/constants'
 import { slugifyWithSuffix } from '../../common/utils/slugify'
-import { runUnscoped } from '../../common/tenant/tenantContext'
+import { currentScope, runUnscoped } from '../../common/tenant/tenantContext'
 import {
   parsePagination,
   buildPaginationMeta,
@@ -568,11 +568,28 @@ export const listingService = {
       }
     }
 
-    // Người ngoài ghi vào org mà họ KHÔNG thuộc về: request này không có scope org (đúng thiết
-    // kế), nên đây là một lối đi xuyên tenant thật sự và phải khai bằng `runUnscoped` — tin
-    // mang `organizationId` tường minh, và tổ chức đã bật `allowOutsiderPosts` để mời nó vào.
-    const listing = await (routed.queue === MODERATION_QUEUE.ORG_OUTSIDER
-      ? runUnscoped('outsider post into org đã bật allowOutsiderPosts', () =>
+    /*
+     * Nhóm đích do BODY chỉ ra, còn scope tenant thì do HEADER dựng — hai nguồn LỆCH được, và
+     * `tenantPlugin` chặn mọi lượt ghi có `organizationId` khác `ownOrgId` của request.
+     *
+     * Nên chốt ở đây là "org đã định tuyến có khác org của request không", KHÔNG phải "người
+     * đăng có phải người ngoài không". Bản trước hỏi câu thứ hai (`queue === ORG_OUTSIDER`) và
+     * bỏ sót đúng ca thường gặp nhất: THÀNH VIÊN đăng vào nhóm mình, mà `ownOrgId` lại không
+     * phải nhóm đó — người thuộc hai nhóm trở lên thì `resolveTenant` không suy ra org nào
+     * (`memberships.length !== 1` → `null`), còn người đang mở nhóm A mà đăng vào nhóm B thì
+     * header trỏ sang A. Cả hai đều nổ `CrossTenantWriteError`, tức HTTP 500 — không phải 400,
+     * vì lỗi đó nghĩa là "code ghi sai trục", không phải "yêu cầu sai".
+     *
+     * Khai `runUnscoped` là an toàn vì thẩm quyền đã chốt xong TRƯỚC dòng này, không phải bỏ
+     * qua: `resolveTargetOrg` tra tư cách thành viên với chính slug trong body, `routeListing`
+     * chặn người ngoài khi nhóm tắt `allowOutsiderPosts` và chặn cả việc mượn tên nhóm cho tin
+     * công khai. `doc` mang `organizationId` tường minh — cùng lối `moderation.service` ghi vết
+     * duyệt dưới org SỞ HỮU tin thay vì org của người duyệt.
+     */
+    const scopedOrgId = currentScope()?.ownOrgId?.toString() ?? null
+    const crossesTenant = routed.organizationId !== null && routed.organizationId !== scopedOrgId
+    const listing = await (crossesTenant
+      ? runUnscoped('đăng tin vào nhóm đích do body chỉ ra, đã qua resolveTargetOrg', () =>
           listingRepository.create(doc),
         )
       : listingRepository.create(doc))

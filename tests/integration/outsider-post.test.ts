@@ -5,6 +5,7 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import type { Application } from 'express'
 import {
   TestUser,
+  addMember,
   createCategory,
   createOrg,
   createTestApp,
@@ -24,6 +25,10 @@ let memberOfA: TestUser
 /** Không thuộc org nào. */
 let loner: TestUser
 let ownerB: TestUser
+/** Thành viên của CẢ A và B — ca mà `resolveTenant` không suy ra được org nào. */
+let duoMember: TestUser
+/** Cũng hai nhóm, nhưng GIỮ bậc trần — tin tự lên `active` và kéo theo lượt báo cả nhóm. */
+let duoTrusted: TestUser
 let categoryId = ''
 
 const SLUG_A = 'nhom-a'
@@ -38,6 +43,8 @@ beforeAll(async () => {
   memberOfA = await registerUser(app, 'member-a@outsider.local', 'Thành viên nhóm A')
   ownerB = await registerUser(app, 'owner-b@outsider.local', 'Chủ nhóm B')
   loner = await registerUser(app, 'loner@outsider.local', 'Người không nhóm')
+  duoMember = await registerUser(app, 'duo@outsider.local', 'Người hai nhóm')
+  duoTrusted = await registerUser(app, 'duo-trusted@outsider.local', 'Người hai nhóm bậc trần')
   // Mặc định giờ là BẬC TRẦN (`INITIAL_TRUST`) — tài khoản mới tự đăng thẳng lên bảng. Hạ bậc
   // người bán để tin rơi vào hàng đợi, đúng tình huống các ca dưới đây mô tả.
   await setTrustLevel(memberOfA.id, 0)
@@ -45,6 +52,12 @@ beforeAll(async () => {
 
   await createOrg(app, master.token, { name: 'Nhóm A', slug: SLUG_A, ownerEmail: memberOfA.email })
   await createOrg(app, master.token, { name: 'Nhóm B', slug: SLUG_B, ownerEmail: ownerB.email })
+
+  await setTrustLevel(duoMember.id, 0)
+  await addMember(duoMember.id, await orgIdOf(SLUG_A))
+  await addMember(duoMember.id, await orgIdOf(SLUG_B))
+  await addMember(duoTrusted.id, await orgIdOf(SLUG_A))
+  await addMember(duoTrusted.id, await orgIdOf(SLUG_B))
 }, 120_000)
 
 afterAll(async () => {
@@ -188,5 +201,62 @@ describe('Tin người ngoài chỉ sống trong nhóm', () => {
     const doc = await readListing(res.body.data._id)
     expect(doc?.visibility).toBe('public')
     expect(doc?.organizationId).toBeNull()
+  }, 60_000)
+})
+
+/**
+ * Ca THÀNH VIÊN của `orgSlug`, đứng cạnh các ca người-ngoài ở trên vì cùng một trục: tin đi
+ * vào nhóm nào do BODY chỉ ra, còn tenant scope thì do HEADER quyết — hai nguồn có thể lệch.
+ *
+ * Ba test ở trên đều lệch mà vẫn xanh nhờ một sự trùng hợp: người đăng thuộc ĐÚNG MỘT nhóm, nên
+ * `resolveTenant` tự suy ra org đó; hoặc họ là người ngoài, nên lượt ghi đi nhánh `runUnscoped`.
+ * Người thuộc HAI nhóm rơi ra ngoài cả hai lối đó.
+ */
+describe('Thành viên nhiều nhóm đăng tin qua orgSlug', () => {
+  it('không gửi header org → tin vào đúng nhóm chỉ trong body', async () => {
+    const res = await post(duoMember, {
+      title: 'Người hai nhóm đăng vào nhóm B',
+      orgSlug: SLUG_B,
+    }).expect(201)
+
+    const doc = await readListing(res.body.data._id)
+    expect(doc?.organizationId?.toString()).toBe(await orgIdOf(SLUG_B))
+    // Là THÀNH VIÊN của B nên hàng đợi thường, không phải hàng đợi chưa xác minh.
+    expect(doc?.status).toBe('pending')
+  }, 60_000)
+
+  it('header trỏ nhóm A, body chỉ nhóm B → body thắng, không rơi về A', async () => {
+    const res = await post(duoMember, {
+      title: 'Đang đứng ở A nhưng đăng vào B',
+      orgSlug: SLUG_B,
+    })
+      .set('X-Org-Slug', SLUG_A)
+      .expect(201)
+
+    const doc = await readListing(res.body.data._id)
+    expect(doc?.organizationId?.toString()).toBe(await orgIdOf(SLUG_B))
+    expect(doc?.status).toBe('pending')
+  }, 60_000)
+
+  /**
+   * Đúng ca người dùng thật gặp: tài khoản seed ở bậc trần nên tin tự lên `active`, và ngay sau
+   * lượt ghi là `notifyGroupOfListing`. Test hai ca trên hạ bậc xuống 0 nên dừng ở `pending` —
+   * chúng không đi qua nhánh này.
+   */
+  it('bậc trần → tin tự lên active và cả nhóm nhận được thông báo', async () => {
+    const res = await post(duoTrusted, {
+      title: 'Người hai nhóm bậc trần đăng vào nhóm B',
+      orgSlug: SLUG_B,
+    }).expect(201)
+
+    const doc = await readListing(res.body.data._id)
+    expect(doc?.status).toBe('active')
+    expect(doc?.organizationId?.toString()).toBe(await orgIdOf(SLUG_B))
+
+    // Thông báo phải nằm dưới nhóm B — nhóm SỞ HỮU tin, không phải nhóm A mà header hay trỏ tới.
+    const { Notification } = await import('../../src/features/notification/notification.model')
+    const notif = await Notification.findOne({ listingId: res.body.data._id }).lean().exec()
+    expect(notif?.organizationId?.toString()).toBe(await orgIdOf(SLUG_B))
+    expect(notif?.userId).toBeNull()
   }, 60_000)
 })
