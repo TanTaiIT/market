@@ -972,6 +972,37 @@
         ],
         "additionalProperties": false
       },
+      "OrgManager": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar": {
+            "type": "string",
+            "nullable": true
+          },
+          "grantedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email",
+          "avatar",
+          "grantedAt"
+        ]
+      },
       "CreateListing": {
         "type": "object",
         "properties": {
@@ -3613,6 +3644,208 @@
         "required": [
           "province",
           "wards"
+        ]
+      },
+      "SystemMetrics": {
+        "type": "object",
+        "properties": {
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organizations": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "new7d": {
+                "type": "integer"
+              },
+              "new30d": {
+                "type": "integer"
+              },
+              "active": {
+                "type": "integer"
+              },
+              "suspended": {
+                "type": "integer"
+              },
+              "pendingAdmin": {
+                "type": "integer"
+              },
+              "withoutManager": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total",
+              "new7d",
+              "new30d",
+              "active",
+              "suspended",
+              "pendingAdmin",
+              "withoutManager"
+            ]
+          },
+          "users": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "new7d": {
+                "type": "integer"
+              },
+              "new30d": {
+                "type": "integer"
+              },
+              "active": {
+                "type": "integer"
+              },
+              "locked": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "total",
+              "new7d",
+              "new30d",
+              "active",
+              "locked"
+            ]
+          },
+          "listings": {
+            "type": "object",
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "new7d": {
+                "type": "integer"
+              },
+              "new30d": {
+                "type": "integer"
+              },
+              "publicAxis": {
+                "type": "integer"
+              },
+              "orgInternal": {
+                "type": "integer"
+              },
+              "active": {
+                "type": "integer"
+              },
+              "pending": {
+                "type": "integer"
+              },
+              "hidden": {
+                "type": "integer"
+              },
+              "rejected": {
+                "type": "integer"
+              },
+              "trend": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "day": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "integer"
+                    },
+                    "pending": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "day",
+                    "approved",
+                    "pending"
+                  ]
+                }
+              },
+              "topCategories": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "categoryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "categoryId",
+                    "name",
+                    "count"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "total",
+              "new7d",
+              "new30d",
+              "publicAxis",
+              "orgInternal",
+              "active",
+              "pending",
+              "hidden",
+              "rejected",
+              "trend",
+              "topCategories"
+            ]
+          },
+          "moderation": {
+            "type": "object",
+            "properties": {
+              "pendingPublicAxis": {
+                "type": "integer"
+              },
+              "pendingOrgAxis": {
+                "type": "integer"
+              },
+              "oldestPendingDays": {
+                "type": "integer"
+              },
+              "openReports": {
+                "type": "integer"
+              },
+              "uncoveredCells": {
+                "type": "integer"
+              },
+              "totalCells": {
+                "type": "integer"
+              },
+              "coverageBacklog": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "pendingPublicAxis",
+              "pendingOrgAxis",
+              "oldestPendingDays",
+              "openReports",
+              "uncoveredCells",
+              "totalCells",
+              "coverageBacklog"
+            ]
+          }
+        },
+        "required": [
+          "generatedAt",
+          "organizations",
+          "users",
+          "listings",
+          "moderation"
         ]
       },
       "ClearRejections": {
@@ -7058,6 +7291,96 @@
           },
           "409": {
             "description": "Slug đã tồn tại hoặc bị cấm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/organizations/{organizationId}/managers": {
+      "get": {
+        "operationId": "organizationManagers",
+        "tags": [
+          "Organization"
+        ],
+        "summary": "Người phụ trách của một tổ chức (master)",
+        "description": "Đọc từ `role_grants`, KHÔNG từ `memberships.role`. Hai nguồn được ghi cùng lúc lúc trao quyền nhưng lệch được về sau: thu hồi grant không đụng tới thân phận trong danh bạ, nên một nhóm không còn ai quản vẫn hiện `admin` ở danh bạ. Mảng rỗng = nhóm không còn người phụ trách. `name`/`email` là `null` khi grant còn hiệu lực mà tài khoản đã bị xoá.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "organizationId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách người phụ trách",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OrgManager"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy tổ chức",
             "content": {
               "application/json": {
                 "schema": {
@@ -13283,6 +13606,72 @@
           },
           "404": {
             "description": "Không tìm thấy người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/metrics/system": {
+      "get": {
+        "operationId": "metricsSystem",
+        "tags": [
+          "Metrics"
+        ],
+        "summary": "Tổng quan toàn hệ thống (master)",
+        "description": "Một lượt gọi cho cả bàn tổng quan của master: tổ chức, người dùng, tin đăng theo trục, nhịp 14 ngày, danh mục sôi động, và khối phát hiện tồn đọng (ô chưa có người phụ trách, org không còn manager, tuổi tin chờ lâu nhất). Số đếm chạy NGOÀI trục tenant — xem ghi chú ở `metrics.repository.ts` về việc `requireMaster` không tự mở tenant scope.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Số liệu toàn hệ thống",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SystemMetrics"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
             "content": {
               "application/json": {
                 "schema": {

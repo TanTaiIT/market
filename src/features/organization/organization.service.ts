@@ -150,6 +150,37 @@ export const organizationService = {
    *
    * Gọi lại với cùng một người là thao tác VÔ HẠI: cả hai bước đều tự nhận ra đã có.
    */
+  /**
+   * Ai đang phụ trách nhóm này — cho bảng tổ chức của master.
+   *
+   * Đi từ GRANT ra người, không từ danh bạ vào: grant là nơi giữ quyền thật (xem
+   * `orgManagerSchema`). Hệ quả là một grant trỏ tới tài khoản đã xoá vẫn hiện thành một
+   * dòng, chỉ thiếu tên — cố ý: `userRepository.findByIds` tự loại user xoá mềm, nên lọc
+   * theo kết quả của nó sẽ làm dòng đó biến mất khỏi màn này TRONG KHI vẫn được tính là
+   * 'nhóm có manager' ở bàn tổng quan. Hai chỗ lệch nhau là thứ không ai lần ra được.
+   */
+  async managers(organizationId: string) {
+    const org = await organizationRepository.findById(organizationId)
+    if (!org) throw new NotFoundError('Organization not found')
+
+    const grants = await roleGrantRepository.listActiveOrgManagerGrants(org._id)
+    if (grants.length === 0) return []
+
+    const users = await userRepository.findByIds(grants.map((g) => g.userId))
+    const byId = new Map(users.map((u) => [u._id.toString(), u]))
+
+    return grants.map((grant) => {
+      const user = byId.get(grant.userId.toString())
+      return {
+        userId: grant.userId.toString(),
+        name: user?.name ?? null,
+        email: user?.email ?? null,
+        avatar: user?.avatar ?? null,
+        grantedAt: grant.createdAt.toISOString(),
+      }
+    })
+  },
+
   async grantAdmin(organizationId: string, email: string, actorId: string) {
     const org = await organizationRepository.findById(organizationId)
     if (!org) throw new NotFoundError('Organization not found')

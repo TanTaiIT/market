@@ -41,6 +41,13 @@ export interface IRoleGrant {
 
 export interface IRoleGrantDocument extends IRoleGrant, Document {
   _id: Types.ObjectId
+  /**
+   * Mốc CẤP quyền. Schema đã bật `timestamps: true` từ đầu nên field vẫn luôn có trong DB —
+   * chỉ là chưa được khai ở kiểu, nên TypeScript chặn mọi chỗ muốn đọc nó. Khai ở phía
+   * document chứ không ở `IRoleGrant`: `create(data: Partial<IRoleGrant>)` nhận cái kiểu kia,
+   * và mốc này do Mongoose đặt, không phải thứ caller được truyền vào.
+   */
+  createdAt: Date
 }
 
 /** Role nào đi được với scope nào. Sai cặp = quyền không có nghĩa, chặn ngay ở model. */

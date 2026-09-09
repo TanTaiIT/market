@@ -288,6 +288,28 @@ export const changeOrgSlugSchema = z
   .strict()
   .openapi('ChangeOrganizationSlug')
 
+/**
+ * Người phụ trách THẬT của một nhóm — bảng tổ chức của master.
+ *
+ * Đọc từ `role_grants`, KHÔNG từ `memberships.role`. Hai nguồn đó được `grantAdmin` ghi cùng
+ * lúc nên thường trùng, nhưng chúng LỆCH ĐƯỢC: thu hồi grant ở bàn phân quyền không đụng tới
+ * `Membership.role`, nên một nhóm không còn ai quản vẫn hiện 'admin' trong danh bạ. Đó đúng
+ * là ca `withoutManager` mà bàn tổng quan đếm, và nếu màn này đọc `memberships.role` thì hai
+ * chỗ trong cùng một bàn quản trị sẽ nói hai điều trái nhau.
+ */
+export const orgManagerSchema = z
+  .object({
+    userId: z.string(),
+    /** `null` khi grant còn hiệu lực nhưng tài khoản đã bị xoá — xem `organizationService.managers`. */
+    name: z.string().nullable(),
+    email: z.string().nullable(),
+    avatar: z.string().nullable(),
+    /** Phụ trách từ khi nào. Mốc CẤP QUYỀN, không phải mốc vào nhóm. */
+    grantedAt: z.string().datetime(),
+  })
+  .openapi('OrgManager')
+
+export type OrgManagerDto = z.infer<typeof orgManagerSchema>
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>
 export type GrantOrgAdminInput = z.infer<typeof grantOrgAdminSchema>
 export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>
@@ -307,3 +329,4 @@ registry.register('SlugAvailability', slugAvailabilitySchema)
 registry.register('CreateOrganization', createOrganizationSchema)
 registry.register('SetOrganizationStatus', setOrgStatusSchema)
 registry.register('ChangeOrganizationSlug', changeOrgSlugSchema)
+registry.register('OrgManager', orgManagerSchema)

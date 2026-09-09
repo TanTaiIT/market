@@ -10,6 +10,7 @@ import {
   organizationProfileSchema,
   organizationCardSchema,
   organizationSummarySchema,
+  orgManagerSchema,
   myOrganizationSchema,
   createOrganizationSchema,
   grantOrgAdminSchema,
@@ -127,6 +128,22 @@ router.post(
   validate({ body: createOrganizationSchema }),
   organizationController.create,
 )
+/*
+ * Ai đang phụ trách nhóm này. Master-only, và KHÔNG có `requireOrg`: master không thuộc org
+ * nào nên bắt có scope là khoá vòng tròn — cùng lý do `GET /` ở trên cũng không có.
+ *
+ * Đứng riêng thay vì nhồi vào DTO của `GET /`: bảng liệt kê hàng trăm org, mà mỗi dòng thêm
+ * một lượt tra grant + tra user là N+1 ngay trên màn master mở thường xuyên nhất. Ở đây chỉ
+ * hỏi khi mở chi tiết MỘT nhóm.
+ */
+router.get(
+  '/:organizationId/managers',
+  authenticate,
+  requireMaster,
+  validate({ params: organizationParamsSchema }),
+  organizationController.managers,
+)
+
 // Trao quyền phụ trách. Đứng riêng với `POST /` vì hai việc có nhịp khác nhau — xem service.
 router.post(
   '/:organizationId/admin',
@@ -270,6 +287,27 @@ registry.registerPath({
     403: notMaster,
     404: errorResponse('Không tìm thấy tài khoản của người chủ'),
     409: errorResponse('Slug đã tồn tại hoặc bị cấm'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/organizations/{organizationId}/managers',
+  operationId: 'organizationManagers',
+  tags: ['Organization'],
+  summary: 'Người phụ trách của một tổ chức (master)',
+  description:
+    'Đọc từ `role_grants`, KHÔNG từ `memberships.role`. Hai nguồn được ghi cùng lúc lúc trao ' +
+    'quyền nhưng lệch được về sau: thu hồi grant không đụng tới thân phận trong danh bạ, nên ' +
+    'một nhóm không còn ai quản vẫn hiện `admin` ở danh bạ. Mảng rỗng = nhóm không còn người ' +
+    'phụ trách. `name`/`email` là `null` khi grant còn hiệu lực mà tài khoản đã bị xoá.',
+  ...protectedRoute,
+  request: { params: organizationParamsSchema },
+  responses: {
+    200: jsonResponse('Danh sách người phụ trách', envelope(z.array(orgManagerSchema))),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: notMaster,
+    404: errorResponse('Không tìm thấy tổ chức'),
   },
 })
 

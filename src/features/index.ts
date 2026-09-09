@@ -23,6 +23,7 @@ import locationRoutes from './location/location.routes'
 import bannedPhraseRoutes from './banned-phrase/banned-phrase.routes'
 import listingProductRoutes from './listing-product/listing-product.routes'
 import walletRoutes from './wallet/wallet.routes'
+import metricsRoutes from './metrics/metrics.routes'
 
 const router = Router()
 
@@ -51,6 +52,9 @@ router.use('/banned-phrases', bannedPhraseRoutes)
 router.use('/listing-products', listingProductRoutes)
 // Ví Xu — của chính chủ; master chỉ có đường cộng/trừ, không có đường đọc ví người khác.
 router.use('/wallet', walletRoutes)
+
+// --- Bàn của master: số liệu gộp MỌI tổ chức, nên master-only tuyệt đối ---
+router.use('/metrics', metricsRoutes)
 
 // --- Bàn quản trị của một org (manager | staff, xét bằng role_grants) ---
 router.use('/moderation', moderationRoutes)

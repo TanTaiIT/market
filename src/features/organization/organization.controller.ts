@@ -5,6 +5,12 @@ import { success, created } from '../../common/utils/apiResponse'
 
 export const organizationController = {
   // POST /organizations/:organizationId/admin
+  // GET /organizations/:organizationId/managers
+  managers: catchAsync(async (req, res) => {
+    const data = await organizationService.managers(req.params.organizationId)
+    success(res, { message: 'Organization managers', data })
+  }),
+
   grantAdmin: catchAsync(async (req, res) => {
     const org = await organizationService.grantAdmin(
       req.params.organizationId,

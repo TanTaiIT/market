@@ -83,6 +83,40 @@ export const roleGrantRepository = {
     return RoleGrant.distinct('userId', filter).exec()
   },
 
+  /**
+   * Org nào còn ÍT NHẤT một manager đang hiệu lực — bàn master trừ tập này ra khỏi danh sách
+   * org đang mở để biết org nào không còn ai quản.
+   *
+   * `distinct` chứ không `find`: chỉ cần tập id, mà một org lớn có thể có vài manager nên
+   * `find` sẽ kéo về nhiều dòng chỉ để rồi gộp lại. Đối xứng với `listActiveOrgAdminUserIds`
+   * (cùng bộ lọc, đổi chiều: ở đó biết org hỏi người, ở đây hỏi mọi org có người).
+   */
+  /**
+   * Grant manager còn hiệu lực của MỘT org, kèm mốc cấp — bảng tổ chức của master.
+   *
+   * Trả về document chứ không `distinct('userId')` như `listActiveOrgAdminUserIds`: bảng đó
+   * chỉ cần biết 'còn ai không', còn ở đây phải nói được phụ trách TỪ KHI NÀO. Sắp theo
+   * `createdAt` tăng dần nên người được trao đầu tiên đứng đầu.
+   */
+  listActiveOrgManagerGrants(orgId: string | Types.ObjectId): Promise<IRoleGrantDocument[]> {
+    return RoleGrant.find({
+      role: SYSTEM_ROLES.MANAGER,
+      scopeType: SCOPE_TYPES.ORG,
+      orgId: new Types.ObjectId(orgId.toString()),
+      ...ACTIVE,
+    })
+      .sort({ createdAt: 1 })
+      .exec()
+  },
+
+  orgIdsWithActiveManager(): Promise<Types.ObjectId[]> {
+    return RoleGrant.distinct('orgId', {
+      role: SYSTEM_ROLES.MANAGER,
+      scopeType: SCOPE_TYPES.ORG,
+      ...ACTIVE,
+    }).exec()
+  },
+
   revokeAllForUser(userId: string | Types.ObjectId) {
     return RoleGrant.updateMany(
       { userId, ...ACTIVE },
