@@ -1,9 +1,11 @@
+import { z } from 'zod'
 import { Router } from 'express'
 import { authController } from './auth.controller'
 import { registerSchema, loginSchema, refreshSchema, authResponseSchema } from './auth.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authLimiter } from '../../middlewares/rateLimiter.middleware'
-import { registry, envelope, jsonResponse, errorResponse } from '../../config/openapi'
+import { authenticate } from '../../middlewares/auth.middleware'
+import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
 
@@ -11,6 +13,15 @@ const router = Router()
 router.post('/register', authLimiter, validate({ body: registerSchema }), authController.register)
 router.post('/login', authLimiter, validate({ body: loginSchema }), authController.login)
 router.post('/refresh', authLimiter, validate({ body: refreshSchema }), authController.refresh)
+
+/*
+ * Đăng xuất — cần access token hợp lệ, KHÔNG nhận refresh token trong body.
+ *
+ * Nếu nhận refresh token thì ai nhặt được nó cũng đăng xuất được chủ tài khoản: một cú DoS
+ * nhắm vào đúng một người, miễn phí. Bắt `authenticate` nghĩa là chỉ người đang có phiên
+ * sống mới cắt được phiên của chính mình.
+ */
+router.post('/logout', authenticate, authController.logout)
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 // `operationId` là tên hàm client sau codegen -> phải ổn định và độc lập với path,
@@ -57,6 +68,24 @@ registry.registerPath({
   responses: {
     200: jsonResponse('Token đã được làm mới', authResponse),
     401: errorResponse('Refresh token hết hạn hoặc không hợp lệ'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/auth/logout',
+  operationId: 'authLogout',
+  tags: ['Auth'],
+  summary: 'Đăng xuất khỏi MỌI thiết bị',
+  description:
+    'Tăng `tokenVersion` của tài khoản, làm chết mọi refresh token đã phát — kể cả token ' +
+    'đang nằm trên máy khác. Access token đang cầm vẫn sống tối đa tới hạn của nó (15 phút); ' +
+    'đó là cái giá của việc không đọc DB ở mọi request. Không có đăng xuất từng thiết bị: ' +
+    'refresh token là bearer stateless, muốn tách theo thiết bị thì phải có bảng lưu `jti`.',
+  security: [{ [bearerAuth.name]: [] }],
+  responses: {
+    200: jsonResponse('Đã đăng xuất', envelope(z.null())),
+    401: errorResponse('Thiếu hoặc sai access token'),
   },
 })
 

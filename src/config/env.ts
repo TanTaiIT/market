@@ -80,7 +80,16 @@ const envSchema = z.object({
   // và middleware tenant đã check status live nên token ngắn chỉ còn là lớp thứ hai.
   JWT_EXPIRES_IN: z.string().default('15m'),
   JWT_REFRESH_SECRET: z.string().min(1, 'JWT_REFRESH_SECRET is required'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('30d'),
+  /*
+   * 14 ngày, hạ từ 30. Đây là CỬA SỔ RỦI RO của một refresh token bị đọc trộm — mà
+   * `AsyncStorage`/Keystore trên máy đã root thì đọc được, nên con số này là thứ duy nhất
+   * chặn trên. Từ khi có `POST /auth/logout` (tăng `tokenVersion`) người dùng đã cắt được
+   * chủ động, nhưng chỉ khi họ BIẾT mình bị lộ; hạn ngắn lo phần họ không biết.
+   *
+   * Không hạ sâu hơn: mỗi lần hết hạn là một lần bắt đăng nhập lại, và app rao vặt thì người
+   * ta mở vài lần mỗi tháng — 7 ngày sẽ thành "lần nào mở cũng phải gõ mật khẩu".
+   */
+  JWT_REFRESH_EXPIRES_IN: z.string().default('14d'),
 
   /**
    * Tài khoản master — DỮ LIỆU MẶC ĐỊNH, chỉ `scripts/migrate-master.ts` đọc tới.

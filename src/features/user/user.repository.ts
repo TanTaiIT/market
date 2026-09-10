@@ -123,6 +123,11 @@ export const userRepository = {
    * `pre('countDocuments')` của model lo, ở đây chỉ còn điều kiện `isActive` mà `auth.service`
    * dùng để từ chối đăng nhập. Xem `roleGrantService` §5.4 cho lý do phép đếm này tồn tại.
    */
+  /** Giết mọi refresh token đã phát cho tài khoản này — xem `authService.logout`. */
+  bumpTokenVersion(id: string | Types.ObjectId) {
+    return User.updateOne({ _id: id }, { $inc: { tokenVersion: 1 } }).exec()
+  },
+
   countUsable(ids: Types.ObjectId[]): Promise<number> {
     if (ids.length === 0) return Promise.resolve(0)
     return User.countDocuments({ _id: { $in: ids }, isActive: true }).exec()

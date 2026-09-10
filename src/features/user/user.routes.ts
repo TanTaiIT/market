@@ -14,14 +14,27 @@ import {
   userReportSchema,
 } from './user.schema'
 import { validate } from '../../middlewares/validate.middleware'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
 
 router.get('/me', authenticate, userController.getMe)
-router.patch('/me', authenticate, validate({ body: updateProfileSchema }), userController.updateMe)
-router.delete('/me', authenticate, userController.deleteMe)
+/*
+ * `apiLimiter` cho hai đường ghi TỰ PHỤC VỤ: chúng là bề mặt duy nhất ở feature này mà một
+ * tài khoản thường gọi được bao nhiêu lần tuỳ thích. Các route còn lại đã đứng sau
+ * `requireMaster` — phanh ở đó chỉ có tác dụng khi token master đã bị chiếm, lúc ấy rate
+ * limit không phải thứ cứu được ai.
+ */
+router.patch(
+  '/me',
+  authenticate,
+  apiLimiter,
+  validate({ body: updateProfileSchema }),
+  userController.updateMe,
+)
+router.delete('/me', authenticate, apiLimiter, userController.deleteMe)
 
 /*
  * Báo cáo người dùng — master-only, và PHẢI khai trước '/:id': Express khớp theo thứ tự, đăng

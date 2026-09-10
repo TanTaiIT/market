@@ -15,6 +15,19 @@ import { env } from '../../config/env'
  */
 export interface JwtPayload {
   sub: string
+  /**
+   * Phiên bản phiên, CHỈ có trong refresh token.
+   *
+   * Refresh token là bearer stateless sống 30 ngày: server không lưu gì nên không có gì để
+   * xoá, và trước khi có trường này thì một token bị lộ dùng được tới hết hạn — đổi mật khẩu
+   * hay đăng xuất đều không cắt được. `user.tokenVersion` là chốt: lệch một nhịp là mọi
+   * refresh token đã phát đều chết ngay.
+   *
+   * KHÔNG đưa vào access token: access chỉ sống 15 phút, mà kiểm `ver` thì phải đọc DB ở
+   * MỌI request — đổi một chốt rẻ thành một truy vấn trên đường nóng, để rút ngắn cửa sổ rủi
+   * ro từ 15 phút xuống 0. Không đáng.
+   */
+  ver?: number
 }
 
 export function signAccessToken(payload: JwtPayload): string {

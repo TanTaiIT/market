@@ -4618,6 +4618,62 @@
         }
       }
     },
+    "/auth/logout": {
+      "post": {
+        "operationId": "authLogout",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Đăng xuất khỏi MỌI thiết bị",
+        "description": "Tăng `tokenVersion` của tài khoản, làm chết mọi refresh token đã phát — kể cả token đang nằm trên máy khác. Access token đang cầm vẫn sống tối đa tới hạn của nó (15 phút); đó là cái giá của việc không đọc DB ở mọi request. Không có đăng xuất từng thiết bị: refresh token là bearer stateless, muốn tách theo thiết bị thì phải có bảng lưu `jti`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã đăng xuất",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/users/me": {
       "get": {
         "operationId": "userGetMe",

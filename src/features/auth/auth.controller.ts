@@ -16,6 +16,12 @@ export const authController = {
     success(res, { message: 'Logged in successfully', data: toAuthResponseDto(result) })
   }),
 
+  // POST /auth/logout
+  logout: catchAsync(async (req, res) => {
+    await authService.logout(req.user!.id)
+    success(res, { message: 'Đã đăng xuất khỏi mọi thiết bị' })
+  }),
+
   // POST /auth/refresh
   refresh: catchAsync(async (req, res) => {
     const result = await authService.refresh(req.body.refreshToken)

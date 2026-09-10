@@ -38,6 +38,11 @@ export interface IUser {
   /** `null` = chưa xác minh. Một cột thay vì cột boolean + cột thời điểm dễ lệch nhau. */
   emailVerifiedAt: Date | null
   isActive: boolean
+  /**
+   * Tăng lên là giết MỌI refresh token đã phát cho tài khoản này — xem `JwtPayload.ver`.
+   * Không bao giờ giảm, và không mang ý nghĩa nào ngoài "so khớp hay không".
+   */
+  tokenVersion: number
   ratingAvg: number
   ratingCount: number
   lastLoginAt?: Date
@@ -79,6 +84,9 @@ const userSchema = new Schema<IUserDocument>(
 
     emailVerifiedAt: { type: Date, default: null },
     isActive: { type: Boolean, default: true },
+    // Tài khoản có TRƯỚC trường này không mang nó -> Mongoose hydrate thành 0, khớp với refresh
+    // token cũ (cũng không có `ver`, đọc là 0). Không cần migration, không ai bị đá ra.
+    tokenVersion: { type: Number, default: 0 },
 
     // Denormalize thống kê người bán để đọc nhanh
     ratingAvg: { type: Number, default: 0, min: 0, max: 5 },
