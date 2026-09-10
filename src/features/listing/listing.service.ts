@@ -1,10 +1,17 @@
 import { Types } from 'mongoose'
 import { listingRepository } from './listing.repository'
-import { CreateListingInput, UpdateListingInput, ListingQuery, NearbyQuery } from './listing.schema'
+import {
+  CreateListingInput,
+  ListingQuery,
+  ListingReportQuery,
+  NearbyQuery,
+  UpdateListingInput,
+} from './listing.schema'
 import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
 import { PostingFee, postingFee } from './listing.pricing'
 import { RECONCILE_LIMIT, listingExpiresAt, reconcileCutoff } from './listing.expiry.service'
+import { BUCKET_FORMAT, bucketsBetween, resolveRange } from './listing.report'
 import {
   QUOTA,
   QuotaVerdict,
@@ -45,6 +52,7 @@ import {
   ListingStatus,
   MODERATION_QUEUE,
   POST_VISIBILITY,
+  REPORT_TIMEZONE,
   isWardOfProvince,
   type RejectionSeverity,
 } from '../../common/constants'
@@ -1090,6 +1098,61 @@ export const listingService = {
   },
 
   /** Dữ liệu định giá cho hệ Xu — xem ghi chú dài ở `listingRepository.postingStats`. */
+  /**
+   * Báo cáo đăng tin theo thời gian — master-only, xem `listingRepository.reportSeries`.
+   *
+   * Service làm đúng hai việc mà tầng DB không làm được: chốt khoảng thời gian (mặc định, trần)
+   * và ĐIỀN CỘT RỖNG. Mongo chỉ trả về cột CÓ dữ liệu, nên một tuần không ai đăng tin sẽ biến
+   * mất khỏi mảng và biểu đồ nối thẳng hai đầu thành một đoạn dốc chưa từng xảy ra.
+   */
+  async listingReport(query: ListingReportQuery) {
+    const range = resolveRange(query)
+    const rows = await listingRepository.reportSeries(
+      range.from,
+      range.to,
+      BUCKET_FORMAT[range.granularity],
+    )
+
+    const byBucket = new Map(rows.map((row) => [row._id, row]))
+    const points = bucketsBetween(range.from, range.to, range.granularity).map((bucket) => {
+      const row = byBucket.get(bucket)
+      return {
+        bucket,
+        posts: row?.posts ?? 0,
+        sellers: row?.sellers.length ?? 0,
+        active: row?.active ?? 0,
+        pending: row?.pending ?? 0,
+        rejected: row?.rejected ?? 0,
+      }
+    })
+
+    /*
+     * Tổng cộng KHÔNG có `sellers`: cộng số người bán của từng cột lại là đếm một người N
+     * lần nếu họ đăng ở N ngày khác nhau. Muốn "số người bán khác nhau trong cả kỳ" thì phải là
+     * một phép gộp riêng trên toàn khoảng — chưa cần tới nên chưa làm, và thà thiếu một con số
+     * còn hơn bày ra một con số sai mà trông hợp lý.
+     */
+    const totals = points.reduce(
+      (acc, p) => ({
+        posts: acc.posts + p.posts,
+        active: acc.active + p.active,
+        pending: acc.pending + p.pending,
+        rejected: acc.rejected + p.rejected,
+      }),
+      { posts: 0, active: 0, pending: 0, rejected: 0 },
+    )
+
+    return {
+      granularity: range.granularity,
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
+      timezone: REPORT_TIMEZONE,
+      truncated: range.truncated,
+      points,
+      totals,
+    }
+  },
+
   postingStats(days: number) {
     return listingRepository.postingStats(new Date(Date.now() - days * 24 * 60 * 60 * 1000))
   },

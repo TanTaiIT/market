@@ -348,6 +348,39 @@ export const MODERATABLE_STATUSES = [
   'hidden',
 ] as const
 
+/**
+ * Múi giờ gộp nhóm của MỌI báo cáo theo thời gian.
+ *
+ * Gộp theo UTC là sai với sàn này: người Việt đăng tin nhiều nhất vào buổi tối, mà 21h giờ VN
+ * là 14h UTC cùng ngày — còn tin đăng lúc 0h–7h sáng lại rơi về NGÀY HÔM TRƯỚC của UTC. Biểu
+ * đồ vì thế lệch một phần đáng kể mỗi ngày, và không ai nhìn ra vì nó vẫn "trông hợp lý".
+ *
+ * Một hằng số cứng chứ không phải env: đây là múi giờ của THỊ TRƯỜNG (34 tỉnh Việt Nam), không
+ * phải của máy chủ hay của người xem. Đổi nó là đổi định nghĩa "một ngày" trong mọi báo cáo.
+ * Mongo nhận tên IANA trực tiếp trong `$dateToString`.
+ */
+export const REPORT_TIMEZONE = 'Asia/Ho_Chi_Minh'
+
+export const REPORT_GRANULARITY = {
+  DAY: 'day',
+  MONTH: 'month',
+  YEAR: 'year',
+} as const
+export type ReportGranularity = (typeof REPORT_GRANULARITY)[keyof typeof REPORT_GRANULARITY]
+
+/**
+ * Cửa sổ mặc định và TRẦN SỐ CỘT cho từng độ mịn.
+ *
+ * Trần là chốt an toàn, không phải tuỳ chọn: một yêu cầu `day` trải 10 năm là 3650 cột — vô
+ * dụng trên màn hình, mà vẫn bắt Mongo quét trọn bảng và bắt client nuốt một mảng khổng lồ.
+ * Vượt trần thì CẮT BỚT phần cũ nhất và nói ra trong `meta`, không im lặng trả một nửa.
+ */
+export const REPORT_WINDOW = {
+  [REPORT_GRANULARITY.DAY]: { defaultBuckets: 30, maxBuckets: 366 },
+  [REPORT_GRANULARITY.MONTH]: { defaultBuckets: 12, maxBuckets: 60 },
+  [REPORT_GRANULARITY.YEAR]: { defaultBuckets: 5, maxBuckets: 20 },
+} as const
+
 export const PAGINATION = {
   DEFAULT_PAGE: 1,
   DEFAULT_LIMIT: 20,

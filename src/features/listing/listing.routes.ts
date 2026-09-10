@@ -6,6 +6,8 @@ import {
   quotaStatusSchema,
   updateListingSchema,
   listingQuerySchema,
+  listingReportQuerySchema,
+  listingReportSchema,
   nearbyQuerySchema,
   listingParamsSchema,
   listingResponseSchema,
@@ -41,6 +43,22 @@ router.get('/quota', authenticate, listingController.quota)
 
 // Catalog gói tin CÔNG KHAI — chỉ gói đang mở bán (master quản catalog ở /listing-products).
 router.get('/products', listingController.products)
+
+/*
+ * BÁO CÁO đăng tin theo thời gian — master-only, và cũng phải đứng trước '/:id'.
+ *
+ * Khác `posting-stats` ngay ở câu hỏi nó trả lời: `posting-stats` là ẢNH CHỤP một cửa sổ
+ * (tổng tin, số người đăng, phân bố tin/đầu người) để chốt giá gói tin; còn đường này là CHUỖI
+ * THỜI GIAN theo ngày/tháng/năm để nhìn xu hướng. Gộp hai thứ vào một endpoint sẽ đẻ ra một
+ * response mà mỗi màn chỉ dùng một nửa.
+ */
+router.get(
+  '/report',
+  authenticate,
+  requireMaster,
+  validate({ query: listingReportQuerySchema }),
+  listingController.report,
+)
 
 // Dữ liệu định giá cho hệ Xu — master-only, và phải đứng TRƯỚC '/:id' kẻo Express nuốt
 // 'posting-stats' làm một cái id.
@@ -175,6 +193,27 @@ registry.registerPath({
     401: errorResponse('Thiếu hoặc sai access token'),
     403: errorResponse('Tin không phải của bạn'),
     404: errorResponse('Tin không tồn tại'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/listings/report',
+  operationId: 'listingReport',
+  tags: ['Listing'],
+  summary: 'Báo cáo đăng tin theo ngày / tháng / năm (master)',
+  description:
+    'Chuỗi thời gian số tin đăng, gộp theo múi giờ THỊ TRƯỜNG (Asia/Ho_Chi_Minh) chứ không ' +
+    'theo UTC hay theo máy người xem. Cột rỗng vẫn có mặt với số 0 để biểu đồ không nối ' +
+    'thẳng qua khoảng trống. Thiếu `from`/`to` thì lấy cửa sổ mặc định theo độ mịn: 30 ngày ' +
+    '/ 12 tháng / 5 năm. Vượt trần số cột (366 / 60 / 20) thì giữ phần MỚI NHẤT và báo số cột ' +
+    'đã cắt ở `truncated`. Đếm cả tin nội bộ của mọi nhóm — chỉ master gọi được.',
+  ...protectedRoute,
+  request: { query: listingReportQuerySchema },
+  responses: {
+    200: jsonResponse('Báo cáo đăng tin', envelope(listingReportSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền master'),
   },
 })
 

@@ -1323,6 +1323,99 @@
           "needsReconcile"
         ]
       },
+      "ListingReport": {
+        "type": "object",
+        "properties": {
+          "granularity": {
+            "type": "string",
+            "enum": [
+              "day",
+              "month",
+              "year"
+            ]
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timezone": {
+            "type": "string"
+          },
+          "truncated": {
+            "type": "number"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "bucket": {
+                  "type": "string"
+                },
+                "posts": {
+                  "type": "number"
+                },
+                "sellers": {
+                  "type": "number"
+                },
+                "active": {
+                  "type": "number"
+                },
+                "pending": {
+                  "type": "number"
+                },
+                "rejected": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "bucket",
+                "posts",
+                "sellers",
+                "active",
+                "pending",
+                "rejected"
+              ]
+            }
+          },
+          "totals": {
+            "type": "object",
+            "properties": {
+              "posts": {
+                "type": "number"
+              },
+              "active": {
+                "type": "number"
+              },
+              "pending": {
+                "type": "number"
+              },
+              "rejected": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "posts",
+              "active",
+              "pending",
+              "rejected"
+            ]
+          }
+        },
+        "required": [
+          "granularity",
+          "from",
+          "to",
+          "timezone",
+          "truncated",
+          "points",
+          "totals"
+        ]
+      },
       "PostingStats": {
         "type": "object",
         "properties": {
@@ -5323,6 +5416,106 @@
           },
           "404": {
             "description": "Tin không tồn tại",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listings/report": {
+      "get": {
+        "operationId": "listingReport",
+        "tags": [
+          "Listing"
+        ],
+        "summary": "Báo cáo đăng tin theo ngày / tháng / năm (master)",
+        "description": "Chuỗi thời gian số tin đăng, gộp theo múi giờ THỊ TRƯỜNG (Asia/Ho_Chi_Minh) chứ không theo UTC hay theo máy người xem. Cột rỗng vẫn có mặt với số 0 để biểu đồ không nối thẳng qua khoảng trống. Thiếu `from`/`to` thì lấy cửa sổ mặc định theo độ mịn: 30 ngày / 12 tháng / 5 năm. Vượt trần số cột (366 / 60 / 20) thì giữ phần MỚI NHẤT và báo số cột đã cắt ở `truncated`. Đếm cả tin nội bộ của mọi nhóm — chỉ master gọi được.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "day",
+                "month",
+                "year"
+              ],
+              "default": "day"
+            },
+            "required": false,
+            "name": "granularity",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "nullable": true
+            },
+            "required": false,
+            "name": "from",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "nullable": true
+            },
+            "required": false,
+            "name": "to",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Báo cáo đăng tin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ListingReport"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
             "content": {
               "application/json": {
                 "schema": {

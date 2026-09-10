@@ -4,6 +4,7 @@ import { registry } from '../../config/openapi'
 import { organizationSlugSchema } from '../organization/organization.schema'
 import {
   LISTING_STATUS,
+  REPORT_GRANULARITY,
   LISTING_CONDITION,
   POST_VISIBILITY,
   VN_PROVINCE_NAMES,
@@ -159,6 +160,47 @@ export const quotaStatusSchema = z
 
 export const updateListingSchema = createListingSchema.partial().strict().openapi('UpdateListing')
 
+export const listingReportQuerySchema = z.object({
+  granularity: z.nativeEnum(REPORT_GRANULARITY).default(REPORT_GRANULARITY.DAY),
+  /*
+   * Ngày dạng ISO, cả hai đều KHÔNG bắt buộc: thiếu thì service điền cửa sổ mặc định theo độ
+   * mịn (30 ngày / 12 tháng / 5 năm). Bắt client tự tính hai mốc là bắt mỗi client tự định
+   * nghĩa "tháng này", và hai client sẽ định nghĩa khác nhau.
+   */
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+})
+
+export const listingReportSchema = z
+  .object({
+    granularity: z.nativeEnum(REPORT_GRANULARITY),
+    from: z.string().datetime(),
+    to: z.string().datetime(),
+    /** Múi giờ đã dùng để gộp cột — client hiện ra để không ai hiểu nhầm "ngày" là ngày máy họ. */
+    timezone: z.string(),
+    /** Số cột bị cắt vì vượt trần; `0` = không cắt gì. */
+    truncated: z.number(),
+    points: z.array(
+      z.object({
+        /** Nhãn cột: `2026-09-08` | `2026-09` | `2026`. Cột rỗng vẫn có mặt với số 0. */
+        bucket: z.string(),
+        posts: z.number(),
+        /** Số người bán KHÁC NHAU trong cột — khác hẳn `posts`. */
+        sellers: z.number(),
+        active: z.number(),
+        pending: z.number(),
+        rejected: z.number(),
+      }),
+    ),
+    totals: z.object({
+      posts: z.number(),
+      active: z.number(),
+      pending: z.number(),
+      rejected: z.number(),
+    }),
+  })
+  .openapi('ListingReport')
+
 export const postingStatsQuerySchema = z.object({
   /** Cửa sổ đo — 30 ngày là một chu kỳ đăng của người bán thường. */
   days: z.coerce.number().int().min(7).max(365).default(30),
@@ -298,6 +340,7 @@ export const listingResponseSchema = z
 
 export type CreateListingInput = z.infer<typeof createListingSchema>
 export type UpdateListingInput = z.infer<typeof updateListingSchema>
+export type ListingReportQuery = z.infer<typeof listingReportQuerySchema>
 export type ListingQuery = z.infer<typeof listingQuerySchema>
 export type NearbyQuery = z.infer<typeof nearbyQuerySchema>
 
@@ -306,6 +349,7 @@ registry.register('PostingFee', postingFeeSchema)
 registry.register('PostingStanding', postingStandingSchema)
 registry.register('StaleListing', staleListingSchema)
 registry.register('QuotaStatus', quotaStatusSchema)
+registry.register('ListingReport', listingReportSchema)
 registry.register('PostingStats', postingStatsSchema)
 registry.register('UpdateListing', updateListingSchema)
 registry.register('Listing', listingResponseSchema)

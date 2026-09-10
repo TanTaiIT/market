@@ -7,6 +7,7 @@ import {
   MODERATABLE_STATUSES,
   POST_VISIBILITY,
   PUBLIC_LISTING_STATUSES,
+  REPORT_TIMEZONE,
   ListingStatus,
 } from '../../common/constants'
 
@@ -510,6 +511,53 @@ export const listingRepository = {
       Listing.countDocuments(filter),
     ])
     return { items, total }
+  },
+
+  /**
+   * Chuỗi thời gian của tin đăng, gộp theo NGÀY/THÁNG/NĂM trong múi giờ thị trường.
+   *
+   * `runUnscoped` là bắt buộc và hợp lệ: báo cáo này chỉ master gọi được
+   * (`requireMaster` ở route), và nó phải đếm CẢ HAI TRỤC — scope của một request master
+   * không kèm org chỉ mở trục công khai, nên để plugin lọc là im lặng bỏ sót toàn bộ tin nội
+   * bộ của mọi nhóm. Kết quả trả ra là CON SỐ GỘP, không có một dòng tin nào lọt ra ngoài.
+   *
+   * `deletedAt: null` khai tay vì `aggregate` không đi qua hook `pre(/^find/)` của
+   * soft-delete — thiếu nó thì tin đã xoá vẫn nằm trong báo cáo.
+   *
+   * `$addToSet` để đếm người bán KHÁC NHAU trong mỗi cột: `$sum: 1` đếm lượt đăng, mà
+   * "20 tin từ 1 người" khác hẳn "20 tin từ 20 người" — đó là hai kết luận kinh doanh trái
+   * ngược nhau từ cùng một con số tổng.
+   */
+  reportSeries(from: Date, to: Date, format: string) {
+    return runUnscoped('report: số liệu đăng tin toàn hệ thống cho master', () =>
+      Listing.aggregate<{
+        _id: string
+        posts: number
+        sellers: string[]
+        active: number
+        pending: number
+        rejected: number
+      }>([
+        { $match: { deletedAt: null, createdAt: { $gte: from, $lte: to } } },
+        {
+          $group: {
+            _id: { $dateToString: { format, date: '$createdAt', timezone: REPORT_TIMEZONE } },
+            posts: { $sum: 1 },
+            sellers: { $addToSet: '$seller' },
+            // Trạng thái HIỆN TẠI của tin đăng trong cột đó, không phải trạng thái lúc đăng:
+            // báo cáo trả lời "tin đăng ngày ấy giờ ra sao", thứ duy nhất dữ liệu này biết.
+            active: { $sum: { $cond: [{ $eq: ['$status', LISTING_STATUS.ACTIVE] }, 1, 0] } },
+            pending: {
+              $sum: { $cond: [{ $in: ['$status', PENDING_STATUSES] }, 1, 0] },
+            },
+            rejected: {
+              $sum: { $cond: [{ $eq: ['$status', LISTING_STATUS.REJECTED] }, 1, 0] },
+            },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]).exec(),
+    )
   },
 
   /** Tồn đọng theo từng ô (danh mục × tỉnh) — đầu vào của dashboard phủ sóng. */

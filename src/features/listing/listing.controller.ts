@@ -47,6 +47,15 @@ export const listingController = {
     success(res, { message: 'Quota', data })
   }),
 
+  // GET /listings/report
+  report: catchAsync(async (req, res) => {
+    // validate() đã parse + điền default vào req.query — chỉ việc chuyển tiếp.
+    const data = await listingService.listingReport(
+      req.query as unknown as Parameters<typeof listingService.listingReport>[0],
+    )
+    success(res, { message: 'Listing report', data })
+  }),
+
   // GET /listings/products
   products: catchAsync(async (_req, res) => {
     const products = await listingService.productCatalog()
