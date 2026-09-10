@@ -49,6 +49,14 @@ export const userController = {
     success(res, { message: user.isActive ? 'User unlocked' : 'User locked', data: user })
   }),
 
+  // GET /users/report
+  report: catchAsync(async (req, res) => {
+    const data = await userService.userReport(
+      req.query as unknown as Parameters<typeof userService.userReport>[0],
+    )
+    success(res, { message: 'User report', data })
+  }),
+
   getById: catchAsync(async (req, res) => {
     const user = await userService.getPublicById(req.params.id)
     success(res, { message: 'User profile', data: toPublicProfileDto(user) })

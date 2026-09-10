@@ -10,6 +10,8 @@ import {
   userParamsSchema,
   publicProfileSchema,
   meProfileSchema,
+  userReportQuerySchema,
+  userReportSchema,
 } from './user.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
@@ -20,6 +22,19 @@ const router = Router()
 router.get('/me', authenticate, userController.getMe)
 router.patch('/me', authenticate, validate({ body: updateProfileSchema }), userController.updateMe)
 router.delete('/me', authenticate, userController.deleteMe)
+
+/*
+ * Báo cáo người dùng — master-only, và PHẢI khai trước '/:id': Express khớp theo thứ tự, đăng
+ * sau thì 'report' bị nuốt thành một cái id rồi rụng ở validate ObjectId với lỗi 400 khó hiểu
+ * (cùng cái bẫy đã ghi ở '/listings/mine').
+ */
+router.get(
+  '/report',
+  authenticate,
+  requireMaster,
+  validate({ query: userReportQuerySchema }),
+  userController.report,
+)
 
 router.get('/:id', validate({ params: userParamsSchema }), userController.getById)
 
@@ -95,6 +110,26 @@ registry.registerPath({
     200: jsonResponse('Đã xoá tài khoản', envelope(z.null())),
     401: errorResponse('Thiếu hoặc sai access token'),
     409: errorResponse('Master cuối cùng, hoặc quản trị duy nhất của một tổ chức'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/users/report',
+  operationId: 'userReport',
+  tags: ['User'],
+  summary: 'Báo cáo người dùng theo ngày / tháng / năm (master)',
+  description:
+    'Anh em với `GET /listings/report` — cùng tham số, cùng múi giờ gộp cột ' +
+    '(Asia/Ho_Chi_Minh), cùng cách điền cột rỗng và cắt trần. Ba con số mỗi cột: `users` ' +
+    '(tài khoản mới), `active` (người đăng ít nhất một tin trong cột), `total` (cộng dồn, ' +
+    'khởi điểm là số người đã có TRƯỚC cửa sổ). Tài khoản đã xoá không được đếm.',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { query: userReportQuerySchema },
+  responses: {
+    200: jsonResponse('Báo cáo người dùng', envelope(userReportSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền master'),
   },
 })
 

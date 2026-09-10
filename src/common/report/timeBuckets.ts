@@ -1,16 +1,15 @@
-import {
-  REPORT_GRANULARITY,
-  REPORT_TIMEZONE,
-  REPORT_WINDOW,
-  ReportGranularity,
-} from '../../common/constants'
+import { REPORT_GRANULARITY, REPORT_TIMEZONE, REPORT_WINDOW, ReportGranularity } from '../constants'
 
 /**
- * Phép tính lịch của báo cáo — hàm THUẦN, không chạm DB, không đọc `Date.now()` ngoài mặc định.
+ * Phép tính lịch của MỌI báo cáo — hàm THUẦN, không chạm DB, không biết gì về tin đăng hay
+ * người dùng.
  *
- * Tách khỏi service vì đây là chỗ dễ sai nhất và cũng là chỗ dễ test nhất: mọi lỗi lệch múi
- * giờ, lệch một cột, hay thiếu cột rỗng đều nằm trong file này, và unit test bắt được chúng mà
- * không cần dựng Mongo.
+ * Nằm ở `common/` chứ không trong một feature vì đã có hai chỗ dùng (báo cáo tin đăng và báo
+ * cáo người dùng) và sẽ còn thêm: để nó ở `features/listing/` là bắt feature thứ hai import
+ * chéo vào ruột feature thứ nhất chỉ để lấy một phép cộng ngày.
+ *
+ * Đây cũng là chỗ dễ sai nhất và dễ test nhất: mọi lỗi lệch múi giờ, lệch một cột, hay thiếu
+ * cột rỗng đều nằm trong file này, và unit test bắt được chúng mà không cần dựng Mongo.
  */
 
 /** Định dạng khoá gộp của Mongo cho từng độ mịn — PHẢI khớp `bucketLabel` bên dưới. */

@@ -15,8 +15,7 @@ import {
   startTestDb,
 } from '../helpers/fixtures'
 import { Listing } from '../../src/features/listing/listing.model'
-import { runUnscoped } from '../../src/common/tenant/tenantContext'
-import { bucketLabel } from '../../src/features/listing/listing.report'
+import { bucketLabel } from '../../src/common/report/timeBuckets'
 
 let app: Application
 let mongod: MongoMemoryReplSet

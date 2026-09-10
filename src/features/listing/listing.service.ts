@@ -11,7 +11,7 @@ import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
 import { PostingFee, postingFee } from './listing.pricing'
 import { RECONCILE_LIMIT, listingExpiresAt, reconcileCutoff } from './listing.expiry.service'
-import { BUCKET_FORMAT, bucketsBetween, resolveRange } from './listing.report'
+import { BUCKET_FORMAT, bucketsBetween, resolveRange } from '../../common/report/timeBuckets'
 import {
   QUOTA,
   QuotaVerdict,

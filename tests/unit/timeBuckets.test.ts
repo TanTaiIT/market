@@ -5,7 +5,7 @@ import {
   bucketsBetween,
   resolveRange,
   startOfLabel,
-} from '../../src/features/listing/listing.report'
+} from '../../src/common/report/timeBuckets'
 import { REPORT_GRANULARITY, REPORT_WINDOW } from '../../src/common/constants'
 
 const at = (iso: string) => new Date(iso)

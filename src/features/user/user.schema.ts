@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { registry } from '../../config/openapi'
 import {
   GENDER,
+  REPORT_GRANULARITY,
   VN_PROVINCE_NAMES,
   impersonatesMaster,
   isWardOfProvince,
@@ -120,6 +121,39 @@ export const meProfileSchema = publicProfileSchema
   })
   .openapi('MeProfile')
 
+export const userReportQuerySchema = z.object({
+  granularity: z.nativeEnum(REPORT_GRANULARITY).default(REPORT_GRANULARITY.DAY),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+})
+
+export const userReportSchema = z
+  .object({
+    granularity: z.nativeEnum(REPORT_GRANULARITY),
+    from: z.string().datetime(),
+    to: z.string().datetime(),
+    timezone: z.string(),
+    truncated: z.number(),
+    points: z.array(
+      z.object({
+        bucket: z.string(),
+        /** Tài khoản MỚI trong cột. Cột rỗng vẫn có mặt với số 0. */
+        users: z.number(),
+        /** Người ĐĂNG ÍT NHẤT MỘT TIN trong cột — không nhất thiết là người mới. */
+        active: z.number(),
+        /** Tổng tài khoản còn sống tính tới hết cột này. */
+        total: z.number(),
+      }),
+    ),
+    totals: z.object({
+      /** Tài khoản mới trong cả kỳ. */
+      users: z.number(),
+      /** Tổng tài khoản còn sống ở thời điểm cuối kỳ. */
+      total: z.number(),
+    }),
+  })
+  .openapi('UserReport')
+
 export const userParamsSchema = z.object({ id: objectId })
 
 // ── BÀN QUẢN TRỊ (master) ───────────────────────────────────────────
@@ -190,9 +224,11 @@ export type AdminUserQuery = z.infer<typeof adminUserQuerySchema>
 export type SetUserStatusInput = z.infer<typeof setUserStatusSchema>
 
 export type UpdateProfileInput = z.infer<typeof updateProfileSchema>
+export type UserReportQuery = z.infer<typeof userReportQuerySchema>
 
 registry.register('UpdateProfile', updateProfileSchema)
 registry.register('PublicProfile', publicProfileSchema)
 registry.register('MeProfile', meProfileSchema)
 registry.register('SetUserStatus', setUserStatusSchema)
 registry.register('AdminUser', adminUserSchema)
+registry.register('UserReport', userReportSchema)

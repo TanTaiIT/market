@@ -4,6 +4,7 @@ import {
   ClearRejectionsInput,
   SetUserStatusInput,
   UpdateProfileInput,
+  UserReportQuery,
 } from './user.schema'
 import { toAdminUserDto } from './user.types'
 import { AREA_SAMPLE_LIMIT, inferProvince, isProvinceName, ProvinceSample } from './user.area'
@@ -17,7 +18,8 @@ import { listingService } from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { QUOTA } from '../listing/listing.quota'
 import { notificationService } from '../notification/notification.service'
-import { SCOPE_TYPES, SYSTEM_ROLES, VnProvinceName } from '../../common/constants'
+import { REPORT_TIMEZONE, SCOPE_TYPES, SYSTEM_ROLES, VnProvinceName } from '../../common/constants'
+import { BUCKET_FORMAT, bucketsBetween, resolveRange } from '../../common/report/timeBuckets'
 import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { logger } from '../../config/logger'
@@ -225,6 +227,55 @@ export const userService = {
    * khoản là đường duy nhất còn lại có thể làm hệ thống mất master — mà mất rồi thì không
    * đường runtime nào dựng lại, phải chạy `npm run migrate:master`.
    */
+  /**
+   * Báo cáo NGƯỜI DÙNG theo thời gian — master-only, anh em với `listingService.listingReport`.
+   *
+   * Ba con số vì chúng trả lời ba câu khác nhau, và thiếu một cái là đọc sai hai cái còn lại:
+   * - `users` — tài khoản mới. Đo hiệu quả kéo người vào.
+   * - `active` — người ĐĂNG ít nhất một tin trong cột. Đo người thật sự dùng: một tháng
+   *   1000 tài khoản mới mà 3 người đăng tin thì con số đầu là ảo.
+   * - `total` — cộng dồn, bắt đầu từ số người đã có TRƯỚC cửa sổ. Không có mốc nền đó thì
+   *   đường tổng bắt đầu từ 0 và người đọc tưởng sàn mới có người từ đầu kỳ báo cáo.
+   *
+   * `active` lấy từ `listingRepository.reportSeries` — cùng một aggregate mà báo cáo tin
+   * đăng đã dùng, nó vốn đã gom `$addToSet: seller` mỗi cột. Đếm lại bằng một pipeline thứ
+   * hai là hai định nghĩa "người hoạt động" chờ nhau lệch.
+   */
+  async userReport(query: UserReportQuery) {
+    const range = resolveRange(query)
+    const format = BUCKET_FORMAT[range.granularity]
+
+    const [rows, listingRows, base] = await Promise.all([
+      userRepository.reportSeries(range.from, range.to, format),
+      listingRepository.reportSeries(range.from, range.to, format),
+      userRepository.countCreatedBefore(range.from),
+    ])
+
+    const newBy = new Map(rows.map((row) => [row._id, row.users]))
+    const activeBy = new Map(listingRows.map((row) => [row._id, row.sellers.length]))
+
+    let running = base
+    const points = bucketsBetween(range.from, range.to, range.granularity).map((bucket) => {
+      const users = newBy.get(bucket) ?? 0
+      running += users
+      return { bucket, users, active: activeBy.get(bucket) ?? 0, total: running }
+    })
+
+    return {
+      granularity: range.granularity,
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
+      timezone: REPORT_TIMEZONE,
+      truncated: range.truncated,
+      points,
+      totals: {
+        users: points.reduce((sum, p) => sum + p.users, 0),
+        // Tổng CUỐI KỲ, không phải tổng của các cột — cộng cột lại là cộng nhiều lần cùng một người.
+        total: running,
+      },
+    }
+  },
+
   async deleteAccount(id: string) {
     const grants = await roleGrantRepository.listActiveByUser(id)
     const isMaster = grants.some((g) => g.role === SYSTEM_ROLES.MASTER)
