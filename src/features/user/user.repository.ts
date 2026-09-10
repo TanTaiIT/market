@@ -43,6 +43,34 @@ export const userRepository = {
     return query
   },
 
+  findByGoogleId(googleId: string) {
+    return User.findOne({ googleId, deletedAt: null })
+  },
+
+  /**
+   * Gắn một tài khoản Google vào tài khoản email đã có, và RÚT mật khẩu cũ.
+   *
+   * Ba việc trong MỘT lượt ghi, và cả ba đều bắt buộc — xem `authService.withGoogle` về lý do:
+   *
+   * 1. `$set googleId` — từ giờ khớp theo `sub`, không phụ thuộc email nữa.
+   * 2. `$unset password` — mật khẩu cũ hết hiệu lực. Đây là vế chống chiếm tài khoản.
+   * 3. `$inc tokenVersion` — mọi refresh token đang lưu ở máy khác chết ngay.
+   *
+   * `emailVerifiedAt` cũng được đặt: Google vừa chứng minh chủ tài khoản kiểm soát hộp thư,
+   * và đây là lần ĐẦU TIÊN hệ thống có bằng chứng đó — chưa có luồng xác thực email nào.
+   */
+  linkGoogle(id: Types.ObjectId, googleId: string) {
+    return User.findOneAndUpdate(
+      { _id: id },
+      {
+        $set: { googleId, emailVerifiedAt: new Date() },
+        $unset: { password: 1 },
+        $inc: { tokenVersion: 1 },
+      },
+      { new: true },
+    )
+  },
+
   existsByEmail(email: string) {
     return User.exists({ email: email.toLowerCase(), deletedAt: null })
   },

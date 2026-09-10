@@ -1,7 +1,13 @@
 import { z } from 'zod'
 import { Router } from 'express'
 import { authController } from './auth.controller'
-import { registerSchema, loginSchema, refreshSchema, authResponseSchema } from './auth.schema'
+import {
+  registerSchema,
+  loginSchema,
+  refreshSchema,
+  googleAuthSchema,
+  authResponseSchema,
+} from './auth.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authLimiter } from '../../middlewares/rateLimiter.middleware'
 import { authenticate } from '../../middlewares/auth.middleware'
@@ -13,6 +19,14 @@ const router = Router()
 router.post('/register', authLimiter, validate({ body: registerSchema }), authController.register)
 router.post('/login', authLimiter, validate({ body: loginSchema }), authController.login)
 router.post('/refresh', authLimiter, validate({ body: refreshSchema }), authController.refresh)
+
+/*
+ * Đăng nhập Google — cùng `authLimiter` với hai đường kia.
+ *
+ * Giới hạn nhịp vẫn cần dù không có mật khẩu nào để dò: mỗi lượt gọi là một lần xác minh chữ ký
+ * (có thể kèm một lượt tải JWKS), nên đây vẫn là một cửa tốn tài nguyên mà chưa cần đăng nhập.
+ */
+router.post('/google', authLimiter, validate({ body: googleAuthSchema }), authController.google)
 
 /*
  * Đăng xuất — cần access token hợp lệ, KHÔNG nhận refresh token trong body.
@@ -55,6 +69,27 @@ registry.registerPath({
     401: errorResponse('Sai thông tin đăng nhập, tài khoản bị khoá, hoặc thiếu organization'),
     403: errorResponse('Organization không tồn tại hoặc đã bị khoá'),
     429: errorResponse('Quá nhiều request'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/auth/google',
+  operationId: 'authGoogle',
+  tags: ['Auth'],
+  summary: 'Đăng nhập hoặc đăng ký bằng Google',
+  description:
+    'Nhận `id_token` của Google, xác minh chữ ký + `aud` + `email_verified` ở máy chủ rồi phát ' +
+    'token của app. Một cửa cho cả đăng nhập và đăng ký — client không cần biết email đã có tài ' +
+    'khoản chưa. **Nếu email đó đã có tài khoản mật khẩu**: tài khoản được LIÊN KẾT và mật khẩu ' +
+    'cũ bị RÚT, mọi phiên đang mở ở máy khác bị cắt (`tokenVersion`). Đó là chốt chống chiếm ' +
+    'tài khoản trước — xem `authService.withGoogle`. 503 = máy chủ chưa cấu hình `GOOGLE_CLIENT_IDS`.',
+  request: { body: { content: { 'application/json': { schema: googleAuthSchema } } } },
+  responses: {
+    200: jsonResponse('Đăng nhập thành công', authResponse),
+    401: errorResponse('Token Google không hợp lệ, email chưa xác thực, hoặc tài khoản bị khoá'),
+    429: errorResponse('Quá nhiều request'),
+    503: errorResponse('Đăng nhập Google chưa được bật trên máy chủ này'),
   },
 })
 

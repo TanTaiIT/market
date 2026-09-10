@@ -337,36 +337,56 @@ function quotaError(quota: QuotaVerdict): Error {
   )
 }
 
-async function assertOwner(id: string, userId: string) {
-  const listing = await listingRepository.findById(id)
-  // Tin của org khác đã bị scope loại từ tầng plugin -> null -> 404, không lộ tồn tại.
-  if (!listing) throw new NotFoundError('Listing not found')
-  if (listing.seller.toString() !== userId) {
-    throw new ForbiddenError('You can only modify your own listing')
-  }
-  return listing
-}
-
 /**
- * Như `assertOwner` nhưng đọc NGOÀI scope tenant — dành cho hai phép trả lời của chính chủ
- * (`renew`, `markSold`).
+ * Chốt CHÍNH CHỦ, đọc NGOÀI scope tenant — cửa duy nhất cho mọi thao tác của chủ tin
+ * (`update`, `remove`, `renew`, `markSold`, và lượt đọc dựng form sửa).
+ *
+ * Bản scoped (`assertOwner`) đã bỏ: nó không chặn được lượt ghi xuyên tenant nào (xem dưới)
+ * mà chỉ chặn chính chủ, nên giữ hai biến thể chỉ là giữ một cái bẫy.
  *
  * Khoá `seller` lấy từ token nên đã hẹp hơn mọi scope; áp thêm trục vào đây thì bảng "tin của
  * tôi" (`paginateMine`, cũng unscoped) hiện ra tin mà bấm vào lại 404. Hai nhóm rơi đúng vào
  * đó: tin nội bộ của org KHÁC org đang active trên header, và tin `hidden`/`pending` — cả hai
  * đều nằm ngoài predicate public, dù là tin của chính người đang gọi.
  *
- * Không dùng cho `update`/`remove`: hai đường đó ghi nội dung nên vẫn phải nằm trong trục.
+ * DÙNG cho cả `update`/`remove`. Bản trước cố ý không dùng, với lý do 'hai đường đó ghi nội
+ * dung nên vẫn phải nằm trong trục' — đo ra thì lý do đó không giữ được gì mà chặn mất chính
+ * chủ: `organizationId` khai `immutable: true` ở `tenantPlugin`, nên một lượt sửa KHÔNG thể
+ * chuyển tin sang org khác; thứ duy nhất trục chặn được là chủ tin sửa tin của mình khi đang
+ * đứng ở org khác (hoặc không đứng ở org nào — ca của người thuộc nhiều nhóm).
+ *
+ * Đo trên dữ liệu thật, tài khoản 24 tin: 13 tin (`pending`/`hidden`) trả 404 ở CẢ `GET` lẫn
+ * `PATCH`, và tin `active` nội bộ cũng 404 khi thiếu `X-Org-Slug`. Sau khi đã chốt `seller`
+ * từ token — khoá hẹp hơn mọi tenant scope — thì lượt ghi phải chạy unscoped nốt, kẻo
+ * predicate ghi của plugin lọc trắng và `findByIdAndUpdate` ghi RỖNG mà không báo gì.
  */
 async function assertOwnerUnscoped(id: string, userId: string) {
   const listing = await runUnscoped('chính chủ trả lời về tin của mình', () =>
     listingRepository.findById(id).exec(),
   )
   if (!listing) throw new NotFoundError('Listing not found')
-  if (listing.seller.toString() !== userId) {
-    throw new ForbiddenError('You can only modify your own listing')
-  }
+  if (listing.seller.toString() !== userId) throw await notMineError(id)
   return listing
+}
+
+/**
+ * Lỗi trả cho người KHÔNG phải chủ tin: 403 hay 404, tuỳ họ vốn đã đọc được tin đó chưa.
+ *
+ * Lượt đọc CÓ SCOPE của bản cũ tạo ra luật này như một tác dụng phụ, và hai test khoá cả hai
+ * nửa của nó: `listing-expiry` đòi 403 khi người lạ chạm vào một tin ĐANG HIỂN THỊ (ai cũng
+ * thấy nó, giấu đi chỉ làm thông điệp vô nghĩa), còn `tenant-isolation` đòi 404 khi chủ org A
+ * chạm vào tin NỘI BỘ của org B (403 là thừa nhận tin đó tồn tại, đủ để dò id).
+ *
+ * Đọc unscoped làm mất tác dụng phụ đó — lượt sửa đầu của tôi trả 404 cho cả hai ca và
+ * `listing-expiry` đỏ ngay. Nên luật phải viết ra: một lượt đọc THEO SCOPE của người hỏi,
+ * chỉ chạy trên nhánh đã thất bại, để phân biệt 'bạn thấy được nhưng không phải của bạn' với
+ * 'với bạn thì tin này không tồn tại'.
+ */
+async function notMineError(id: string): Promise<Error> {
+  const visible = await listingRepository.findById(id).exec()
+  return visible
+    ? new ForbiddenError('You can only modify your own listing')
+    : new NotFoundError('Listing not found')
 }
 
 /**
@@ -891,7 +911,7 @@ export const listingService = {
   },
 
   async update(id: string, userId: string, input: UpdateListingInput) {
-    const existing = await assertOwner(id, userId)
+    const existing = await assertOwnerUnscoped(id, userId)
 
     // Cổng nội dung chặn cả đường SỬA — khác create, ở đây 400 thẳng chứ không đẻ bản ghi
     // REJECTED mới (đây là request sửa, tin đã tồn tại). Soi nội dung SAU KHI GHÉP chứ không
@@ -986,12 +1006,32 @@ export const listingService = {
       }
     }
 
-    return listingRepository.updateById(id, update)
+    // `.exec()` NGAY trong callback: trả về Query chưa chạy là pre hook của plugin nổ sau khi
+    // AsyncLocalStorage đã thoát ngữ cảnh → 'Missing tenant context'. Cùng lối `bump` ở dưới.
+    return runUnscoped('sửa tin: ghi sau khi đã chốt chính chủ', () =>
+      listingRepository.updateById(id, update).exec(),
+    )
   },
 
   async remove(id: string, userId: string) {
-    await assertOwner(id, userId)
-    return listingRepository.softDelete(id)
+    await assertOwnerUnscoped(id, userId)
+    return runUnscoped('xoá tin: ghi sau khi đã chốt chính chủ', () =>
+      listingRepository.softDelete(id).exec(),
+    )
+  },
+
+  /**
+   * Đọc tin của CHÍNH CHỦ để dựng form sửa — MỌI trạng thái, mọi trục.
+   *
+   * Không dùng được `getByIdAndTrackView`: nó lọc `status ∈ PUBLIC_LISTING_STATUSES` ngay ở
+   * repository (`incrementView`), nên tin `pending`/`hidden`/`rejected` của chính mình cũng
+   * trả 404 — kể cả khi `X-Org-Slug` đã đúng. Đó là đúng luật cho một endpoint CÔNG KHAI
+   * (quy tắc 7 của AGENT), nên mở nó ra là sai chỗ; chính chủ cần một cửa riêng.
+   *
+   * Cũng KHÔNG tăng `viewCount`: chủ tin mở form sửa không phải một lượt xem.
+   */
+  async getOwn(id: string, userId: string) {
+    return assertOwnerUnscoped(id, userId)
   },
 
   /* ------------------------- dành cho bàn quản trị ------------------------- */

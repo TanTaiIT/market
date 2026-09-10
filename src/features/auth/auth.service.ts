@@ -5,6 +5,7 @@ import { AuthResult } from './auth.types'
 import { ConflictError, UnauthorizedError } from '../../common/errors'
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../common/utils/jwt'
 import { logger } from '../../config/logger'
+import { verifyGoogleIdToken } from './google.verify'
 
 function issueTokens(user: IUserDocument) {
   const sub = user._id.toString()
@@ -35,6 +36,75 @@ export const authService = {
       password: input.password,
     })
     return { user, ...issueTokens(user) }
+  },
+
+  /**
+   * Đăng nhập / đăng ký bằng Google — MỘT đường cho cả hai, vì client không biết trước tài khoản
+   * đã tồn tại chưa và không nên biết (hỏi trước là dựng ra một endpoint dò email).
+   *
+   * Ba nhánh, theo đúng thứ tự này:
+   *
+   * 1. **Khớp `googleId`** → đăng nhập. Khớp theo `sub` TRƯỚC email vì `sub` không đổi khi người
+   *    dùng đổi địa chỉ Gmail; khớp email trước là tạo tài khoản thứ hai cho cùng một người.
+   * 2. **Khớp email** → LIÊN KẾT, và rút mật khẩu cũ.
+   * 3. Không khớp gì → tạo tài khoản mới, không mật khẩu.
+   *
+   * ── Vì sao nhánh 2 phải rút mật khẩu ──
+   *
+   * Đây là chốt chống "chiếm tài khoản trước" (pre-hijacking): kẻ tấn công đăng ký
+   * `nan-nhan@gmail.com` bằng mật khẩu TRƯỚC khi chủ hộp thư kịp dùng Google. Nếu ta liên kết mà
+   * giữ mật khẩu, chủ thật đăng nhập Google vào đúng tài khoản của kẻ tấn công — và kẻ đó vẫn
+   * còn mật khẩu, tức vẫn đọc được tin nhắn lẫn tin đăng của họ mãi về sau.
+   *
+   * Rút mật khẩu giải quyết dứt điểm vì nó xếp lại thứ tự bằng chứng: một lượt đăng nhập Google
+   * chứng minh người này ĐANG kiểm soát hộp thư; một mật khẩu chỉ chứng minh ai đó từng gõ một
+   * chuỗi. Ở hệ này vế thứ hai còn yếu hơn bình thường — KHÔNG có luồng xác thực email nào, nên
+   * `emailVerifiedAt` của mọi tài khoản mật khẩu đều là `null`.
+   *
+   * Không ai bị khoá ra ngoài: hộp thư vẫn là hộp thư đó nên cửa Google luôn mở. Họ mất một cửa,
+   * không mất tài khoản. Đổi lại `$inc tokenVersion` cắt mọi phiên đang mở ở máy khác.
+   */
+  async withGoogle(idToken: string): Promise<AuthResult> {
+    const identity = await verifyGoogleIdToken(idToken)
+
+    const linked = await userRepository.findByGoogleId(identity.googleId)
+    if (linked) {
+      if (!linked.isActive) throw new UnauthorizedError('Account is disabled')
+      await userRepository.updateById(linked._id, { lastLoginAt: new Date() })
+      return { user: linked, ...issueTokens(linked) }
+    }
+
+    const sameEmail = await userRepository.findByEmail(identity.email)
+    if (sameEmail) {
+      /*
+       * Chặn TRƯỚC khi liên kết, không phải sau: một tài khoản bị khoá mà liên kết được thì
+       * `$inc tokenVersion` vẫn chạy và mật khẩu vẫn bị rút — tức lệnh khoá của quản trị lại
+       * thành đường đổi chủ tài khoản.
+       */
+      if (!sameEmail.isActive) throw new UnauthorizedError('Account is disabled')
+
+      const user = await userRepository.linkGoogle(sameEmail._id, identity.googleId)
+      if (!user) throw new UnauthorizedError('Không liên kết được tài khoản Google')
+
+      logger.info('google account linked, password retired', { userId: user._id.toString() })
+      await userRepository.updateById(user._id, { lastLoginAt: new Date() })
+      return { user, ...issueTokens(user) }
+    }
+
+    /*
+     * Tài khoản mới: KHÔNG có `password`, và `emailVerifiedAt` đặt luôn — Google vừa chứng minh
+     * hộp thư. `avatar` nhận ảnh Google: đó là URL của Google chứ không phải Cloudinary, nên nó
+     * KHÔNG đi qua đường kiểm duyệt ảnh và cũng không bị job dọn ảnh mồ côi nhặt.
+     */
+    const created = await userRepository.create({
+      name: identity.name,
+      email: identity.email,
+      googleId: identity.googleId,
+      avatar: identity.picture,
+      emailVerifiedAt: new Date(),
+    })
+    logger.info('google account created', { userId: created._id.toString() })
+    return { user: created, ...issueTokens(created) }
   },
 
   /** Đăng nhập toàn cục: email unique toàn hệ thống nên không cần biết org. */

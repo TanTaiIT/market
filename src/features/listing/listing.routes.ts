@@ -38,6 +38,24 @@ router.get('/nearby', validate({ query: nearbyQuerySchema }), listingController.
 // Tin của chính mình, mọi trạng thái. PHẢI khai trước `/:id` — Express khớp theo thứ tự, đăng
 // sau thì `mine` bị nuốt thành `:id` rồi rụng ở validate ObjectId với lỗi 400 khó hiểu.
 router.get('/mine', authenticate, validate({ query: listingQuerySchema }), listingController.mine)
+/*
+ * MỘT tin của chính mình, mọi trạng thái — lượt đọc dựng form sửa.
+ *
+ * Không dùng `GET /:id` được: đường đó lọc `status ∈ PUBLIC_LISTING_STATUSES` ngay ở
+ * `incrementView`, nên tin `pending`/`hidden`/`rejected` của chính mình cũng trả 404 (đo
+ * được: 13/24 tin của một tài khoản thật). Nới `GET /:id` ra là phá quy tắc 7 — endpoint
+ * công khai không bao giờ trả tin ngoài `PUBLIC_LISTING_STATUSES`.
+ *
+ * `/mine/:id` hai đoạn nên không tranh chấp với `/:id`, nhưng vẫn khai cạnh `/mine` để thứ
+ * tự đọc ra được là có chủ ý.
+ */
+router.get(
+  '/mine/:id',
+  authenticate,
+  validate({ params: listingParamsSchema }),
+  listingController.getOwn,
+)
+
 // Trạng thái quota — client hiện "còn N slot" thay vì để người dùng đoán vì sao bị chặn (§8.4).
 router.get('/quota', authenticate, listingController.quota)
 
@@ -236,6 +254,27 @@ registry.registerPath({
       envelope(z.array(listingResponseSchema), paginationMetaSchema),
     ),
     400: errorResponse('Query không hợp lệ'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/listings/mine/{id}',
+  operationId: 'listingMineById',
+  tags: ['Listing'],
+  summary: 'Một tin của chính mình (mọi trạng thái) — dựng form sửa',
+  description:
+    'Khác `GET /listings/{id}` ở hai điểm: KHÔNG lọc theo `PUBLIC_LISTING_STATUSES` và KHÔNG ' +
+    'tăng `viewCount`. Chủ tin mở form sửa không phải một lượt xem, và tin `pending`/`hidden`/' +
+    '`rejected` của chính mình phải sửa được — đó đúng là lúc cần sửa nhất. Chủ tin lấy từ ' +
+    'access token. Tin của người khác trả 404 CHỨ KHÔNG 403: 403 là thừa nhận tin đó tồn ' +
+    'tại, đủ để người ngoài dò id.',
+  ...protectedRoute,
+  request: { params: listingParamsSchema },
+  responses: {
+    200: jsonResponse('Tin của bạn', envelope(listingResponseSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    404: errorResponse('Không tìm thấy tin, hoặc tin không phải của bạn'),
   },
 })
 

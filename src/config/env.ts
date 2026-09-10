@@ -75,6 +75,19 @@ const envSchema = z.object({
   // người dùng chỉ thuộc đúng một org.
   APP_BASE_DOMAIN: z.string().optional(),
 
+  /**
+   * Client ID được PHÉP của Google, phân tách bằng dấu phẩy.
+   *
+   * Là DANH SÁCH chứ không một giá trị: một app Expo có ba client ID khác nhau (web, iOS,
+   * Android), và `aud` của id_token là đúng cái client đã phát ra nó. Nhận một giá trị thì
+   * đăng nhập chỉ chạy trên một nền tảng, và lỗi hiện ra là "sai audience" — không ai đoán
+   * được nguyên nhân từ thông điệp đó.
+   *
+   * Vắng mặt = TẮT hẳn đường đăng nhập Google (route trả 503). Cố ý không có mặc định: một
+   * giá trị mặc định ở đây nghĩa là chấp nhận token do một app Google khác phát ra.
+   */
+  GOOGLE_CLIENT_IDS: z.string().optional(),
+
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   // 15 phút, không phải 7 ngày: suspend một Organization phải có hiệu lực trong vài phút,
   // và middleware tenant đã check status live nên token ngắn chỉ còn là lớp thứ hai.

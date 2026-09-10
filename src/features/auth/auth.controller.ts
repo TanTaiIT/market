@@ -10,6 +10,17 @@ export const authController = {
     created(res, { message: 'Organization created', data: toAuthResponseDto(result) })
   }),
 
+  /*
+   * POST /auth/google — đăng nhập HOẶC đăng ký, cùng một cửa.
+   *
+   * Luôn 200 chứ không 201 cho tài khoản mới: client không cần biết hai ca đó khác nhau, và
+   * phân biệt bằng mã trạng thái là nói cho người gọi biết email này đã có tài khoản chưa.
+   */
+  google: catchAsync(async (req, res) => {
+    const result = await authService.withGoogle(req.body.idToken)
+    success(res, { message: 'Logged in with Google', data: toAuthResponseDto(result) })
+  }),
+
   // POST /auth/login
   login: catchAsync(async (req, res) => {
     const result = await authService.login(req.body)

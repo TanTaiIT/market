@@ -52,11 +52,27 @@ export const authResponseSchema = z
   })
   .openapi('AuthResponse')
 
+/**
+ * Đăng nhập bằng Google — client chỉ gửi `id_token`, KHÔNG gửi email/tên.
+ *
+ * Cố tình không nhận thêm field nào: email và tên phải đến từ token đã kiểm chữ ký
+ * (`google.verify.ts`). Nhận `email` trong body là mở đúng cửa mà việc kiểm token sinh ra để
+ * đóng — ai cũng gửi được một email bất kỳ kèm một token thật của chính mình.
+ */
+export const googleAuthSchema = z
+  .object({
+    idToken: z.string().min(1, 'Thiếu id_token của Google'),
+  })
+  .strict()
+  .openapi('GoogleAuthInput')
+
 export type RegisterInput = z.infer<typeof registerSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type RefreshInput = z.infer<typeof refreshSchema>
+export type GoogleAuthInput = z.infer<typeof googleAuthSchema>
 
 registry.register('RegisterInput', registerSchema)
 registry.register('LoginInput', loginSchema)
 registry.register('RefreshInput', refreshSchema)
+registry.register('GoogleAuthInput', googleAuthSchema)
 registry.register('AuthResponse', authResponseSchema)

@@ -94,6 +94,12 @@ export const listingController = {
     success(res, { message: 'Listing detail', data: listing })
   }),
 
+  // GET /listings/mine/:id
+  getOwn: catchAsync(async (req, res) => {
+    const listing = await listingService.getOwn(req.params.id, req.user!.id)
+    success(res, { message: 'Listing detail', data: listing })
+  }),
+
   // PATCH /listings/:id
   update: catchAsync(async (req, res) => {
     const listing = await listingService.update(req.params.id, req.user!.id, req.body)

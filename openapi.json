@@ -119,6 +119,19 @@
         ],
         "additionalProperties": false
       },
+      "GoogleAuthInput": {
+        "type": "object",
+        "properties": {
+          "idToken": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "idToken"
+        ],
+        "additionalProperties": false
+      },
       "AuthResponse": {
         "type": "object",
         "properties": {
@@ -4559,6 +4572,86 @@
         }
       }
     },
+    "/auth/google": {
+      "post": {
+        "operationId": "authGoogle",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Đăng nhập hoặc đăng ký bằng Google",
+        "description": "Nhận `id_token` của Google, xác minh chữ ký + `aud` + `email_verified` ở máy chủ rồi phát token của app. Một cửa cho cả đăng nhập và đăng ký — client không cần biết email đã có tài khoản chưa. **Nếu email đó đã có tài khoản mật khẩu**: tài khoản được LIÊN KẾT và mật khẩu cũ bị RÚT, mọi phiên đang mở ở máy khác bị cắt (`tokenVersion`). Đó là chốt chống chiếm tài khoản trước — xem `authService.withGoogle`. 503 = máy chủ chưa cấu hình `GOOGLE_CLIENT_IDS`.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GoogleAuthInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đăng nhập thành công",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AuthResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token Google không hợp lệ, email chưa xác thực, hoặc tài khoản bị khoá",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Đăng nhập Google chưa được bật trên máy chủ này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/refresh": {
       "post": {
         "operationId": "authRefresh",
@@ -6076,6 +6169,83 @@
           },
           "429": {
             "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/listings/mine/{id}": {
+      "get": {
+        "operationId": "listingMineById",
+        "tags": [
+          "Listing"
+        ],
+        "summary": "Một tin của chính mình (mọi trạng thái) — dựng form sửa",
+        "description": "Khác `GET /listings/{id}` ở hai điểm: KHÔNG lọc theo `PUBLIC_LISTING_STATUSES` và KHÔNG tăng `viewCount`. Chủ tin mở form sửa không phải một lượt xem, và tin `pending`/`hidden`/`rejected` của chính mình phải sửa được — đó đúng là lúc cần sửa nhất. Chủ tin lấy từ access token. Tin của người khác trả 404 CHỨ KHÔNG 403: 403 là thừa nhận tin đó tồn tại, đủ để người ngoài dò id.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tin của bạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Listing"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy tin, hoặc tin không phải của bạn",
             "content": {
               "application/json": {
                 "schema": {
