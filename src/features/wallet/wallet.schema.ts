@@ -1,11 +1,12 @@
 import { z } from 'zod'
+import { PAGINATION } from '../../common/constants'
 import { XU_TX_TYPES } from './wallet.model'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const walletHistoryQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 export const walletUserParamsSchema = z.object({ userId: objectId })

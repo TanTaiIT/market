@@ -1958,6 +1958,49 @@
           "updatedAt"
         ]
       },
+      "ListingReview": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "rejected",
+              "hidden"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "title",
+          "message"
+        ],
+        "description": "Vắng khi tin đang hiện / đã bán / hết hạn — không có gì cần giải thích."
+      },
+      "OwnerListing": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Listing"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "review": {
+                "$ref": "#/components/schemas/ListingReview"
+              }
+            }
+          }
+        ]
+      },
       "FavoriteStatus": {
         "type": "object",
         "properties": {
@@ -2400,8 +2443,7 @@
             "type": "string",
             "enum": [
               "master",
-              "manager",
-              "staff"
+              "manager"
             ]
           },
           "scopeType": {
@@ -2409,7 +2451,6 @@
             "enum": [
               "system",
               "org",
-              "org_unit",
               "category_province",
               "category_ward"
             ]
@@ -4964,7 +5005,7 @@
         "tags": [
           "User"
         ],
-        "summary": "Báo cáo người dùng theo ngày / tháng / năm (master)",
+        "summary": "Báo cáo người dùng theo ngày / tháng / năm (master: tài khoản toàn hệ thống · quản trị nhóm: thành viên nhóm)",
         "description": "Anh em với `GET /listings/report` — cùng tham số, cùng múi giờ gộp cột (Asia/Ho_Chi_Minh), cùng cách điền cột rỗng và cắt trần. Ba con số mỗi cột: `users` (tài khoản mới), `active` (người đăng ít nhất một tin trong cột), `total` (cộng dồn, khởi điểm là số người đã có TRƯỚC cửa sổ). Tài khoản đã xoá không được đếm.",
         "security": [
           {
@@ -5169,7 +5210,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -5759,7 +5800,7 @@
         "tags": [
           "Listing"
         ],
-        "summary": "Báo cáo đăng tin theo ngày / tháng / năm (master)",
+        "summary": "Báo cáo đăng tin theo ngày / tháng / năm (master: toàn hệ thống · quản trị nhóm: nhóm mình)",
         "description": "Chuỗi thời gian số tin đăng, gộp theo múi giờ THỊ TRƯỜNG (Asia/Ho_Chi_Minh) chứ không theo UTC hay theo máy người xem. Cột rỗng vẫn có mặt với số 0 để biểu đồ không nối thẳng qua khoảng trống. Thiếu `from`/`to` thì lấy cửa sổ mặc định theo độ mịn: 30 ngày / 12 tháng / 5 năm. Vượt trần số cột (366 / 60 / 20) thì giữ phần MỚI NHẤT và báo số cột đã cắt ở `truncated`. Đếm cả tin nội bộ của mọi nhóm — chỉ master gọi được.",
         "security": [
           {
@@ -5877,7 +5918,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -5951,6 +5992,16 @@
             },
             "required": false,
             "name": "province",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "example": "Phường Bến Thành"
+            },
+            "required": false,
+            "name": "ward",
             "in": "query"
           },
           {
@@ -6222,7 +6273,7 @@
                       "type": "string"
                     },
                     "data": {
-                      "$ref": "#/components/schemas/Listing"
+                      "$ref": "#/components/schemas/OwnerListing"
                     }
                   },
                   "required": [
@@ -6286,7 +6337,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -6365,6 +6416,16 @@
           {
             "schema": {
               "type": "string",
+              "maxLength": 100,
+              "example": "Phường Bến Thành"
+            },
+            "required": false,
+            "name": "ward",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
               "enum": [
                 "new",
                 "like_new",
@@ -6437,7 +6498,7 @@
                     "data": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/Listing"
+                        "$ref": "#/components/schemas/OwnerListing"
                       }
                     },
                     "meta": {
@@ -6583,7 +6644,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -7090,7 +7151,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -7720,7 +7781,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -8650,6 +8711,27 @@
             "required": false,
             "name": "status",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 10
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
           }
         ],
         "responses": {
@@ -8674,12 +8756,44 @@
                       "items": {
                         "$ref": "#/components/schemas/JoinRequest"
                       }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "number"
+                        },
+                        "limit": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        },
+                        "totalPages": {
+                          "type": "number"
+                        },
+                        "hasNextPage": {
+                          "type": "boolean"
+                        },
+                        "hasPrevPage": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "page",
+                        "limit",
+                        "total",
+                        "totalPages",
+                        "hasNextPage",
+                        "hasPrevPage"
+                      ]
                     }
                   },
                   "required": [
                     "success",
                     "message",
-                    "data"
+                    "data",
+                    "meta"
                   ]
                 }
               }
@@ -9101,7 +9215,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -9398,6 +9512,29 @@
             "bearerAuth": []
           }
         ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 10
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Danh sách lời mời",
@@ -9420,12 +9557,44 @@
                       "items": {
                         "$ref": "#/components/schemas/Invite"
                       }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "number"
+                        },
+                        "limit": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        },
+                        "totalPages": {
+                          "type": "number"
+                        },
+                        "hasNextPage": {
+                          "type": "boolean"
+                        },
+                        "hasPrevPage": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "page",
+                        "limit",
+                        "total",
+                        "totalPages",
+                        "hasNextPage",
+                        "hasPrevPage"
+                      ]
                     }
                   },
                   "required": [
                     "success",
                     "message",
-                    "data"
+                    "data",
+                    "meta"
                   ]
                 }
               }
@@ -9784,7 +9953,7 @@
           "RoleGrant"
         ],
         "summary": "Cấp quyền cho một người",
-        "description": "Master cấp được `manager` (cả hai loại scope) và `staff`. Manager chỉ cấp được `staff` trong đúng scope của mình. Không ai tự cấp quyền cho chính mình. Người nhận đi bằng `userId` (chọn từ danh bạ) hoặc `userEmail` — đúng một trong hai; người phụ trách trục danh mục không thuộc tổ chức nào nên không có danh bạ nào tra ra `userId`.",
+        "description": "CHỈ master. Cấp được `manager` ở phạm vi `org` hoặc (danh mục × tỉnh/phường); vai trò `staff` đã bỏ (400) và không ai cấp được `master` (403). Không ai tự cấp quyền cho chính mình. Người nhận đi bằng `userId` hoặc `userEmail` — đúng một trong hai; người phụ trách trục danh mục thường không thuộc tổ chức nào nên email là đường tự nhiên.",
         "security": [
           {
             "bearerAuth": []
@@ -9829,8 +9998,18 @@
               }
             }
           },
+          "400": {
+            "description": "Vai trò staff đã bỏ, hoặc phạm vi không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
           "403": {
-            "description": "Không đủ thẩm quyền để cấp quyền này",
+            "description": "Cần quyền master, hoặc đang cấp master / tự cấp cho mình",
             "content": {
               "application/json": {
                 "schema": {
@@ -9916,7 +10095,7 @@
         "tags": [
           "RoleGrant"
         ],
-        "summary": "Thu hồi một quyền",
+        "summary": "Thu hồi một quyền (chỉ master)",
         "description": "Không thu hồi được master cuối cùng: hệ thống không còn master là hệ thống không ai cấp lại được quyền cho ai.",
         "security": [
           {
@@ -11322,7 +11501,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -11520,7 +11699,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -11824,7 +12003,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -12174,7 +12353,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -12299,6 +12478,25 @@
           },
           {
             "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true
@@ -12312,7 +12510,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -12408,6 +12606,91 @@
       }
     },
     "/moderation/listings/{id}": {
+      "get": {
+        "operationId": "moderationGetListing",
+        "tags": [
+          "Moderation"
+        ],
+        "summary": "Một tin cho bàn duyệt, ở bất kỳ trạng thái",
+        "description": "Dùng khi xử báo cáo: mở được tin đã ẩn / chờ duyệt, và tin nội bộ của org mình không đứng trong (master). Thẩm quyền chốt theo trục của tin.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/Listing"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không có quyền duyệt, hoặc tin thuộc trục bạn không phụ trách",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy tin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
       "patch": {
         "operationId": "moderationSetListingStatus",
         "tags": [
@@ -12628,6 +12911,25 @@
           },
           {
             "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100
+            },
+            "required": false,
+            "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true
@@ -12641,7 +12943,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -12991,7 +13293,7 @@
           "Report"
         ],
         "summary": "Hàng đợi báo cáo (quản trị)",
-        "description": "`count` là số người cùng báo cáo một đối tượng, tính lúc đọc.",
+        "description": "Hợp hai trục theo quyền của người gọi: báo cáo trong org đang đứng (kèm `X-Org-Slug`, nếu duyệt được ở đó) + báo cáo về tin công khai trong ô mình phụ trách. Master thấy tất cả. `count` là số người cùng báo cáo một đối tượng, tính lúc đọc.",
         "security": [
           {
             "bearerAuth": []
@@ -13026,7 +13328,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -13109,7 +13411,7 @@
             }
           },
           "403": {
-            "description": "Cần quyền owner hoặc moderator",
+            "description": "Không có quyền duyệt ở trục của đối tượng bị báo cáo",
             "content": {
               "application/json": {
                 "schema": {
@@ -13205,7 +13507,7 @@
             }
           },
           "403": {
-            "description": "Cần quyền owner hoặc moderator",
+            "description": "Không có quyền duyệt ở trục của đối tượng bị báo cáo",
             "content": {
               "application/json": {
                 "schema": {
@@ -14044,7 +14346,7 @@
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",

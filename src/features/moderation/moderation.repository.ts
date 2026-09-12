@@ -8,7 +8,7 @@ export const moderationRepository = {
 
   async paginateAudit({ skip, limit }: PaginationParams) {
     const [items, total] = await Promise.all([
-      AuditLog.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
+      AuditLog.find().sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
       AuditLog.countDocuments(),
     ])
     return { items, total }

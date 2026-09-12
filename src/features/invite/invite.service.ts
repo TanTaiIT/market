@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto'
 import { Types } from 'mongoose'
 import { inviteRepository } from './invite.repository'
-import { CreateInviteInput } from './invite.schema'
+import { CreateInviteInput, InviteQuery } from './invite.schema'
+import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { toInviteDto, toMyInviteDto } from './invite.types'
 import { organizationRepository } from '../organization/organization.repository'
 import { membershipRepository } from '../membership/membership.repository'
@@ -95,11 +96,18 @@ export const inviteService = {
     return { invite: toInviteDto(doc), token, shareable: !invited }
   },
 
-  async list() {
+  async list(query: InviteQuery) {
     const organizationId = requireOwnOrgId('invite.list')
     await inviteRepository.expireStale(new Date())
-    const rows = await inviteRepository.listByOrganization(organizationId)
-    return rows.map((row) => toInviteDto(row))
+    const pagination = parsePagination(query)
+    const { items, total } = await inviteRepository.paginateByOrganization(
+      organizationId,
+      pagination,
+    )
+    return {
+      items: items.map((row) => toInviteDto(row)),
+      meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
+    }
   },
 
   async revoke(id: string) {

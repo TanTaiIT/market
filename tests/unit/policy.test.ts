@@ -187,40 +187,34 @@ describe('policy - ai cấp được quyền cho ai', () => {
     expect(canGrant(actorMaster, { userId: actorMaster.userId, grant: master })).toBe(false)
   })
 
-  it('manager cấp staff trong scope mình, không cấp quá cấp mình', () => {
-    expect(canGrant(actorOrgManager, { userId: 'u1', grant: staffInOrgA })).toBe(true)
-    expect(canGrant(actorOrgManager, { userId: 'u1', grant: unitStaff })).toBe(true)
-    // Cấp manager = cấp ngang cấp mình -> chỉ master làm được.
+  /**
+   * Hệ thống không còn cấp phó: manager — org, danh mục, phường — KHÔNG cấp được cho ai, kể
+   * cả `staff` trong đúng scope của mình. Các grant `staff*` dưới đây là hồ sơ di sản còn
+   * trong DB; policy DUYỆT-TIN vẫn hiểu chúng, nhưng không có đường nào sinh mới.
+   */
+  it('manager org không cấp được gì — kể cả staff trong chính org mình', () => {
+    expect(canGrant(actorOrgManager, { userId: 'u1', grant: staffInOrgA })).toBe(false)
+    expect(canGrant(actorOrgManager, { userId: 'u1', grant: unitStaff })).toBe(false)
     expect(canGrant(actorOrgManager, { userId: 'u1', grant: orgManager })).toBe(false)
-  })
-
-  it('manager org không cấp được quyền ở org khác', () => {
     const staffInOrgB: Grant = { ...staffInOrgA, orgId: ORG_B }
     expect(canGrant(actorOrgManager, { userId: 'u1', grant: staffInOrgB })).toBe(false)
   })
 
-  it('manager danh mục không cấp được staff phủ rộng hơn phạm vi của mình', () => {
+  it('manager danh mục / tỉnh / phường không cấp được gì trong ô của mình', () => {
     const staffHcm: Grant = {
       role: SYSTEM_ROLES.STAFF,
       scopeType: SCOPE_TYPES.CATEGORY_PROVINCE,
       categoryId: CAT_JOB,
       provinceCodes: [HCM],
     }
-    expect(canGrant(actorCatManager, { userId: 'u1', grant: staffHcm })).toBe(true)
+    expect(canGrant(actorCatManager, { userId: 'u1', grant: staffHcm })).toBe(false)
+    expect(
+      canGrant(actorCatManager, {
+        userId: 'u1',
+        grant: { ...staffHcm, provinceCodes: [HCM, HANOI] },
+      }),
+    ).toBe(false)
 
-    const staffTwoProvinces: Grant = { ...staffHcm, provinceCodes: [HCM, HANOI] }
-    expect(canGrant(actorCatManager, { userId: 'u1', grant: staffTwoProvinces })).toBe(false)
-
-    // Toàn quốc trong khi mình chỉ có TP.HCM cũng là cấp quá cấp mình.
-    const staffNationwide: Grant = { ...staffHcm, provinceCodes: [] }
-    expect(canGrant(actorCatManager, { userId: 'u1', grant: staffNationwide })).toBe(false)
-  })
-
-  /**
-   * §5.3 ở tầng phường: manager TỈNH chia tải xuống từng phường, manager PHƯỜNG chỉ chia lại
-   * trong chính phường mình giữ. Không có vế này thì người phụ trách tỉnh vẫn phải tự duyệt hết.
-   */
-  it('manager tỉnh cấp được staff cho phường TRONG tỉnh mình', () => {
     const actorLamDong = { userId: 'u-ld-mgr', grants: [catManagerLamDong] }
     const staffWard: Grant = {
       role: SYSTEM_ROLES.STAFF,
@@ -229,35 +223,19 @@ describe('policy - ai cấp được quyền cho ai', () => {
       provinceCodes: [LAMDONG],
       wardCodes: [WARD_LAGI],
     }
-    expect(canGrant(actorLamDong, { userId: 'u1', grant: staffWard })).toBe(true)
+    expect(canGrant(actorLamDong, { userId: 'u1', grant: staffWard })).toBe(false)
 
-    // Phường của TỈNH KHÁC thì không: phạm vi địa lý không nới ra được bằng cách xuống tầng.
-    const staffWardOtherProvince: Grant = { ...staffWard, provinceCodes: [HCM] }
-    expect(canGrant(actorLamDong, { userId: 'u1', grant: staffWardOtherProvince })).toBe(false)
+    const actorWards = { userId: 'u-ward-mgr', grants: [catManagerWards] }
+    expect(canGrant(actorWards, { userId: 'u1', grant: staffWard })).toBe(false)
+    expect(
+      canGrant(actorWards, { userId: 'u1', grant: { ...staffWard, wardCodes: [WARD_DALAT] } }),
+    ).toBe(false)
   })
 
-  it('manager phường chỉ cấp lại được trong chính phường mình giữ', () => {
-    const actorWards = { userId: 'u-ward-mgr', grants: [catManagerWards] }
-    const staffLaGi: Grant = {
-      role: SYSTEM_ROLES.STAFF,
-      scopeType: SCOPE_TYPES.CATEGORY_WARD,
-      categoryId: CAT_JOB,
-      provinceCodes: [LAMDONG],
-      wardCodes: [WARD_LAGI],
-    }
-    expect(canGrant(actorWards, { userId: 'u1', grant: staffLaGi })).toBe(true)
-
-    const staffDaLat: Grant = { ...staffLaGi, wardCodes: [WARD_DALAT] }
-    expect(canGrant(actorWards, { userId: 'u1', grant: staffDaLat })).toBe(false)
-
-    // Cấp CẢ TỈNH trong khi mình chỉ giữ hai phường là cấp quá cấp mình.
-    const staffWholeProvince: Grant = {
-      role: SYSTEM_ROLES.STAFF,
-      scopeType: SCOPE_TYPES.CATEGORY_PROVINCE,
-      categoryId: CAT_JOB,
-      provinceCodes: [LAMDONG],
-    }
-    expect(canGrant(actorWards, { userId: 'u1', grant: staffWholeProvince })).toBe(false)
+  it('master cấp được manager ở mọi ô, và thu hồi được', () => {
+    expect(canGrant(actorMaster, { userId: 'u1', grant: catManagerLamDong })).toBe(true)
+    expect(canGrant(actorMaster, { userId: 'u1', grant: catManagerWards })).toBe(true)
+    expect(canRevoke(actorMaster, { userId: 'u1', grant: orgManager })).toBe(true)
   })
   it('user thường không cấp được gì', () => {
     expect(canGrant({ userId: 'u-plain', grants: [] }, { userId: 'u1', grant: staffInOrgA })).toBe(

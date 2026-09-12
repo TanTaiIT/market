@@ -25,11 +25,8 @@ export const joinRequestController = {
   // GET /join-requests
   list: catchAsync(async (req, res) => {
     const orgId = requireOwnOrgId('joinRequest.list')
-    const data = await joinRequestService.listForOrganization(
-      orgId,
-      req.query.status as string | undefined,
-    )
-    success(res, { message: 'Hàng đợi đơn tham gia', data })
+    const { items, meta } = await joinRequestService.listForOrganization(orgId, req.query as never)
+    success(res, { message: 'Hàng đợi đơn tham gia', data: items, meta })
   }),
 
   // PATCH /join-requests/:id/approve

@@ -381,10 +381,17 @@ export const REPORT_WINDOW = {
   [REPORT_GRANULARITY.YEAR]: { defaultBuckets: 5, maxBuckets: 20 },
 } as const
 
+/**
+ * Mỗi trang TỐI ĐA 10 dòng, và client không xin hơn được: mọi schema `limit` khai
+ * `.max(PAGINATION.MAX_LIMIT)` — xin 11 là 400, không phải bị kẹp âm thầm. Con số nhỏ có chủ ý:
+ * app tải-tới-đâu-cuộn-tới-đó, một trang chỉ cần đủ lấp màn hình; trang 50–100 dòng như trước là
+ * trả cả kho cho một màn chỉ vẽ được 6 dòng đầu, và phần còn lại là băng thông lẫn decode ảnh
+ * ném đi. Từ điển bounded (danh mục, tỉnh/xã, cụm cấm…) không đi qua đây — chúng trả đủ.
+ */
 export const PAGINATION = {
   DEFAULT_PAGE: 1,
-  DEFAULT_LIMIT: 20,
-  MAX_LIMIT: 100,
+  DEFAULT_LIMIT: 10,
+  MAX_LIMIT: 10,
 } as const
 
 export const INVITE_CHANNELS = { EMAIL: 'email', PHONE: 'phone' } as const

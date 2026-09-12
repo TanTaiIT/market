@@ -19,6 +19,13 @@ const PENDING_STATUSES = [LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIF
 /** `status` không nằm trong query schema công khai — chỉ caller nội bộ mới được ép. */
 export type ListingFilterParams = Partial<ListingQuery> & { status?: ListingStatus }
 
+/** Bộ lọc của bàn duyệt — khác `ListingFilterParams` ở chỗ KHÔNG có mặc định `status: ACTIVE`. */
+export interface ModerationFilter {
+  status?: ListingStatus
+  category?: string
+  q?: string
+}
+
 function escapeRegex(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
@@ -66,6 +73,9 @@ export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDo
   }
   if (params.condition) filter.condition = params.condition
   if (params.province) filter['location.province'] = params.province
+  // Residual filter có chủ ý — xem ghi chú index ở `listing.model.ts`: xã không nằm trong index
+  // để `?province=` giữ được sort index-backed. Schema đã chốt xã luôn đi kèm tỉnh.
+  if (params.ward) filter['location.ward'] = params.ward
 
   if (params.minPrice != null || params.maxPrice != null) {
     filter.price = {}
@@ -207,7 +217,7 @@ export const listingRepository = {
     const filter = buildFilter(params)
 
     const [items, total] = await Promise.all([
-      Listing.find(filter).sort({ rankAt: -1 }).skip(skip).limit(limit),
+      Listing.find(filter).sort({ rankAt: -1, _id: -1 }).skip(skip).limit(limit),
       Listing.countDocuments(filter),
     ])
 
@@ -233,7 +243,7 @@ export const listingRepository = {
     if (exclude) base._id = { $ne: new Types.ObjectId(exclude) }
 
     if (!ward) {
-      return Listing.find(base).sort({ rankAt: -1 }).skip(skip).limit(limit)
+      return Listing.find(base).sort({ rankAt: -1, _id: -1 }).skip(skip).limit(limit)
     }
 
     // Hai truy vấn `find` chứ không phải một `aggregate` xếp hạng: pipeline aggregate được
@@ -242,7 +252,7 @@ export const listingRepository = {
     const inWard = { ...base, 'location.ward': ward }
     const outWard = { ...base, 'location.ward': { $ne: ward } }
 
-    const head = await Listing.find(inWard).sort({ rankAt: -1 }).skip(skip).limit(limit)
+    const head = await Listing.find(inWard).sort({ rankAt: -1, _id: -1 }).skip(skip).limit(limit)
     if (head.length >= limit) return head
 
     // Tổng số tin cùng xã là mốc để cắt offset giữa hai tập, nhưng CHỈ cần khi đã sang trang:
@@ -250,7 +260,7 @@ export const listingRepository = {
     const wardTotal = skip > 0 ? await Listing.countDocuments(inWard) : 0
 
     const tail = await Listing.find(outWard)
-      .sort({ rankAt: -1 })
+      .sort({ rankAt: -1, _id: -1 })
       .skip(Math.max(0, skip - wardTotal))
       .limit(limit - head.length)
 
@@ -357,7 +367,7 @@ export const listingRepository = {
     const rows = await runUnscoped('machine review: lấy mẫu giá của danh mục', () =>
       Listing.find({ category: categoryId, status: LISTING_STATUS.ACTIVE })
         .select('price')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .limit(limit)
         .lean()
         .exec(),
@@ -440,7 +450,7 @@ export const listingRepository = {
     // hàm này sinh ra để tránh.
     return runUnscoped('own listings, scoped by seller', async () => {
       const [items, total] = await Promise.all([
-        Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+        Listing.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).exec(),
         Listing.countDocuments(filter).exec(),
       ])
       return { items, total }
@@ -465,7 +475,7 @@ export const listingRepository = {
     return runUnscoped('area hint: tin của chính chủ, scoped by seller', () =>
       Listing.find({ seller: sellerId, 'location.province': { $exists: true, $ne: null } })
         .select('location.province createdAt')
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .limit(limit)
         .lean<{ location?: { province?: string }; createdAt: Date }[]>()
         .exec(),
@@ -507,7 +517,7 @@ export const listingRepository = {
       status: status ?? { $in: [...MODERATABLE_STATUSES] },
     }
     const [items, total] = await Promise.all([
-      Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Listing.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
       Listing.countDocuments(filter),
     ])
     return { items, total }
@@ -516,10 +526,15 @@ export const listingRepository = {
   /**
    * Chuỗi thời gian của tin đăng, gộp theo NGÀY/THÁNG/NĂM trong múi giờ thị trường.
    *
-   * `runUnscoped` là bắt buộc và hợp lệ: báo cáo này chỉ master gọi được
-   * (`requireMaster` ở route), và nó phải đếm CẢ HAI TRỤC — scope của một request master
-   * không kèm org chỉ mở trục công khai, nên để plugin lọc là im lặng bỏ sót toàn bộ tin nội
-   * bộ của mọi nhóm. Kết quả trả ra là CON SỐ GỘP, không có một dòng tin nào lọt ra ngoài.
+   * `runUnscoped` là bắt buộc và hợp lệ: bản toàn hệ thống (master, không kèm org) phải đếm
+   * CẢ HAI TRỤC — scope của request đó chỉ mở trục công khai, để plugin lọc là im lặng bỏ sót
+   * toàn bộ tin nội bộ của mọi nhóm. Kết quả trả ra là CON SỐ GỘP, không có dòng tin nào lọt.
+   *
+   * `organizationId`: bản CỦA MỘT NHÓM cho quản trị nhóm — mọi tin MANG DẤU org đó, nội bộ lẫn
+   * công khai do thành viên đăng trong ngữ cảnh nhóm (khoá trục là `visibility`, không phải
+   * `organizationId`). Lọc tường minh ở đây chứ không nhờ scope: scope của quản trị nhóm là "org
+   * của tôi HOẶC trục công khai", để plugin lọc thì báo cáo của nhóm 30 người đếm luôn cả bảng
+   * tin công khai của cả nước.
    *
    * `deletedAt: null` khai tay vì `aggregate` không đi qua hook `pre(/^find/)` của
    * soft-delete — thiếu nó thì tin đã xoá vẫn nằm trong báo cáo.
@@ -528,8 +543,8 @@ export const listingRepository = {
    * "20 tin từ 1 người" khác hẳn "20 tin từ 20 người" — đó là hai kết luận kinh doanh trái
    * ngược nhau từ cùng một con số tổng.
    */
-  reportSeries(from: Date, to: Date, format: string) {
-    return runUnscoped('report: số liệu đăng tin toàn hệ thống cho master', () =>
+  reportSeries(from: Date, to: Date, format: string, organizationId: Types.ObjectId | null = null) {
+    return runUnscoped('report: số liệu đăng tin — toàn hệ thống (master) hoặc một org', () =>
       Listing.aggregate<{
         _id: string
         posts: number
@@ -538,7 +553,13 @@ export const listingRepository = {
         pending: number
         rejected: number
       }>([
-        { $match: { deletedAt: null, createdAt: { $gte: from, $lte: to } } },
+        {
+          $match: {
+            deletedAt: null,
+            createdAt: { $gte: from, $lte: to },
+            ...(organizationId ? { organizationId } : {}),
+          },
+        },
         {
           $group: {
             _id: { $dateToString: { format, date: '$createdAt', timezone: REPORT_TIMEZONE } },
@@ -577,14 +598,21 @@ export const listingRepository = {
    * hiển thị" thay vì "mọi trạng thái" — đúng ngược với thứ tab "Tất cả" của bàn duyệt cần.
    */
   async paginateForModeration(
-    status: ListingStatus | undefined,
+    { status, category, q }: ModerationFilter,
     { skip, limit }: PaginationParams,
   ) {
     const filter: FilterQuery<IListingDocument> = {
       status: status ?? { $in: [...MODERATABLE_STATUSES] },
     }
+    if (category) filter.category = new Types.ObjectId(category)
+    if (q) {
+      const term = new RegExp(escapeRegex(q), 'i')
+      // Cả tên người đăng: quản trị thường lần theo một người bán đáng ngờ, không nhớ đúng tiêu
+      // đề. `$or` ở đây an toàn với plugin: nó ghép scope bằng `.and()`, không ghi đè khoá `$or`.
+      filter.$or = [{ title: term }, { posterName: term }]
+    }
     const [items, total] = await Promise.all([
-      Listing.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Listing.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
       Listing.countDocuments(filter),
     ])
     return { items, total }

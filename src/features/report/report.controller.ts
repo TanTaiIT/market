@@ -1,12 +1,13 @@
 import { reportService } from './report.service'
 import { catchAsync } from '../../common/utils/catchAsync'
-import { orgActor } from '../../common/utils/actor'
+import { moderatorActor } from '../../common/utils/actor'
 import { success, created } from '../../common/utils/apiResponse'
 
 export const reportController = {
-  // POST /reports
+  // POST /reports — `moderatorActor` (chỉ `id`), không phải `orgActor`: trục của báo cáo lấy từ
+  // ĐỐI TƯỢNG bị tố, và người tố có thể không thuộc org nào (khách của trục công khai).
   create: catchAsync(async (req, res) => {
-    const report = await reportService.create(req.body, orgActor(req, 'report.create'))
+    const report = await reportService.create(req.body, moderatorActor(req))
     created(res, { message: 'Report submitted', data: report })
   }),
 
@@ -19,7 +20,7 @@ export const reportController = {
   // PATCH /reports/:id
   resolve: catchAsync(async (req, res) => {
     const report = await reportService.resolve(req.params.id, req.body, {
-      ...orgActor(req, 'report.resolve'),
+      ...moderatorActor(req),
       grants: req.grants!,
     })
     success(res, { message: 'Report resolved', data: report })

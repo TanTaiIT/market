@@ -52,15 +52,6 @@ function coversProvince(grant: Grant, provinceCode: string): boolean {
   return !codes || codes.length === 0 || codes.includes(provinceCode)
 }
 
-function coversProvinces(outer: Grant, inner: Grant): boolean {
-  const outerCodes = outer.provinceCodes
-  if (!outerCodes || outerCodes.length === 0) return true
-  const innerCodes = inner.provinceCodes
-  // Cấp con toàn quốc trong khi mình chỉ có vài tỉnh = cấp quá cấp mình.
-  if (!innerCodes || innerCodes.length === 0) return false
-  return innerCodes.every((code) => outerCodes.includes(code))
-}
-
 export function isMaster(grants: Grant[]): boolean {
   return grants.some((g) => g.role === SYSTEM_ROLES.MASTER && g.scopeType === SCOPE_TYPES.SYSTEM)
 }
@@ -199,53 +190,19 @@ export function canBumpListing(grants: Grant[], listing: ListingTarget): boolean
   return canAdminOrg(grants, listing.organizationId ?? '')
 }
 
-/** `outer` (của manager) có phủ trọn `inner` (định cấp cho staff) không. */
-function covers(outer: Grant, inner: Grant): boolean {
-  if (outer.scopeType === SCOPE_TYPES.ORG) {
-    if (inner.scopeType === SCOPE_TYPES.ORG) return sameId(outer.orgId, inner.orgId)
-    if (inner.scopeType === SCOPE_TYPES.ORG_UNIT) return sameId(outer.orgId, inner.orgId)
-    return false
-  }
-
-  const geoScopes: ScopeType[] = [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]
-  if (!geoScopes.includes(outer.scopeType)) return false
-  // Cùng danh mục là điều kiện cần của cả hai tầng: phạm vi địa lý chỉ có nghĩa bên trong một
-  // danh mục, phủ tỉnh của danh mục khác không cho quyền gì ở đây.
-  if (!sameId(outer.categoryId, inner.categoryId)) return false
-
-  if (outer.scopeType === SCOPE_TYPES.CATEGORY_PROVINCE) {
-    if (inner.scopeType === SCOPE_TYPES.CATEGORY_PROVINCE) return coversProvinces(outer, inner)
-    // Cấp xuống tầng phường: người phụ trách tỉnh chia tải cho từng phường trong tỉnh mình.
-    if (inner.scopeType === SCOPE_TYPES.CATEGORY_WARD) {
-      const provinces = inner.provinceCodes ?? []
-      return provinces.length > 0 && provinces.every((p) => coversProvince(outer, p))
-    }
-    return false
-  }
-
-  // Người phụ trách phường chỉ cấp lại được TRONG chính những phường mình giữ.
-  if (inner.scopeType !== SCOPE_TYPES.CATEGORY_WARD) return false
-  const outerWards = outer.wardCodes ?? []
-  const innerWards = inner.wardCodes ?? []
-  return (
-    (inner.provinceCodes ?? []).every((p) => (outer.provinceCodes ?? []).includes(p)) &&
-    innerWards.length > 0 &&
-    innerWards.every((w) => outerWards.includes(w))
-  )
-}
-
 /**
- * §5.3 — ai cấp được quyền cho ai.
+ * §5.3 — ai cấp được quyền cho ai: CHỈ master.
  *
- * Master là người duy nhất cấp được `manager`; nếu master cũng là người duy nhất cấp được
- * `staff` thì 500 org × 30 nhóm con = 15.000 lần cấp quyền đổ vào một người. Vì vậy manager
- * cấp được `staff`, nhưng chỉ TRONG scope của chính mình.
+ * Hệ thống không còn "cấp phó": quản trị nhóm không cấp được quyền cho ai, và vai trò `staff`
+ * không còn cấp mới được (`createRoleGrantSchema` từ chối từ cửa). Bản trước cho manager cấp
+ * `staff` trong scope của mình để chia tải — đổi lại là một tầng quyền thứ ba mà không ai
+ * kiểm soát được từ trung tâm; giờ mỗi nhóm có đúng những quản trị master đã đặt, không hơn.
+ * Grant `staff` còn trong DB vẫn được policy duyệt-tin hiểu (di sản), nhưng không sinh thêm.
  *
  * Role `master` thì KHÔNG AI cấp được, kể cả master. Hệ thống có đúng MỘT master và nó là dữ
  * liệu mặc định do `scripts/migrate-master.ts` dựng cùng database — không có đường runtime nào
  * sinh ra master thứ hai. Chốt `§5.4` (nay ở `userService.deleteAccount`) chỉ giữ SÀN — luôn
- * còn ≥1; đây là TRẦN, không quá 1. Thiếu nó thì một master bấm nhầm là hệ thống có hai
- * người nắm quyền cao nhất mà không cách nào biết cái nào mới đúng.
+ * còn ≥1; đây là TRẦN, không quá 1.
  */
 export function canGrant(
   actor: { userId: string; grants: Grant[] },
@@ -256,12 +213,7 @@ export function canGrant(
   // Không ai tự nâng quyền cho chính mình — kể cả master, để vết cấp quyền luôn có hai người.
   if (actor.userId === target.userId) return false
 
-  if (isMaster(actor.grants)) return true
-
-  // Chỉ master cấp được `manager`. Manager cấp quá cấp mình là leo thang quyền.
-  if (target.grant.role !== SYSTEM_ROLES.STAFF) return false
-
-  return actor.grants.some((g) => g.role === SYSTEM_ROLES.MANAGER && covers(g, target.grant))
+  return isMaster(actor.grants)
 }
 
 /** Thu hồi grant: cùng luật với cấp — ai cấp được thì thu hồi được. */

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { JOINED_VIA, MEMBERSHIP_ROLES } from '../../common/constants'
+import { JOINED_VIA, MEMBERSHIP_ROLES, PAGINATION } from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
@@ -8,7 +8,7 @@ export const memberParamsSchema = z.object({ userId: objectId })
 
 export const membershipQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 export const memberResponseSchema = z

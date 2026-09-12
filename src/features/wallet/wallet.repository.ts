@@ -37,7 +37,11 @@ export const walletRepository = {
 
   async paginateTransactions(userId: Types.ObjectId, { skip, limit }: PaginationParams) {
     const [items, total] = await Promise.all([
-      XuTransaction.find({ userId }).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      XuTransaction.find({ userId })
+        .sort({ createdAt: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .exec(),
       XuTransaction.countDocuments({ userId }).exec(),
     ])
     return { items, total }

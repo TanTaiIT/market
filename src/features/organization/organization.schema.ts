@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { FEED_LAYOUTS, ORG_TYPES, TENANT_STATUS, VERIFICATION_TIERS } from '../../common/constants'
+import {
+  FEED_LAYOUTS,
+  ORG_TYPES,
+  TENANT_STATUS,
+  VERIFICATION_TIERS,
+  PAGINATION,
+} from '../../common/constants'
 import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 
 export const organizationSlugSchema = z
@@ -125,7 +131,7 @@ export const organizationAdminQuerySchema = z.object({
   q: z.string().max(80).optional(),
   status: z.nativeEnum(TENANT_STATUS).optional(),
   page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 /**

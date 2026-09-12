@@ -9,12 +9,20 @@ import {
   inviteParamsSchema,
   inviteResponseSchema,
   inviteTokenParamsSchema,
+  inviteQuerySchema,
   myInviteSchema,
 } from './invite.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authenticate, requireOrg, requireOrgAdmin } from '../../middlewares/auth.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
-import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
+import {
+  registry,
+  bearerAuth,
+  envelope,
+  jsonResponse,
+  errorResponse,
+  paginationMetaSchema,
+} from '../../config/openapi'
 
 const router = Router()
 
@@ -40,7 +48,14 @@ router.post(
   validate({ body: createInviteSchema }),
   inviteController.create,
 )
-router.get('/', authenticate, requireOrg, requireOrgAdmin, inviteController.list)
+router.get(
+  '/',
+  authenticate,
+  requireOrg,
+  requireOrgAdmin,
+  validate({ query: inviteQuerySchema }),
+  inviteController.list,
+)
 router.delete(
   '/:id',
   authenticate,
@@ -82,8 +97,12 @@ registry.registerPath({
   tags: ['Invite'],
   summary: 'Đã mời ai, ai chưa trả lời',
   ...protectedRoute,
+  request: { query: inviteQuerySchema },
   responses: {
-    200: jsonResponse('Danh sách lời mời', envelope(z.array(inviteResponseSchema))),
+    200: jsonResponse(
+      'Danh sách lời mời',
+      envelope(z.array(inviteResponseSchema), paginationMetaSchema),
+    ),
     401: unauthorized,
     403: notAdmin,
   },

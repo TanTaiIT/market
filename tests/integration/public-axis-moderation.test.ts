@@ -204,11 +204,11 @@ describe('Trục công khai — phạm vi KHÔNG được nới rộng', () => {
 })
 
 /**
- * §5.3 nói manager danh mục chia tải bằng cách cấp `staff` trong scope của mình — nhưng người
- * họ định giao việc thường chẳng thuộc tổ chức nào, nên không có danh bạ nào tra ra `userId`.
- * `userEmail` là đường duy nhất còn lại, và nó phải chịu đúng luật `covers()` như `userId`.
+ * §5.3 sau khi bỏ tầng cấp phó: manager danh mục KHÔNG cấp được cho ai — kể cả trong đúng ô
+ * của mình — và vai trò `staff` không còn cấp mới được. Chỉ master đặt người phụ trách; người
+ * đó thường chẳng thuộc tổ chức nào nên `userEmail` vẫn là đường tự nhiên để trỏ tới họ.
  */
-describe('Trục công khai — manager danh mục cấp staff bằng email', () => {
+describe('Trục công khai — chỉ master cấp quyền, không còn staff', () => {
   /** Người sắp được giao việc — cố tình KHÔNG thuộc nhóm nào, đúng ca danh bạ không có ai. */
   let helper: TestUser
 
@@ -218,48 +218,37 @@ describe('Trục công khai — manager danh mục cấp staff bằng email', ()
 
   const grant = (who: TestUser, body: Record<string, unknown>) =>
     request(app).post('/api/v1/role-grants').set(bearer(who)).send(body)
+  // Hàm, không phải object hằng: `jobs` chỉ có giá trị sau `beforeAll`, đọc lúc khai báo là ''.
+  const helperManager = () => ({
+    role: 'manager',
+    scopeType: 'category_province',
+    categoryId: jobs,
+    provinceCodes: [HCM],
+  })
 
-  it('cấp staff cho đúng ô của mình, chỉ bằng email', async () => {
-    const res = await grant(catManager, {
-      userEmail: helper.email,
-      role: 'staff',
-      scopeType: 'category_province',
-      categoryId: jobs,
-      provinceCodes: [HCM],
-    }).expect(201)
+  it('manager danh mục cấp cho người khác → 403, kể cả đúng ô của mình', async () => {
+    await grant(catManager, { ...helperManager(), userEmail: helper.email }).expect(403)
+  }, 60_000)
 
+  it('`staff` đã bỏ: master gửi role staff → 400, không phải 403', async () => {
+    await grant(master, { ...helperManager(), userEmail: helper.email, role: 'staff' }).expect(400)
+  }, 60_000)
+
+  it('master cấp manager bằng email → 201, đúng người', async () => {
+    const res = await grant(master, { ...helperManager(), userEmail: helper.email }).expect(201)
     expect(res.body.data.userId).toBe(helper.id)
     expect(res.body.data.categoryId).toBe(jobs)
   }, 60_000)
 
   it('email chưa có tài khoản → 404, không tạo grant treo', async () => {
-    await grant(catManager, {
-      userEmail: 'khong-ton-tai@pub.local',
-      role: 'staff',
-      scopeType: 'category_province',
-      categoryId: jobs,
-      provinceCodes: [HCM],
-    }).expect(404)
-  }, 60_000)
-
-  it('sang danh mục khác vẫn 403 — email không nới được phạm vi', async () => {
-    await grant(catManager, {
-      userEmail: helper.email,
-      role: 'staff',
-      scopeType: 'category_province',
-      categoryId: phones,
-      provinceCodes: [HCM],
-    }).expect(403)
+    await grant(master, { ...helperManager(), userEmail: 'khong-ton-tai@pub.local' }).expect(404)
   }, 60_000)
 
   it('gửi cả userId lẫn userEmail → 400: hai định danh có thể trỏ hai người', async () => {
-    await grant(catManager, {
+    await grant(master, {
+      ...helperManager(),
       userId: helper.id,
       userEmail: 'khac@pub.local',
-      role: 'staff',
-      scopeType: 'category_province',
-      categoryId: jobs,
-      provinceCodes: [HCM],
     }).expect(400)
   }, 60_000)
 })

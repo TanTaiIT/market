@@ -2,7 +2,8 @@ import { Types } from 'mongoose'
 import { joinRequestRepository } from './join-request.repository'
 import { IJoinRequestDocument } from './join-request.model'
 import { toJoinRequestDto, toMyJoinRequestDto } from './join-request.types'
-import { CreateJoinRequestInput } from './join-request.schema'
+import { CreateJoinRequestInput, JoinRequestQuery } from './join-request.schema'
+import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { organizationRepository } from '../organization/organization.repository'
 import { normalizeJoinCode } from '../../common/utils/joinCode'
 import { membershipRepository } from '../membership/membership.repository'
@@ -186,10 +187,18 @@ export const joinRequestService = {
   },
 
   /** Hàng đợi duyệt của org hoạt động. */
-  async listForOrganization(organizationId: Types.ObjectId, status?: string) {
+  async listForOrganization(organizationId: Types.ObjectId, query: JoinRequestQuery) {
     await joinRequestRepository.expireStale(new Date())
-    const docs = await joinRequestRepository.listByOrganization(organizationId, status)
-    return docs.map(toJoinRequestDto)
+    const pagination = parsePagination(query)
+    const { items, total } = await joinRequestRepository.paginateByOrganization(
+      organizationId,
+      query.status,
+      pagination,
+    )
+    return {
+      items: items.map(toJoinRequestDto),
+      meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
+    }
   },
 
   /**

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { JOIN_REQUEST_STATUS } from '../../common/constants'
+import { JOIN_REQUEST_STATUS, PAGINATION } from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
@@ -38,7 +38,11 @@ export const joinRequestParamsSchema = z.object({ id: objectId })
 
 export const joinRequestQuerySchema = z.object({
   status: z.nativeEnum(JOIN_REQUEST_STATUS).optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
+
+export type JoinRequestQuery = z.infer<typeof joinRequestQuerySchema>
 
 export const approveJoinRequestSchema = z
   .object({ unitId: objectId.nullable().optional() })

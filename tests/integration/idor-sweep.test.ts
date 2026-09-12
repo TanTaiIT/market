@@ -111,7 +111,8 @@ beforeAll(async () => {
   const grant = await request(app)
     .post('/api/v1/role-grants')
     .set(bearer(master))
-    .send({ userId: owner.id, role: 'staff', scopeType: 'org', orgId })
+    // `manager` cho người CHƯA có quyền — `staff` đã bỏ, còn owner thì đã là manager (409).
+    .send({ userId: applicant.id, role: 'manager', scopeType: 'org', orgId })
     .expect(201)
   grantId = grant.body.data.id
 }, 180_000)

@@ -20,8 +20,20 @@ export const createRoleGrantSchema = z
   .object({
     userId: objectId.optional(),
     userEmail: z.string().trim().email().max(160).optional(),
-    role: z.nativeEnum(SYSTEM_ROLES),
-    scopeType: z.nativeEnum(SCOPE_TYPES),
+    /**
+     * Không còn `staff`: hệ thống bỏ tầng cấp phó, chỉ còn quản trị do master đặt. `master` vẫn
+     * nằm trong enum để policy trả 403 có lý do (không ai cấp được master), thay vì 400 mơ hồ.
+     */
+    role: z.enum([SYSTEM_ROLES.MASTER, SYSTEM_ROLES.MANAGER], {
+      message: 'Vai trò staff đã bỏ — hệ thống không còn cấp phó, chỉ còn Quản lý do master đặt',
+    }),
+    // `org_unit` chỉ từng có nghĩa với `staff` — đi theo nó.
+    scopeType: z.enum([
+      SCOPE_TYPES.SYSTEM,
+      SCOPE_TYPES.ORG,
+      SCOPE_TYPES.CATEGORY_PROVINCE,
+      SCOPE_TYPES.CATEGORY_WARD,
+    ]),
     orgId: objectId.optional(),
     unitId: objectId.optional(),
     categoryId: objectId.optional(),

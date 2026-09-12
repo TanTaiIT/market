@@ -84,9 +84,50 @@ const backdate = (id: string, at: Date) =>
 const report = (query: Record<string, string>, who: TestUser = master) =>
   request(app).get('/api/v1/listings/report').query(query).set(bearer(who))
 
-describe('Báo cáo đăng tin — cổng master', () => {
-  it('người thường không xem được', async () => {
-    await report({ granularity: 'day' }, seller).expect(403)
+describe('Báo cáo đăng tin — cổng', () => {
+  it('người không thuộc nhóm nào không xem được — bản toàn hệ thống là của master', async () => {
+    // `seller` KHÔNG dùng được cho ca này: họ thuộc đúng một nhóm nên `resolveTenant` tự suy ra
+    // org và trả bản của nhóm — đó là hành vi đúng, không phải lỗ hổng.
+    const nobody = await registerUser(app, 'nobody@report.local', 'Không nhóm')
+    await report({ granularity: 'day' }, nobody).expect(403)
+  }, 60_000)
+
+  /**
+   * Bản CỦA NHÓM: cùng endpoint, kèm `X-Org-Slug`, đếm mọi tin MANG DẤU NHÓM — nội bộ lẫn công
+   * khai do thành viên đăng trong ngữ cảnh nhóm (khoá trục là `visibility`, không phải
+   * `organizationId`). Tin công khai của người NGOÀI nhóm (`organizationId: null`) không tính:
+   * nó làm bản toàn hệ thống nhích lên mà bản của nhóm đứng yên.
+   */
+  it('quản trị nhóm kèm org xem bản của nhóm — tin của người ngoài nhóm không được đếm', async () => {
+    // Lùi cả hai tin về một ngày cũ RIÊNG: các test sau đếm cột "hôm nay" theo số người bán, thêm
+    // một người ngoài vào hôm nay là làm lệch con số của họ.
+    const DAY = new Date('2021-03-10T09:00:00.000Z')
+    const window = { granularity: 'day', from: '2021-03-01', to: '2021-03-31' }
+    await backdate(await postInternal('Nội bộ cho báo cáo nhóm'), DAY)
+    const stranger = await registerUser(app, 'stranger@report.local', 'Người ngoài')
+    const pub = await request(app)
+      .post('/api/v1/listings')
+      .set(bearer(stranger))
+      .send({
+        ...listingPayload('Công khai của người ngoài', categoryId),
+        visibility: 'public',
+        provinceCode: HCM,
+      })
+      .expect(201)
+    await backdate(pub.body.data._id, DAY)
+
+    const mine = await request(app)
+      .get('/api/v1/listings/report')
+      .query(window)
+      .set(orgAuth(seller.token, SLUG))
+      .expect(200)
+    const all = await report(window).expect(200)
+
+    const label = bucketLabel(DAY, 'day')
+    const orgDay = mine.body.data.points.find((pt: { bucket: string }) => pt.bucket === label)
+    const allDay = all.body.data.points.find((pt: { bucket: string }) => pt.bucket === label)
+    expect(orgDay.posts).toBe(1)
+    expect(allDay.posts).toBe(2)
   }, 60_000)
 
   it('khách không có token thì 401', async () => {

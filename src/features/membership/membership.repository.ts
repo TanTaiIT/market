@@ -1,6 +1,6 @@
 import { ClientSession, Types } from 'mongoose'
 import { Membership, IMembership, IMembershipDocument } from './membership.model'
-import { MEMBERSHIP_STATUS } from '../../common/constants'
+import { MEMBERSHIP_STATUS, REPORT_TIMEZONE } from '../../common/constants'
 import { PaginationParams } from '../../common/utils/pagination'
 
 type Id = string | Types.ObjectId
@@ -8,6 +8,40 @@ type Id = string | Types.ObjectId
 const ACTIVE = { status: MEMBERSHIP_STATUS.ACTIVE }
 
 export const membershipRepository = {
+  /**
+   * Thành viên MỚI theo cột thời gian của MỘT nhóm — anh em với `userRepository.reportSeries`,
+   * nhưng đếm `joinedAt` của membership đang active chứ không phải ngày tạo tài khoản: với quản
+   * trị nhóm, "người mới" là người mới VÀO NHÓM, dù tài khoản có từ năm ngoái. Người đã rời
+   * (`archived`) không đếm — báo cáo trả lời "nhóm lớn thêm bao nhiêu", không phải "từng có ai".
+   */
+  reportSeries(organizationId: Id, from: Date, to: Date, format: string) {
+    return Membership.aggregate<{ _id: string; users: number }>([
+      {
+        $match: {
+          organizationId: new Types.ObjectId(organizationId),
+          ...ACTIVE,
+          joinedAt: { $gte: from, $lte: to },
+        },
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format, date: '$joinedAt', timezone: REPORT_TIMEZONE } },
+          users: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]).exec()
+  },
+
+  /** Số thành viên đã ở trong nhóm TRƯỚC mốc `before` — điểm xuất phát của đường cộng dồn. */
+  countJoinedBefore(organizationId: Id, before: Date): Promise<number> {
+    return Membership.countDocuments({
+      organizationId,
+      ...ACTIVE,
+      joinedAt: { $lt: before },
+    }).exec()
+  },
+
   create(data: Partial<IMembership>, session?: ClientSession) {
     return Membership.create([data], { session }).then(([doc]) => doc)
   },
@@ -19,7 +53,7 @@ export const membershipRepository = {
 
   listActiveByUser(userId: Id): Promise<IMembershipDocument[]> {
     return Membership.find({ userId, ...ACTIVE })
-      .sort({ joinedAt: 1 })
+      .sort({ joinedAt: 1, _id: 1 })
       .exec()
   },
 
@@ -49,7 +83,7 @@ export const membershipRepository = {
   async paginateByOrganization(organizationId: Id, { skip, limit }: PaginationParams) {
     const filter = { organizationId, ...ACTIVE }
     const [items, total] = await Promise.all([
-      Membership.find(filter).sort({ joinedAt: 1 }).skip(skip).limit(limit).exec(),
+      Membership.find(filter).sort({ joinedAt: 1, _id: 1 }).skip(skip).limit(limit).exec(),
       Membership.countDocuments(filter).exec(),
     ])
     return { items, total }

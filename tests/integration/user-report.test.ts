@@ -5,10 +5,13 @@ import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import type { Application } from 'express'
 import {
   TestUser,
+  addMember,
   createCategory,
+  createOrg,
   createTestApp,
   listingPayload,
   makeMaster,
+  orgAuth,
   registerUser,
   startTestDb,
 } from '../helpers/fixtures'
@@ -50,11 +53,44 @@ const todayPoint = async () => {
   return res.body.data.points.at(-1)
 }
 
-describe('Báo cáo người dùng — cổng master', () => {
+describe('Báo cáo người dùng — cổng', () => {
   it('người thường không xem được, khách thì 401', async () => {
     const someone = await registerUser(app, 'plain@ureport.local', 'Người thường')
     await report({ granularity: 'day' }, someone).expect(403)
     await request(app).get('/api/v1/users/report').expect(401)
+  }, 60_000)
+
+  /**
+   * Bản CỦA NHÓM đếm THÀNH VIÊN vào nhóm, không đếm tài khoản của cả sàn: nhóm hai người thì
+   * `total` là 2, dù sàn lúc này đã có nhiều tài khoản hơn thế. Thành viên thường của nhóm không
+   * xem được — đây là con số của quản trị.
+   */
+  it('quản trị nhóm kèm org: đếm thành viên của nhóm, không phải tài khoản toàn sàn', async () => {
+    const owner = await registerUser(app, 'chu@ureport.local', 'Chủ nhóm')
+    const member = await registerUser(app, 'tv@ureport.local', 'Thành viên')
+    const org = await createOrg(app, master.token, {
+      name: 'Nhóm báo cáo người',
+      slug: 'nhom-ureport',
+      ownerEmail: owner.email,
+    })
+    await addMember(member.id, org.id)
+
+    const mine = await request(app)
+      .get('/api/v1/users/report')
+      .query({ granularity: 'day' })
+      .set(orgAuth(owner.token, 'nhom-ureport'))
+      .expect(200)
+    expect(mine.body.data.totals.total).toBe(2)
+    expect(mine.body.data.totals.users).toBe(2)
+
+    const all = await report({ granularity: 'day' }).expect(200)
+    expect(all.body.data.totals.total).toBeGreaterThan(2)
+
+    await request(app)
+      .get('/api/v1/users/report')
+      .query({ granularity: 'day' })
+      .set(orgAuth(member.token, 'nhom-ureport'))
+      .expect(403)
   }, 60_000)
 })
 

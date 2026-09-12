@@ -1,6 +1,7 @@
 import { Types } from 'mongoose'
 import { Invite, IInvite, IInviteDocument } from './invite.model'
 import { INVITE_STATUS } from '../../common/constants'
+import { PaginationParams } from '../../common/utils/pagination'
 
 type Id = string | Types.ObjectId
 
@@ -22,14 +23,20 @@ export const inviteRepository = {
     return Invite.findOne({ tokenHash }).exec()
   },
 
-  listByOrganization(organizationId: Id) {
-    return Invite.find({ organizationId }).sort({ createdAt: -1 }).limit(200).exec()
+  /** Phân trang thay cho trần cứng `.limit(200)` cũ — trần đó vừa cắt im lặng vừa trả thừa. */
+  async paginateByOrganization(organizationId: Id, { skip, limit }: PaginationParams) {
+    const filter = { organizationId }
+    const [items, total] = await Promise.all([
+      Invite.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).exec(),
+      Invite.countDocuments(filter).exec(),
+    ])
+    return { items, total }
   },
 
   /** Hộp thư lời mời của một người: chỉ lời mời đích danh, chỉ cái còn hiệu lực. */
   listPendingForUser(userId: Id) {
     return Invite.find({ invitedUserId: userId, status: INVITE_STATUS.PENDING })
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .exec()
   },
 

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { INVITE_CHANNELS, INVITE_STATUS } from '../../common/constants'
+import { INVITE_CHANNELS, INVITE_STATUS, PAGINATION } from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
@@ -25,6 +25,13 @@ export const createInviteSchema = z
   .openapi('CreateInvite')
 
 export const inviteParamsSchema = z.object({ id: objectId })
+
+export const inviteQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
+})
+
+export type InviteQuery = z.infer<typeof inviteQuerySchema>
 
 /** Token đi trong URL nên phải chốt hình dạng: 32 byte hex = 64 ký tự. */
 export const inviteTokenParamsSchema = z.object({

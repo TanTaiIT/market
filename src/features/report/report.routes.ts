@@ -9,12 +9,9 @@ import {
   reportResponseSchema,
 } from './report.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import {
-  authenticate,
-  requireOrg,
-  requireOrgModerator,
-  requireOrgReadOrMaster,
-} from '../../middlewares/auth.middleware'
+import { authenticate } from '../../middlewares/auth.middleware'
+import { requireAnyModerator } from '../moderation/moderation.middleware'
+import { requireReportReader } from './report.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
   registry,
@@ -27,7 +24,8 @@ import {
 
 const router = Router()
 
-// Gửi báo cáo: mọi thành viên. Đọc và xử: chỉ quản trị — hàng đợi báo cáo lộ ra ai tố ai.
+// Gửi: mọi người đã đăng nhập, kể cả không thuộc org nào. Đọc và xử: người duyệt ĐÚNG TRỤC của
+// đối tượng bị báo cáo — hàng đợi báo cáo lộ ra ai tố ai, nên không mở rộng hơn thế.
 router.post(
   '/',
   authenticate,
@@ -40,15 +38,16 @@ router.post(
 router.get(
   '/',
   authenticate,
-  requireOrgReadOrMaster,
+  requireReportReader,
   validate({ query: reportQuerySchema }),
   reportController.list,
 )
 router.patch(
   '/:id',
+  // Không `requireOrg`: người phụ trách ô trục công khai không đứng trong org nào. Thẩm quyền
+  // trên ĐÚNG báo cáo do service phán theo trục của nó (`assertCanResolve`).
   authenticate,
-  requireOrg,
-  requireOrgModerator,
+  requireAnyModerator,
   validate({ params: reportParamsSchema, body: resolveReportSchema }),
   reportController.resolve,
 )
@@ -57,7 +56,7 @@ router.patch(
 const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
 const reportResponse = envelope(reportResponseSchema)
 const unauthorized = errorResponse('Thiếu hoặc sai access token')
-const notModerator = errorResponse('Cần quyền owner hoặc moderator')
+const notModerator = errorResponse('Không có quyền duyệt ở trục của đối tượng bị báo cáo')
 
 registry.registerPath({
   method: 'post',
@@ -82,7 +81,10 @@ registry.registerPath({
   operationId: 'reportList',
   tags: ['Report'],
   summary: 'Hàng đợi báo cáo (quản trị)',
-  description: '`count` là số người cùng báo cáo một đối tượng, tính lúc đọc.',
+  description:
+    'Hợp hai trục theo quyền của người gọi: báo cáo trong org đang đứng (kèm `X-Org-Slug`, nếu ' +
+    'duyệt được ở đó) + báo cáo về tin công khai trong ô mình phụ trách. Master thấy tất cả. ' +
+    '`count` là số người cùng báo cáo một đối tượng, tính lúc đọc.',
   ...protectedRoute,
   request: { query: reportQuerySchema },
   responses: {

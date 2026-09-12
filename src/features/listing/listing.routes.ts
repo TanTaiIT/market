@@ -11,13 +11,18 @@ import {
   nearbyQuerySchema,
   listingParamsSchema,
   listingResponseSchema,
+  ownerListingSchema,
   postingStatsQuerySchema,
   postingStatsSchema,
   postingFeeSchema,
 } from './listing.schema'
 import { listingProductResponseSchema } from '../listing-product/listing-product.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
+import {
+  authenticate,
+  requireMaster,
+  requireOrgReadOrMaster,
+} from '../../middlewares/auth.middleware'
 import { requireAnyModerator } from '../moderation/moderation.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
@@ -70,10 +75,11 @@ router.get('/products', listingController.products)
  * THỜI GIAN theo ngày/tháng/năm để nhìn xu hướng. Gộp hai thứ vào một endpoint sẽ đẻ ra một
  * response mà mỗi màn chỉ dùng một nửa.
  */
+// Quản trị nhóm xem bản CỦA NHÓM (kèm `X-Org-Slug`), master không kèm org xem toàn hệ thống.
 router.get(
   '/report',
   authenticate,
-  requireMaster,
+  requireOrgReadOrMaster,
   validate({ query: listingReportQuerySchema }),
   listingController.report,
 )
@@ -219,7 +225,8 @@ registry.registerPath({
   path: '/listings/report',
   operationId: 'listingReport',
   tags: ['Listing'],
-  summary: 'Báo cáo đăng tin theo ngày / tháng / năm (master)',
+  summary:
+    'Báo cáo đăng tin theo ngày / tháng / năm (master: toàn hệ thống · quản trị nhóm: nhóm mình)',
   description:
     'Chuỗi thời gian số tin đăng, gộp theo múi giờ THỊ TRƯỜNG (Asia/Ho_Chi_Minh) chứ không ' +
     'theo UTC hay theo máy người xem. Cột rỗng vẫn có mặt với số 0 để biểu đồ không nối ' +
@@ -272,7 +279,7 @@ registry.registerPath({
   ...protectedRoute,
   request: { params: listingParamsSchema },
   responses: {
-    200: jsonResponse('Tin của bạn', envelope(listingResponseSchema)),
+    200: jsonResponse('Tin của bạn', envelope(ownerListingSchema)),
     401: errorResponse('Thiếu hoặc sai access token'),
     404: errorResponse('Không tìm thấy tin, hoặc tin không phải của bạn'),
   },
@@ -292,7 +299,7 @@ registry.registerPath({
   responses: {
     200: jsonResponse(
       'Danh sách tin của bạn',
-      envelope(z.array(listingResponseSchema), paginationMetaSchema),
+      envelope(z.array(ownerListingSchema), paginationMetaSchema),
     ),
     401: errorResponse('Thiếu hoặc sai access token'),
   },

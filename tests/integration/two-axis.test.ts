@@ -361,36 +361,52 @@ describe('Duyệt tin — phạm vi theo trục', () => {
   })
 
   /**
-   * `PATCH /reports/:id` cũng ẩn được tin và chỉ gác bằng `requireOrgModerator`, nên nó từng là
-   * đường vòng qua hai ca ở trên: `report.service` gọi thẳng `listingService.setModerationStatus`,
-   * bỏ qua phép kiểm vốn nằm trong `moderation.service`.
+   * `PATCH /reports/:id` cũng ẩn được tin, nên nó từng là đường vòng qua hai ca ở trên:
+   * `report.service` gọi thẳng `listingService.setModerationStatus`, bỏ qua phép kiểm vốn nằm
+   * trong `moderation.service`.
    *
-   * Giờ bịt ở hai lớp. Lớp NGOÀI kiểm ở đây: báo cáo không nhận tin trục danh mục ngay từ đầu,
-   * vì `Report` là collection có tenant — nhận vào là đẩy báo cáo sang một hàng đợi mà không ai
-   * trong đó có thẩm quyền xử. Lớp TRONG (`assertCanModerateListing` nằm trong chính
-   * `setModerationStatus`) khoá bằng `tests/unit/policy.test.ts`.
+   * Bản trước bịt bằng cách TỪ CHỐI báo cáo tin trục danh mục (400 "sắp có"). Giờ `Report` là
+   * dual-axis: báo cáo nhận vào nhưng đóng dấu TRỤC CỦA TIN (`organizationId: null`), nên nó không
+   * rơi vào hàng đợi của org người tố — quản trị org không thấy, và có id trong tay cũng không
+   * đóng được: `assertCanResolve` → `assertCanModerateListing` chốt theo trục. Lớp TRONG
+   * (`setModerationStatus` tự kiểm) khoá bằng `tests/unit/policy.test.ts`.
    */
-  it('không gửi được báo cáo cho tin trục danh mục', async () => {
+  it('báo cáo tin trục danh mục KHÔNG mở đường cho quản trị org ẩn tin đó', async () => {
     const reporter = await registerUser(app, 'reporter@two-axis.local', 'Người báo cáo')
     await addMember(reporter.id, orgId)
 
-    const res = await request(app).post('/api/v1/reports').set(orgAuth(reporter.token, SLUG)).send({
-      targetType: 'listing',
-      targetId: outsiderPublic,
-      kind: 'scam',
-      quote: 'Yêu cầu chuyển khoản trước khi cho xem hàng',
-    })
+    const res = await request(app)
+      .post('/api/v1/reports')
+      .set(orgAuth(reporter.token, SLUG))
+      .send({
+        targetType: 'listing',
+        targetId: outsiderPublic,
+        kind: 'scam',
+        quote: 'Yêu cầu chuyển khoản trước khi cho xem hàng',
+      })
+      .expect(201)
+    const reportId = res.body.data.id as string
 
-    expect(res.status).toBe(400)
-
-    // Kiểm cả HẬU QUẢ: chặn mà vẫn ghi bản ghi thì hàng đợi vẫn bẩn. `Report` có tenantPlugin
-    // nên phép đếm ngoài request phải khai `runUnscoped`, đúng luật của mọi lối đi xuyên tenant.
+    // Đóng dấu trục của TIN, dù người tố đang đứng trong org.
     const { Report } = await import('../../src/features/report/report.model')
     const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
-    const leftovers = await runUnscoped('test: đếm báo cáo mọi org', () =>
-      Report.countDocuments({ targetId: outsiderPublic }).exec(),
+    const row = await runUnscoped('test: đọc báo cáo', () =>
+      Report.findById(reportId).lean().exec(),
     )
-    expect(leftovers).toBe(0)
+    expect(row?.organizationId).toBeNull()
+
+    // Hàng đợi của org không có nó, và quản trị org không ẩn được tin qua nó.
+    const queue = await request(app)
+      .get('/api/v1/reports?status=open')
+      .set(orgAuth(owner.token, SLUG))
+      .expect(200)
+    expect((queue.body.data as { id: string }[]).map((r) => r.id)).not.toContain(reportId)
+
+    await request(app)
+      .patch(`/api/v1/reports/${reportId}`)
+      .set(orgAuth(owner.token, SLUG))
+      .send({ action: 'hide_target' })
+      .expect(403)
   })
 
   it('có grant đúng ô (danh mục × tỉnh) thì ghim được tin công khai', async () => {

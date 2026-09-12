@@ -193,7 +193,7 @@ export const organizationRepository = {
     if (branches.length > 0) filter.$or = branches
 
     const [items, total] = await Promise.all([
-      Organization.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      Organization.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).exec(),
       Organization.countDocuments(filter).exec(),
     ])
     return { items, total }

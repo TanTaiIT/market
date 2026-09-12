@@ -1,5 +1,5 @@
 import { Types } from 'mongoose'
-import { listingRepository } from './listing.repository'
+import { listingRepository, ModerationFilter } from './listing.repository'
 import {
   CreateListingInput,
   ListingQuery,
@@ -9,6 +9,7 @@ import {
 } from './listing.schema'
 import { IListing, IListingDocument } from './listing.model'
 import { RoutingResult, routeListing } from './listing.routing'
+import { reviewOf } from './listing.review'
 import { PostingFee, postingFee } from './listing.pricing'
 import { RECONCILE_LIMIT, listingExpiresAt, reconcileCutoff } from './listing.expiry.service'
 import { BUCKET_FORMAT, bucketsBetween, resolveRange } from '../../common/report/timeBuckets'
@@ -30,6 +31,7 @@ import {
   medianOf,
   reviewByMachine,
 } from '../moderation/moderation.machine'
+import type { MachineHold } from '../moderation/moderation.machine'
 import { notificationService } from '../notification/notification.service'
 import { bannedPhraseService } from '../banned-phrase/banned-phrase.service'
 import { listingProductService } from '../listing-product/listing-product.service'
@@ -442,7 +444,7 @@ async function fastPathFlagged(
   input: CreateListingInput,
   sellerId: Types.ObjectId,
   categoryId: Types.ObjectId,
-): Promise<boolean> {
+): Promise<MachineHold[]> {
   const dupSince = new Date(Date.now() - MACHINE_REVIEW.DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
   const [prices, hasDuplicateTitle] = await Promise.all([
     listingRepository.sampleActivePrices(categoryId, MACHINE_REVIEW.PRICE_SAMPLE_SIZE),
@@ -460,7 +462,20 @@ async function fastPathFlagged(
     hasDuplicateTitle,
     categoryRequiresReview: false,
   })
-  return screening.verdict !== 'approve'
+  // Trả về ĐÚNG các hold, không phải một boolean: đây là dữ liệu duy nhất giải thích được cho
+  // người đăng vì sao tin của họ dừng lại — ném nó đi rồi chỉ ghi "flagged" là câm.
+  return screening.verdict === 'hold' ? screening.holds : []
+}
+
+/**
+ * DTO cho CHÍNH CHỦ = DTO công khai + `review`.
+ *
+ * `toJSON` của model cố ý xoá `autoApproval`/`machineReview` khỏi DTO chung — hồ sơ kiểm duyệt
+ * không thuộc về trang tin ai cũng đọc. Nên phần giải thích được ghép ở ĐÂY, chỉ trên hai đường
+ * `/listings/mine*`, và đã qua `reviewOf` để dịch mã thành câu — client không bao giờ thấy mã.
+ */
+function toOwnerListing(doc: IListingDocument) {
+  return { ...doc.toJSON(), review: reviewOf(doc) }
 }
 
 export const listingService = {
@@ -515,9 +530,8 @@ export const listingService = {
 
     const wouldAutoApprove =
       !banned && isAutoApprove(author.trustLevel, recentRejections) && !category.requireManualReview
-    const contentFlagged = wouldAutoApprove
-      ? await fastPathFlagged(input, sellerId, categoryId)
-      : false
+    const holds = wouldAutoApprove ? await fastPathFlagged(input, sellerId, categoryId) : []
+    const contentFlagged = holds.length > 0
 
     const routed = routeListing({
       visibility,
@@ -555,6 +569,8 @@ export const listingService = {
     // sự cố thì con số đã khác từ lâu.
     const autoApproval = {
       trustLevel: author.trustLevel,
+      // Chỉ ghi khi có — mảng rỗng trên mọi tin tự lên là một field nhiễu.
+      ...(holds.length > 0 ? { holds } : {}),
       reason: banned
         ? ('content_banned' as const)
         : autoApprovalReason({
@@ -1031,7 +1047,7 @@ export const listingService = {
    * Cũng KHÔNG tăng `viewCount`: chủ tin mở form sửa không phải một lượt xem.
    */
   async getOwn(id: string, userId: string) {
-    return assertOwnerUnscoped(id, userId)
+    return toOwnerListing(await assertOwnerUnscoped(id, userId))
   },
 
   /* ------------------------- dành cho bàn quản trị ------------------------- */
@@ -1049,13 +1065,13 @@ export const listingService = {
     const pagination = parsePagination(query)
     const { items, total } = await listingRepository.paginateMine(sellerId, pagination)
     return {
-      items,
+      items: items.map(toOwnerListing),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },
 
-  listForModeration(status: ListingStatus | undefined, pagination: PaginationParams) {
-    return listingRepository.paginateForModeration(status, pagination)
+  listForModeration(filter: ModerationFilter, pagination: PaginationParams) {
+    return listingRepository.paginateForModeration(filter, pagination)
   },
 
   async setModerationStatus(
@@ -1139,18 +1155,20 @@ export const listingService = {
 
   /** Dữ liệu định giá cho hệ Xu — xem ghi chú dài ở `listingRepository.postingStats`. */
   /**
-   * Báo cáo đăng tin theo thời gian — master-only, xem `listingRepository.reportSeries`.
+   * Báo cáo đăng tin theo thời gian — toàn hệ thống (master, không kèm org) hoặc của MỘT nhóm
+   * (quản trị nhóm, hoặc master đang đứng trong một org). Xem `listingRepository.reportSeries`.
    *
    * Service làm đúng hai việc mà tầng DB không làm được: chốt khoảng thời gian (mặc định, trần)
    * và ĐIỀN CỘT RỖNG. Mongo chỉ trả về cột CÓ dữ liệu, nên một tuần không ai đăng tin sẽ biến
    * mất khỏi mảng và biểu đồ nối thẳng hai đầu thành một đoạn dốc chưa từng xảy ra.
    */
-  async listingReport(query: ListingReportQuery) {
+  async listingReport(query: ListingReportQuery, organizationId: Types.ObjectId | null = null) {
     const range = resolveRange(query)
     const rows = await listingRepository.reportSeries(
       range.from,
       range.to,
       BUCKET_FORMAT[range.granularity],
+      organizationId,
     )
 
     const byBucket = new Map(rows.map((row) => [row._id, row]))
