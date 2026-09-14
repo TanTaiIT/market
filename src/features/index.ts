@@ -24,6 +24,7 @@ import bannedPhraseRoutes from './banned-phrase/banned-phrase.routes'
 import listingProductRoutes from './listing-product/listing-product.routes'
 import walletRoutes from './wallet/wallet.routes'
 import metricsRoutes from './metrics/metrics.routes'
+import socialFeedbackRoutes from './social-feedback/social-feedback.routes'
 
 const router = Router()
 
@@ -52,6 +53,10 @@ router.use('/banned-phrases', bannedPhraseRoutes)
 router.use('/listing-products', listingProductRoutes)
 // Ví Xu — của chính chủ; master chỉ có đường cộng/trừ, không có đường đọc ví người khác.
 router.use('/wallet', walletRoutes)
+
+// --- Nghĩa vụ công bố pháp lý (cụm TẠM THỜI — công thức gỡ ở social-feedback.model.ts) ---
+// Ghi lẫn đọc đều KHÔNG đăng nhập; bàn duyệt nằm bên trong router và là master-only.
+router.use('/social-feedback', socialFeedbackRoutes)
 
 // --- Bàn của master: số liệu gộp MỌI tổ chức, nên master-only tuyệt đối ---
 router.use('/metrics', metricsRoutes)

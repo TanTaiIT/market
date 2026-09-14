@@ -407,3 +407,18 @@ export type InviteStatus = (typeof INVITE_STATUS)[keyof typeof INVITE_STATUS]
 
 /** Lời mời sống 14 ngày: đủ để người ta thấy tin nhắn, ngắn để một link rò rỉ không sống mãi. */
 export const INVITE_TTL_DAYS = 14
+
+/**
+ * Trạng thái của một đánh giá do tổ chức xã hội gửi lên (cụm TẠM THỜI — xem
+ * `features/social-feedback/social-feedback.model.ts`).
+ *
+ * `pending` là mặc định vì cửa gửi KHÔNG đăng nhập: bất kỳ ai cũng POST được, nên không có
+ * bước duyệt thì trang công bố pháp lý thành bảng tin của người qua đường.
+ */
+export const SOCIAL_FEEDBACK_STATUS = {
+  PENDING: 'pending',
+  PUBLISHED: 'published',
+  REJECTED: 'rejected',
+} as const
+export type SocialFeedbackStatus =
+  (typeof SOCIAL_FEEDBACK_STATUS)[keyof typeof SOCIAL_FEEDBACK_STATUS]

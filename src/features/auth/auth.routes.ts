@@ -7,6 +7,8 @@ import {
   refreshSchema,
   googleAuthSchema,
   authResponseSchema,
+  verifyEmailSchema,
+  sendCodeResponseSchema,
 } from './auth.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authLimiter } from '../../middlewares/rateLimiter.middleware'
@@ -36,6 +38,26 @@ router.post('/google', authLimiter, validate({ body: googleAuthSchema }), authCo
  * sống mới cắt được phiên của chính mình.
  */
 router.post('/logout', authenticate, authController.logout)
+
+/*
+ * Xác thực email — cả hai đường đều `authenticate`, và người dùng lấy từ TOKEN chứ không từ body.
+ *
+ * Nhận email trong body sẽ dựng ra một máy dò tài khoản: gửi thử từng địa chỉ, ai nhận 200 là
+ * có tài khoản ở đây. Không mất gì khi bắt đăng nhập — `register` trả luôn phiên, nên client
+ * đã cầm token trước khi tới màn nhập mã.
+ *
+ * `authLimiter` là lưới THỨ HAI. Lưới thứ nhất chặt hơn và nằm trong service: 60 giây giữa hai
+ * lượt gửi cho mỗi tài khoản, 5 lần gõ sai là mã chết. Giới hạn theo IP ở đây không thay được
+ * chúng — nó chặn một máy quét nhiều tài khoản, còn hai luật kia chặn việc nhắm một tài khoản.
+ */
+router.post('/email/send-code', authenticate, authLimiter, authController.sendEmailCode)
+router.post(
+  '/email/verify',
+  authenticate,
+  authLimiter,
+  validate({ body: verifyEmailSchema }),
+  authController.verifyEmail,
+)
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 // `operationId` là tên hàm client sau codegen -> phải ổn định và độc lập với path,
@@ -120,6 +142,45 @@ registry.registerPath({
   security: [{ [bearerAuth.name]: [] }],
   responses: {
     200: jsonResponse('Đã đăng xuất', envelope(z.null())),
+    401: errorResponse('Thiếu hoặc sai access token'),
+  },
+})
+
+const emailRoute = { tags: ['Auth'], security: [{ [bearerAuth.name]: [] }] }
+
+registry.registerPath({
+  method: 'post',
+  path: '/auth/email/send-code',
+  operationId: 'authSendEmailCode',
+  ...emailRoute,
+  summary: 'Gửi mã xác thực 6 số tới email của chính mình',
+  description:
+    'Địa chỉ nhận lấy từ TOKEN, không nhận trong body — body có email thì endpoint này thành ' +
+    'máy dò tài khoản. Mỗi tài khoản chỉ có một mã sống: gọi lại là mã cũ chết ngay. Chờ 60 ' +
+    'giây giữa hai lượt gửi, mã sống 10 phút. 503 = máy chủ chưa cấu hình `RESEND_API_KEY`.',
+  responses: {
+    200: jsonResponse('Đã gửi mã', envelope(sendCodeResponseSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    409: errorResponse('Email này đã được xác thực'),
+    429: errorResponse('Gửi lại quá sớm, hoặc quá nhiều request'),
+    503: errorResponse('Xác thực email chưa được bật, hoặc không gửi được thư'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/auth/email/verify',
+  operationId: 'authVerifyEmail',
+  ...emailRoute,
+  summary: 'Đổi mã 6 số lấy dấu đã xác thực',
+  description:
+    'Đúng mã thì `emailVerifiedAt` được đặt và bản ghi mã bị xoá — đọc lại `GET /users/me` để ' +
+    'thấy `isEmailVerified`. Sai 5 lần thì mã chết, phải gửi lại mã mới. Mọi nhánh hỏng đều trả ' +
+    'CÙNG một câu 400: phân biệt "chưa gửi mã" với "mã sai" là chỉ đường cho người đang dò.',
+  request: { body: { content: { 'application/json': { schema: verifyEmailSchema } } } },
+  responses: {
+    200: jsonResponse('Đã xác thực', envelope(z.null())),
+    400: errorResponse('Mã không đúng hoặc đã hết hạn'),
     401: errorResponse('Thiếu hoặc sai access token'),
   },
 })

@@ -76,3 +76,27 @@ registry.register('LoginInput', loginSchema)
 registry.register('RefreshInput', refreshSchema)
 registry.register('GoogleAuthInput', googleAuthSchema)
 registry.register('AuthResponse', authResponseSchema)
+
+// ── XÁC THỰC EMAIL BẰNG MÃ 6 SỐ ─────────────────────────────────────────────
+
+export const verifyEmailSchema = z
+  .object({
+    /**
+     * Chuỗi chứ không `number`: mã `012345` là hợp lệ, mà số thì mất số 0 đầu. Regex thay cho
+     * `.length(6)` để "12 34 5" hay "12-3456" bị chặn ngay ở cửa thay vì thành một lượt so hash.
+     */
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, 'Mã gồm đúng 6 chữ số')
+      .openapi({ example: '042913' }),
+  })
+  .strict()
+  .openapi('VerifyEmail')
+
+export const sendCodeResponseSchema = z
+  .object({
+    expiresInSeconds: z.number(),
+    resendAfterSeconds: z.number(),
+  })
+  .openapi('SendVerificationCode')
