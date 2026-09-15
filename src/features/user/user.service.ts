@@ -1,3 +1,4 @@
+import { Types } from 'mongoose'
 import { userRepository } from './user.repository'
 import {
   AdminUserQuery,
@@ -228,7 +229,12 @@ export const userService = {
    * đường runtime nào dựng lại, phải chạy `npm run migrate:master`.
    */
   /**
-   * Báo cáo NGƯỜI DÙNG theo thời gian — master-only, anh em với `listingService.listingReport`.
+   * Báo cáo NGƯỜI DÙNG theo thời gian — anh em với `listingService.listingReport`.
+   *
+   * Hai bản, cùng hình dạng: toàn hệ thống (master, không kèm org) đếm TÀI KHOẢN mới; bản của
+   * MỘT nhóm (`organizationId`) đếm THÀNH VIÊN mới vào nhóm (`joinedAt`) và `active` là người
+   * có đăng tin mang dấu nhóm trong cột. Quản trị nhóm không được thấy số tài khoản của cả sàn —
+   * đó là con số của master, không phải của một trường.
    *
    * Ba con số vì chúng trả lời ba câu khác nhau, và thiếu một cái là đọc sai hai cái còn lại:
    * - `users` — tài khoản mới. Đo hiệu quả kéo người vào.
@@ -241,14 +247,18 @@ export const userService = {
    * đăng đã dùng, nó vốn đã gom `$addToSet: seller` mỗi cột. Đếm lại bằng một pipeline thứ
    * hai là hai định nghĩa "người hoạt động" chờ nhau lệch.
    */
-  async userReport(query: UserReportQuery) {
+  async userReport(query: UserReportQuery, organizationId: Types.ObjectId | null = null) {
     const range = resolveRange(query)
     const format = BUCKET_FORMAT[range.granularity]
 
     const [rows, listingRows, base] = await Promise.all([
-      userRepository.reportSeries(range.from, range.to, format),
-      listingRepository.reportSeries(range.from, range.to, format),
-      userRepository.countCreatedBefore(range.from),
+      organizationId
+        ? membershipRepository.reportSeries(organizationId, range.from, range.to, format)
+        : userRepository.reportSeries(range.from, range.to, format),
+      listingRepository.reportSeries(range.from, range.to, format, organizationId),
+      organizationId
+        ? membershipRepository.countJoinedBefore(organizationId, range.from)
+        : userRepository.countCreatedBefore(range.from),
     ])
 
     const newBy = new Map(rows.map((row) => [row._id, row.users]))

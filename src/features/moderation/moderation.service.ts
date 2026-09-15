@@ -303,7 +303,10 @@ export const moderationService = {
   },
   async listings(query: ModListingQuery) {
     const pagination = parsePagination(query)
-    const { items, total } = await listingService.listForModeration(query.status, pagination)
+    const { items, total } = await listingService.listForModeration(
+      { status: query.status, category: query.category, q: query.q },
+      pagination,
+    )
     return {
       items,
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
@@ -494,6 +497,18 @@ export const moderationService = {
       orgId,
     )
 
+    return listing
+  },
+
+  /**
+   * MỘT tin cho bàn duyệt, ở BẤT KỲ trạng thái — để người xử báo cáo mở được tin bị tố kể cả
+   * khi nó đã bị ẩn / đang chờ duyệt, và master mở được tin nội bộ của org mình không đứng
+   * trong. Đường công khai `GET /listings/:id` chỉ trả tin đang hiện trong scope của người gọi,
+   * nên cả hai ca đó đều 404 ở đó. Thẩm quyền chốt theo trục của tin, như mọi thao tác khác.
+   */
+  async getListing(id: string, grants: Grant[]) {
+    const listing = await listingService.getForModeration(id)
+    assertCanModerateListing(listing, grants)
     return listing
   },
 

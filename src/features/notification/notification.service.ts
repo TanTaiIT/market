@@ -12,6 +12,14 @@ import { membershipRepository } from '../membership/membership.repository'
 import { orgUnitRepository } from '../org-unit/org-unit.repository'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
+import { emitToOrgMembers, emitToUser } from '../../sockets/emit'
+
+/**
+ * Tên sự kiện realtime của hộp thư. Payload cố ý chỉ có mốc thời gian: client nghe xong thì
+ * hỏi lại `GET /notifications` — nội dung thông báo không cần đi qua đường socket, và gói
+ * mỏng thì không lọt gì vào log của proxy trên đường.
+ */
+const NOTIF_EVENT = 'notif:new'
 
 /** Người đọc hộp thư. `organizationId` chỉ còn dùng cho `scope=managed` (bàn quản trị). */
 type Viewer = { id: string; organizationId: string | null; grants: Grant[] }
@@ -103,12 +111,20 @@ export const notificationService = {
     // `organizationId` khai TƯỜNG MINH: trước đây `tenantPlugin` tự điền lúc save, giờ model đã
     // ra khỏi plugin nên thiếu dòng này là thông báo phát chung không thuộc org nào và không ai
     // đọc được nó.
-    return notificationRepository.create({
+    const notification = await notificationRepository.create({
       organizationId: new Types.ObjectId(actor.organizationId),
       title: input.title,
       body: input.body,
       unitId: unitId ? new Types.ObjectId(unitId) : null,
     })
+
+    /*
+     * Phát cho cả nhóm. KHÔNG loại người soạn: khác `notifyGroupOfListing`, thông báo do quản
+     * trị soạn cũng gửi TỚI họ (họ là thành viên, và `paginateInbox` không loại vì dòng này
+     * không mang `actorId`). Loại họ ở đây sẽ làm chuông im trong khi hộp thư có thêm một dòng.
+     */
+    emitToOrgMembers(actor.organizationId, NOTIF_EVENT, { at: new Date().toISOString() })
+    return notification
   },
 
   /**
@@ -198,7 +214,7 @@ export const notificationService = {
     // Tin nội bộ luôn có org, nhưng kiểu vẫn cho `null` — hỏi tường minh thay vì `!`.
     if (!listing.organizationId) return null
 
-    return notificationRepository.create({
+    const notification = await notificationRepository.create({
       organizationId: listing.organizationId,
       // Phát chung cho CẢ nhóm, không bó vào nhóm con của người đăng: bảng tin là của cả nhóm,
       // `unitId` chỉ phân tầng quyền DUYỆT chứ không phân tầng quyền xem.
@@ -210,6 +226,18 @@ export const notificationService = {
       title: `${listing.posterName} vừa đăng một tin mới`,
       body: listing.title,
     })
+
+    // Trừ chính người đăng — xem `emitToOrgMembers` về việc vì sao bỏ sót vế này làm chuông
+    // của họ rung vì tin của chính họ trong khi số chưa đọc không đổi.
+    emitToOrgMembers(
+      listing.organizationId.toString(),
+      NOTIF_EVENT,
+      {
+        at: new Date().toISOString(),
+      },
+      { exceptUserId: listing.seller.toString() },
+    )
+    return notification
   },
 
   /**
@@ -233,7 +261,9 @@ export const notificationService = {
     title: string
     body: string
   }) {
-    return notificationRepository.createForUser(input)
+    const notification = await notificationRepository.createForUser(input)
+    emitToUser(input.userId.toString(), NOTIF_EVENT, { at: new Date().toISOString() })
+    return notification
   },
 
   /**

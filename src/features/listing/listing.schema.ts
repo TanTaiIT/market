@@ -9,6 +9,7 @@ import {
   POST_VISIBILITY,
   VN_PROVINCE_NAMES,
   isWardOfProvince,
+  PAGINATION,
 } from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
@@ -234,51 +235,79 @@ const attrConstraintSchema = z.union([
     .refine((r) => r.gte !== undefined || r.lte !== undefined, 'Khoảng phải có gte hoặc lte'),
 ])
 
-export const listingQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
-  q: z.string().optional(),
-  category: objectId.optional(),
-  seller: objectId.optional(),
-  province: z.enum(VN_PROVINCE_NAMES).optional(),
-  condition: z.nativeEnum(LISTING_CONDITION).optional(),
-  /**
-   * Chỉ tin nội bộ, hoặc chỉ tin công khai. Bỏ trống = cả hai, tuỳ scope đọc cho phép.
-   *
-   * Cần nó vì scope đọc của `tenantPlugin` là "nhánh org HOẶC nhánh công khai" — đúng cho bảng
-   * tin chính, nhưng mục "TIN TRONG NHÓM" ở hồ sơ nhóm thì hứng luôn cả trục công khai: một
-   * nhóm vừa tạo, chưa có tin nào, vẫn bày ra 6 tin `organizationId: null` không liên quan.
-   *
-   * Đây là bộ lọc, KHÔNG phải cửa hậu: `tenantPlugin` vẫn `$and` scope của nó lên trên, nên
-   * tham số này chỉ thu hẹp kết quả chứ không mở thêm gì. Xin `org_internal` mà không có quyền
-   * đọc nhánh org thì ra rỗng.
+export const listingQuerySchema = z
+  .object({
+    page: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
+    q: z.string().optional(),
+    category: objectId.optional(),
+    seller: objectId.optional(),
+    province: z.enum(VN_PROVINCE_NAMES).optional(),
+    /**
+     * Tầng hai của bộ lọc khu vực, dưới `province`. Không enum (cùng lý do với `ward` lúc đăng
+     * tin); tính hợp lệ chốt ở `superRefine` bên dưới.
+     */
+    ward: z.string().max(100).optional().openapi({ example: 'Phường Bến Thành' }),
+    condition: z.nativeEnum(LISTING_CONDITION).optional(),
+    /**
+     * Chỉ tin nội bộ, hoặc chỉ tin công khai. Bỏ trống = cả hai, tuỳ scope đọc cho phép.
+     *
+     * Cần nó vì scope đọc của `tenantPlugin` là "nhánh org HOẶC nhánh công khai" — đúng cho bảng
+     * tin chính, nhưng mục "TIN TRONG NHÓM" ở hồ sơ nhóm thì hứng luôn cả trục công khai: một
+     * nhóm vừa tạo, chưa có tin nào, vẫn bày ra 6 tin `organizationId: null` không liên quan.
+     *
+     * Đây là bộ lọc, KHÔNG phải cửa hậu: `tenantPlugin` vẫn `$and` scope của nó lên trên, nên
+     * tham số này chỉ thu hẹp kết quả chứ không mở thêm gì. Xin `org_internal` mà không có quyền
+     * đọc nhánh org thì ra rỗng.
+     */
+    visibility: z.nativeEnum(POST_VISIBILITY).optional(),
+    minPrice: z.coerce.number().nonnegative().optional(),
+    maxPrice: z.coerce.number().nonnegative().optional(),
+    /**
+     * Lọc theo thuộc tính động, JSON đã url-encode: `?attrs={"brand":"honda","seats":{"gte":7}}`.
+     *
+     * JSON chứ không phải một cú pháp rút gọn tự chế (`brand:honda|seats:7..`): kiểu giá trị ở
+     * đây có cả số, boolean, mảng và khoảng — mã hoá tay là tự viết một parser nữa để rồi đoán
+     * nhầm `"true"` là chuỗi hay boolean.
+     *
+     * `.catch()` KHÔNG dùng: JSON hỏng phải ra 400 chứ không âm thầm bỏ bộ lọc rồi trả về cả kho.
+     */
+    attrs: z
+      .string()
+      .max(2000)
+      .transform((raw, ctx) => {
+        try {
+          return JSON.parse(raw) as unknown
+        } catch {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: '`attrs` không phải JSON hợp lệ' })
+          return z.NEVER
+        }
+      })
+      .pipe(z.record(attrConstraintSchema).refine((o) => Object.keys(o).length <= 12))
+      .optional(),
+  })
+  /*
+   * `ward` không bao giờ đứng một mình, và phải thuộc đúng tỉnh — cùng luật với
+   * `createListingSchema`. Tên phường/xã lặp giữa các tỉnh ("Phường 1" có ở hàng chục nơi):
+   * lọc xã trần là gộp kết quả của những nơi cách nhau nghìn cây số rồi gọi đó là "gần đây".
+   * 400 chứ không âm thầm bỏ tham số: trang kết quả trắng vì một param lẻ thì không ai đoán ra.
    */
-  visibility: z.nativeEnum(POST_VISIBILITY).optional(),
-  minPrice: z.coerce.number().nonnegative().optional(),
-  maxPrice: z.coerce.number().nonnegative().optional(),
-  /**
-   * Lọc theo thuộc tính động, JSON đã url-encode: `?attrs={"brand":"honda","seats":{"gte":7}}`.
-   *
-   * JSON chứ không phải một cú pháp rút gọn tự chế (`brand:honda|seats:7..`): kiểu giá trị ở
-   * đây có cả số, boolean, mảng và khoảng — mã hoá tay là tự viết một parser nữa để rồi đoán
-   * nhầm `"true"` là chuỗi hay boolean.
-   *
-   * `.catch()` KHÔNG dùng: JSON hỏng phải ra 400 chứ không âm thầm bỏ bộ lọc rồi trả về cả kho.
-   */
-  attrs: z
-    .string()
-    .max(2000)
-    .transform((raw, ctx) => {
-      try {
-        return JSON.parse(raw) as unknown
-      } catch {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: '`attrs` không phải JSON hợp lệ' })
-        return z.NEVER
-      }
-    })
-    .pipe(z.record(attrConstraintSchema).refine((o) => Object.keys(o).length <= 12))
-    .optional(),
-})
+  .superRefine((q, ctx) => {
+    if (!q.ward) return
+    if (!q.province) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ward'],
+        message: '`ward` phải đi kèm `province`',
+      })
+    } else if (!isWardOfProvince(q.province, q.ward)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ward'],
+        message: `"${q.ward}" không thuộc ${q.province}`,
+      })
+    }
+  })
 
 export type AttrQuery = z.infer<typeof attrConstraintSchema>
 
@@ -293,7 +322,7 @@ export const nearbyQuerySchema = z.object({
   /** Id tin đang xem — để nó không tự xuất hiện trong danh sách "tin gần đây" của chính nó. */
   exclude: objectId.optional(),
   page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 export const listingParamsSchema = z.object({ id: objectId })
@@ -338,6 +367,32 @@ export const listingResponseSchema = z
   .passthrough()
   .openapi('Listing')
 
+/**
+ * Lời giải thích cho chính chủ về trạng thái duyệt — đã là CÂU CHỮ, không phải mã.
+ * Client hiện nguyên văn; mã hold/reason là chi tiết nội bộ và không nằm trong hợp đồng này.
+ */
+export const listingReviewSchema = z
+  .object({
+    state: z.enum(['pending', 'rejected', 'hidden']),
+    title: z.string(),
+    message: z.string(),
+    hint: z.string().optional(),
+  })
+  .openapi('ListingReview')
+
+/**
+ * `Listing` + `review`, CHỈ trả trên `/listings/mine*`. Không nới `Listing` chung: DTO đó ai
+ * cũng đọc được, và lý do một tin bị giữ lại là chuyện giữa người đăng với người duyệt.
+ */
+export const ownerListingSchema = listingResponseSchema
+  .extend({
+    review: listingReviewSchema.optional().openapi({
+      description: 'Vắng khi tin đang hiện / đã bán / hết hạn — không có gì cần giải thích.',
+    }),
+  })
+  .openapi('OwnerListing')
+
+export type ListingReviewDto = z.infer<typeof listingReviewSchema>
 export type CreateListingInput = z.infer<typeof createListingSchema>
 export type UpdateListingInput = z.infer<typeof updateListingSchema>
 export type ListingReportQuery = z.infer<typeof listingReportQuerySchema>
@@ -353,3 +408,5 @@ registry.register('ListingReport', listingReportSchema)
 registry.register('PostingStats', postingStatsSchema)
 registry.register('UpdateListing', updateListingSchema)
 registry.register('Listing', listingResponseSchema)
+registry.register('OwnerListing', ownerListingSchema)
+registry.register('ListingReview', listingReviewSchema)

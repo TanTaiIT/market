@@ -1,5 +1,5 @@
 import { Schema, Types, Query, MongooseQueryMiddleware, FilterQuery } from 'mongoose'
-import { TenantScope, requireScope } from './tenantContext'
+import { PublicAxisScope, TenantScope, requireScope } from './tenantContext'
 import { CrossTenantWriteError } from './tenant.errors'
 import { POST_VISIBILITY, PUBLIC_LISTING_STATUSES } from '../constants'
 
@@ -12,7 +12,16 @@ export interface TenantPluginOptions {
    * vẫn chặn ghi sang org khác. Đọc thì thành `$or` hai vế, vế công khai lấy từ scope.
    */
   dualAxis?: boolean
+  /**
+   * Vế đọc trục danh mục của RIÊNG collection này. Mặc định là vế của `Listing` (khoá trục là
+   * `visibility`, người thường thấy tin đã duyệt). Collection không có `visibility` — `Report`,
+   * khoá trục là `organizationId: null` — phải tự khai vế của mình, và dùng `coverageOf` để
+   * phần "ô của tôi" không bị chép lại. Chỉ có nghĩa khi `dualAxis`.
+   */
+  publicPredicate?: PublicPredicate
 }
+
+export type PublicPredicate = (scope: TenantScope) => FilterQuery<unknown> | null
 
 // Liệt kê đầy đủ, không dùng regex /^find/: nó KHÔNG khớp updateMany/deleteMany/
 // countDocuments/distinct — đúng loại sót đã gây bug countDocuments của soft-delete.
@@ -44,19 +53,19 @@ function orgPredicate(scope: TenantScope): FilterQuery<unknown> | null {
   return ids ? { organizationId: { $in: ids } } : null
 }
 
-/** Vế trục danh mục. `visibility` là khoá của trục, không phải `organizationId` (quyết định Q3). */
-function publicPredicate(scope: TenantScope): FilterQuery<unknown> | null {
-  const axis = scope.publicAxis
-  if (!axis) return null
-
-  if (axis.mode === 'approved') {
-    return { visibility: POST_VISIBILITY.PUBLIC, status: { $in: PUBLIC_LISTING_STATUSES } }
-  }
-
-  // Người duyệt thấy cả tin CHƯA duyệt, nhưng chỉ trong ô của mình. `categoryIds` rỗng và
-  // `cells: null` đều là "bỏ điều kiện" (master) — không phải `$in: []`, cái đó khoá sạch chính
-  // người có quyền rộng nhất.
-  const filter: FilterQuery<unknown> = { visibility: POST_VISIBILITY.PUBLIC }
+/**
+ * Phần "ô của tôi" của một vế trục danh mục: thu hẹp `base` về danh mục và ô địa lý người duyệt
+ * được cấp. Dùng chung cho mọi collection sống trên trục đó — chúng chỉ khác nhau ở cái KHOÁ trục
+ * nằm trong `base`, còn tên field ô (`category`, `provinceCode`, `wardCode`) phải giống nhau.
+ *
+ * `categoryIds` rỗng và `cells: null` đều là "bỏ điều kiện" (master) — không phải `$in: []`, cái
+ * đó khoá sạch chính người có quyền rộng nhất.
+ */
+export function coverageOf(
+  axis: Extract<PublicAxisScope, { mode: 'moderator' }>,
+  base: FilterQuery<unknown>,
+): FilterQuery<unknown> {
+  const filter: FilterQuery<unknown> = { ...base }
   if (axis.categoryIds.length > 0) filter.category = { $in: axis.categoryIds }
   if (axis.cells) {
     // Mỗi ô một vế: grant cấp tỉnh khớp cả tỉnh, grant cấp phường chỉ khớp đúng phường của tỉnh
@@ -73,8 +82,24 @@ function publicPredicate(scope: TenantScope): FilterQuery<unknown> | null {
   return filter
 }
 
+/**
+ * Vế trục danh mục MẶC ĐỊNH — của `Listing`. `visibility` là khoá của trục, không phải
+ * `organizationId` (quyết định Q3). Người duyệt thấy cả tin CHƯA duyệt, nhưng chỉ trong ô của mình.
+ */
+function listingPublicPredicate(scope: TenantScope): FilterQuery<unknown> | null {
+  const axis = scope.publicAxis
+  if (!axis) return null
+  if (axis.mode === 'approved') {
+    return { visibility: POST_VISIBILITY.PUBLIC, status: { $in: PUBLIC_LISTING_STATUSES } }
+  }
+  return coverageOf(axis, { visibility: POST_VISIBILITY.PUBLIC })
+}
+
 /** Hai vế đọc của collection dual-axis. Rỗng = không được đọc gì. */
-function readBranches(scope: TenantScope): FilterQuery<unknown>[] {
+function readBranches(
+  scope: TenantScope,
+  publicPredicate: PublicPredicate,
+): FilterQuery<unknown>[] {
   const branches: FilterQuery<unknown>[] = []
   const org = orgPredicate(scope)
   if (org) branches.push(org)
@@ -90,6 +115,7 @@ function readBranches(scope: TenantScope): FilterQuery<unknown>[] {
  */
 export function tenantPlugin(schema: Schema, options: TenantPluginOptions = {}): void {
   const dualAxis = options.dualAxis ?? false
+  const publicPredicate = options.publicPredicate ?? listingPublicPredicate
 
   schema.add({
     organizationId: {
@@ -112,7 +138,7 @@ export function tenantPlugin(schema: Schema, options: TenantPluginOptions = {}):
         return
       }
 
-      const branches = readBranches(scope)
+      const branches = readBranches(scope, publicPredicate)
       // Không vế nào đọc được: chặn sạch thay vì bỏ filter. Fail-closed vẫn là mặc định.
       if (branches.length === 0) return void this.where({ _id: { $in: [] } })
 
@@ -157,7 +183,7 @@ export function tenantPlugin(schema: Schema, options: TenantPluginOptions = {}):
       return
     }
 
-    const branches = readBranches(scope)
+    const branches = readBranches(scope, publicPredicate)
     this.pipeline().unshift({ $match: branches.length > 0 ? { $or: branches } : { _id: null } })
   })
 

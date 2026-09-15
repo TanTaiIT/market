@@ -75,6 +75,36 @@ const envSchema = z.object({
   // người dùng chỉ thuộc đúng một org.
   APP_BASE_DOMAIN: z.string().optional(),
 
+  /**
+   * Client ID được PHÉP của Google, phân tách bằng dấu phẩy.
+   *
+   * Là DANH SÁCH chứ không một giá trị: một app Expo có ba client ID khác nhau (web, iOS,
+   * Android), và `aud` của id_token là đúng cái client đã phát ra nó. Nhận một giá trị thì
+   * đăng nhập chỉ chạy trên một nền tảng, và lỗi hiện ra là "sai audience" — không ai đoán
+   * được nguyên nhân từ thông điệp đó.
+   *
+   * Vắng mặt = TẮT hẳn đường đăng nhập Google (route trả 503). Cố ý không có mặc định: một
+   * giá trị mặc định ở đây nghĩa là chấp nhận token do một app Google khác phát ra.
+   */
+  GOOGLE_CLIENT_IDS: z.string().optional(),
+
+  /**
+   * Khoá API của Resend — nhà gửi thư của luồng xác thực email.
+   *
+   * Vắng mặt = TẮT hẳn luồng đó (route trả 503), cùng lối `GOOGLE_CLIENT_IDS`. Không có mặc
+   * định và không có nhánh "in mã ra log cho môi trường dev": một mã 6 số nằm trong log là
+   * một mã ai đọc được log cũng dùng được, và nhánh đó sẽ theo lên production đúng một lần.
+   */
+  RESEND_API_KEY: z.string().optional(),
+  /**
+   * Địa chỉ người gửi. Tên miền phải đã xác minh ở Resend, nếu không Resend từ chối gửi.
+   *
+   * Mặc định là `onboarding@resend.dev` — hộp thử của Resend, chỉ gửi được TỚI email của
+   * chính chủ tài khoản Resend. Đủ để chạy thử, không đủ để chạy thật; giá trị này phải đổi
+   * trước khi phát hành.
+   */
+  MAIL_FROM: z.string().default('Ghim <tantaiIT3000@gmail.com>'),
+
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   // 15 phút, không phải 7 ngày: suspend một Organization phải có hiệu lực trong vài phút,
   // và middleware tenant đã check status live nên token ngắn chỉ còn là lớp thứ hai.

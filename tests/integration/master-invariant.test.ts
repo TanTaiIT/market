@@ -104,26 +104,23 @@ describe('Bất biến 1 — hệ thống chỉ có một master', () => {
   })
 
   /**
-   * Chốt PHẢI nằm ở ROLE, không phải ở cấp bậc người cấp.
-   *
-   * Vế `staff` cấp được là phần bắt buộc của bài test: thiếu nó thì "master 403" ở dưới cũng
-   * xanh với luật CŨ (người không phải master vốn đã bị `role !== STAFF` chặn), tức bài test
-   * không chứng minh được gì về thay đổi này.
+   * Hệ thống không còn cấp phó: người không phải master không cấp được GÌ — kể cả `manager`
+   * trong org mình — và đương nhiên không cấp được master. Cả hai cùng 403 ở cửa `requireMaster`.
    */
-  it('quản lý org cấp được staff nhưng KHÔNG cấp được master', async () => {
-    const ok = await request(app)
-      .post('/api/v1/role-grants')
-      .set({ Authorization: `Bearer ${staff.token}` })
-      .set('X-Org-Slug', SLUG)
-      .send({ userId: outsider.id, role: 'staff', scopeType: 'org', orgId: orgId })
-    expect(ok.status).toBe(201)
-
+  it('quản lý org không cấp được ai, và không cấp được master', async () => {
     const denied = await request(app)
       .post('/api/v1/role-grants')
       .set({ Authorization: `Bearer ${staff.token}` })
       .set('X-Org-Slug', SLUG)
-      .send({ userId: outsider.id, role: 'master', scopeType: 'system' })
+      .send({ userId: outsider.id, role: 'manager', scopeType: 'org', orgId: orgId })
     expect(denied.status).toBe(403)
+
+    const deniedMaster = await request(app)
+      .post('/api/v1/role-grants')
+      .set({ Authorization: `Bearer ${staff.token}` })
+      .set('X-Org-Slug', SLUG)
+      .send({ userId: outsider.id, role: 'master', scopeType: 'system' })
+    expect(deniedMaster.status).toBe(403)
   })
 
   /** `canRevoke === canGrant`: cấm cấp cũng là cấm gỡ, nên master không tự tước quyền mình được. */

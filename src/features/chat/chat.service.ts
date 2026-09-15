@@ -8,7 +8,7 @@ import { userRepository } from '../user/user.repository'
 import { BadRequestError, NotFoundError } from '../../common/errors'
 import { PUBLIC_LISTING_STATUSES } from '../../common/constants'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
-import { emitToConversation } from '../../sockets/emit'
+import { emitToConversation, emitToUser } from '../../sockets/emit'
 
 /**
  * CHỈ có danh tính, không kèm org.
@@ -155,6 +155,34 @@ export const chatService = {
 
     const dto = toMessageDto(message)
     emitToConversation(id, 'chat:message', dto)
+
+    /*
+     * Báo cho NGƯỜI NHẬN, tách hẳn khỏi `chat:message` ở trên.
+     *
+     * Hai sự kiện vì hai người nghe khác nhau, không phải vì tiện: `chat:message` đi vào phòng
+     * hội thoại — chỉ tới được người đang MỞ đúng màn chat đó. Người đang ở bảng tin không ở
+     * trong phòng ấy, nên với họ tin nhắn đến hoàn toàn im lặng cho tới lần mở app sau.
+     *
+     * `chat:inbox` đi vào phòng riêng của từng người nhận (`userRoom`), tức mọi thiết bị họ
+     * đang mở, bất kể đang ở màn nào.
+     *
+     * KHÔNG gửi cho chính người gửi: họ vừa gõ tin đó, và `markRead` ở trên vừa xoá cờ chưa
+     * đọc của họ — gửi về sẽ làm huy hiệu của chính mình sáng lên vì tin của chính mình.
+     *
+     * Payload cố ý MỎNG, chỉ đủ để client biết "có gì đó mới ở hội thoại nào": nội dung đầy đủ
+     * thì client tự hỏi lại qua REST khi mở ra. Nhét cả tin nhắn vào đây là đẩy nội dung tới
+     * một thiết bị có thể đang khoá màn hình, và là thứ sẽ lọt vào log của bất kỳ proxy nào.
+     */
+    for (const participant of conversation.participants) {
+      const memberId = participant.user.toString()
+      if (memberId === actor.id) continue
+      emitToUser(memberId, 'chat:inbox', {
+        conversationId: id,
+        senderName: me?.name ?? '',
+        at: message.createdAt.toISOString(),
+      })
+    }
+
     return dto
   },
 

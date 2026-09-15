@@ -15,7 +15,11 @@ import {
 } from './user.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
-import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
+import {
+  authenticate,
+  requireMaster,
+  requireOrgReadOrMaster,
+} from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
@@ -41,10 +45,12 @@ router.delete('/me', authenticate, apiLimiter, userController.deleteMe)
  * sau thì 'report' bị nuốt thành một cái id rồi rụng ở validate ObjectId với lỗi 400 khó hiểu
  * (cùng cái bẫy đã ghi ở '/listings/mine').
  */
+// Quản trị nhóm xem THÀNH VIÊN của nhóm (kèm `X-Org-Slug`); master không kèm org xem tài khoản
+// toàn hệ thống. Cùng cửa với `/listings/report`.
 router.get(
   '/report',
   authenticate,
-  requireMaster,
+  requireOrgReadOrMaster,
   validate({ query: userReportQuerySchema }),
   userController.report,
 )
@@ -131,7 +137,8 @@ registry.registerPath({
   path: '/users/report',
   operationId: 'userReport',
   tags: ['User'],
-  summary: 'Báo cáo người dùng theo ngày / tháng / năm (master)',
+  summary:
+    'Báo cáo người dùng theo ngày / tháng / năm (master: tài khoản toàn hệ thống · quản trị nhóm: thành viên nhóm)',
   description:
     'Anh em với `GET /listings/report` — cùng tham số, cùng múi giờ gộp cột ' +
     '(Asia/Ho_Chi_Minh), cùng cách điền cột rỗng và cắt trần. Ba con số mỗi cột: `users` ' +

@@ -120,7 +120,7 @@ Gate sau Phase 6: `typecheck` sạch · `oxlint` sạch · `prettier` sạch · 
 | Chưa có màn "2 tab" tách người ngoài | Dữ liệu đã tách (`pending_unverified` + hàng đợi `org_outsider`); còn thiếu endpoint lọc sẵn theo tab để client khỏi tự ghép. |
 | Gỡ khoá quyền đăng sau khi bị chặn | Bị chặn vì 3 tin từ chối/7 ngày thì hiện phải chờ hết cửa sổ; chưa có thao tác quản trị để gỡ sớm. |
 | Đường mời / roster / SSO | `joinedVia` đã chừa chỗ, nhưng ba cơ chế join của §7.4 vẫn là vòng sau. |
-| `Report` chưa dual-axis | Báo cáo về tin trục công khai bị đóng dấu org của **người báo cáo**, nên chỉ master xử được — dù `report.service.resolve` đã hai trục. Kèm một lỗi thật: người không thuộc org nào hiện KHÔNG tạo được báo cáo (`requireOrgId` → `CrossTenantWriteError` → 500). Cần `{ dualAxis: true }` + service khai `organizationId` tường minh + nhánh đọc theo ô + migration. |
+| ~~`Report` chưa dual-axis~~ | **Đã trả (09/2026).** `Report` dual-axis, đóng dấu trục của TIN (`report.service.targetOf`): tin nội bộ → org của tin, tin công khai → `null` + toạ độ ô. Vế đọc theo ô (`reportPublicPredicate` qua `coverageOf` dùng chung với `Listing`), `GET /reports` hợp hai trục (`requireReportReader`), `PATCH` chốt theo trục (`assertCanResolve`). Không cần migration: báo cáo cũ đều đã có org. |
 | Theo dõi danh mục | "Gửi thông báo cho người theo dõi danh mục" chưa có model nào đỡ: không có khái niệm follow/subscription trong BE, `notification` chỉ gửi theo org + nhóm con. |
 | Cụm từ cấm theo danh mục | `BannedPhrase` không có field danh mục nên không mở được cho admin danh mục "thêm từ riêng". |
 | Cây danh mục | `Category` không có `parent` — mọi ý tưởng "nhánh danh mục của mình" phải chờ cái này trước. |

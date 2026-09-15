@@ -14,7 +14,14 @@ import {
 import { validate } from '../../middlewares/validate.middleware'
 import { authenticate, requireOrg, requireOrgModerator } from '../../middlewares/auth.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
-import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
+import {
+  registry,
+  bearerAuth,
+  envelope,
+  jsonResponse,
+  errorResponse,
+  paginationMetaSchema,
+} from '../../config/openapi'
 
 const router = Router()
 
@@ -131,7 +138,10 @@ registry.registerPath({
   ...protectedRoute,
   request: { query: joinRequestQuerySchema },
   responses: {
-    200: jsonResponse('Hàng đợi', envelope(z.array(joinRequestResponseSchema))),
+    200: jsonResponse(
+      'Hàng đợi',
+      envelope(z.array(joinRequestResponseSchema), paginationMetaSchema),
+    ),
     403: notModerator,
   },
 })

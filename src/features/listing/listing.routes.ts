@@ -11,13 +11,18 @@ import {
   nearbyQuerySchema,
   listingParamsSchema,
   listingResponseSchema,
+  ownerListingSchema,
   postingStatsQuerySchema,
   postingStatsSchema,
   postingFeeSchema,
 } from './listing.schema'
 import { listingProductResponseSchema } from '../listing-product/listing-product.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
+import {
+  authenticate,
+  requireMaster,
+  requireOrgReadOrMaster,
+} from '../../middlewares/auth.middleware'
 import { requireAnyModerator } from '../moderation/moderation.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
@@ -38,6 +43,24 @@ router.get('/nearby', validate({ query: nearbyQuerySchema }), listingController.
 // Tin của chính mình, mọi trạng thái. PHẢI khai trước `/:id` — Express khớp theo thứ tự, đăng
 // sau thì `mine` bị nuốt thành `:id` rồi rụng ở validate ObjectId với lỗi 400 khó hiểu.
 router.get('/mine', authenticate, validate({ query: listingQuerySchema }), listingController.mine)
+/*
+ * MỘT tin của chính mình, mọi trạng thái — lượt đọc dựng form sửa.
+ *
+ * Không dùng `GET /:id` được: đường đó lọc `status ∈ PUBLIC_LISTING_STATUSES` ngay ở
+ * `incrementView`, nên tin `pending`/`hidden`/`rejected` của chính mình cũng trả 404 (đo
+ * được: 13/24 tin của một tài khoản thật). Nới `GET /:id` ra là phá quy tắc 7 — endpoint
+ * công khai không bao giờ trả tin ngoài `PUBLIC_LISTING_STATUSES`.
+ *
+ * `/mine/:id` hai đoạn nên không tranh chấp với `/:id`, nhưng vẫn khai cạnh `/mine` để thứ
+ * tự đọc ra được là có chủ ý.
+ */
+router.get(
+  '/mine/:id',
+  authenticate,
+  validate({ params: listingParamsSchema }),
+  listingController.getOwn,
+)
+
 // Trạng thái quota — client hiện "còn N slot" thay vì để người dùng đoán vì sao bị chặn (§8.4).
 router.get('/quota', authenticate, listingController.quota)
 
@@ -52,10 +75,11 @@ router.get('/products', listingController.products)
  * THỜI GIAN theo ngày/tháng/năm để nhìn xu hướng. Gộp hai thứ vào một endpoint sẽ đẻ ra một
  * response mà mỗi màn chỉ dùng một nửa.
  */
+// Quản trị nhóm xem bản CỦA NHÓM (kèm `X-Org-Slug`), master không kèm org xem toàn hệ thống.
 router.get(
   '/report',
   authenticate,
-  requireMaster,
+  requireOrgReadOrMaster,
   validate({ query: listingReportQuerySchema }),
   listingController.report,
 )
@@ -201,7 +225,8 @@ registry.registerPath({
   path: '/listings/report',
   operationId: 'listingReport',
   tags: ['Listing'],
-  summary: 'Báo cáo đăng tin theo ngày / tháng / năm (master)',
+  summary:
+    'Báo cáo đăng tin theo ngày / tháng / năm (master: toàn hệ thống · quản trị nhóm: nhóm mình)',
   description:
     'Chuỗi thời gian số tin đăng, gộp theo múi giờ THỊ TRƯỜNG (Asia/Ho_Chi_Minh) chứ không ' +
     'theo UTC hay theo máy người xem. Cột rỗng vẫn có mặt với số 0 để biểu đồ không nối ' +
@@ -241,6 +266,27 @@ registry.registerPath({
 
 registry.registerPath({
   method: 'get',
+  path: '/listings/mine/{id}',
+  operationId: 'listingMineById',
+  tags: ['Listing'],
+  summary: 'Một tin của chính mình (mọi trạng thái) — dựng form sửa',
+  description:
+    'Khác `GET /listings/{id}` ở hai điểm: KHÔNG lọc theo `PUBLIC_LISTING_STATUSES` và KHÔNG ' +
+    'tăng `viewCount`. Chủ tin mở form sửa không phải một lượt xem, và tin `pending`/`hidden`/' +
+    '`rejected` của chính mình phải sửa được — đó đúng là lúc cần sửa nhất. Chủ tin lấy từ ' +
+    'access token. Tin của người khác trả 404 CHỨ KHÔNG 403: 403 là thừa nhận tin đó tồn ' +
+    'tại, đủ để người ngoài dò id.',
+  ...protectedRoute,
+  request: { params: listingParamsSchema },
+  responses: {
+    200: jsonResponse('Tin của bạn', envelope(ownerListingSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    404: errorResponse('Không tìm thấy tin, hoặc tin không phải của bạn'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
   path: '/listings/mine',
   operationId: 'listingMine',
   tags: ['Listing'],
@@ -253,7 +299,7 @@ registry.registerPath({
   responses: {
     200: jsonResponse(
       'Danh sách tin của bạn',
-      envelope(z.array(listingResponseSchema), paginationMetaSchema),
+      envelope(z.array(ownerListingSchema), paginationMetaSchema),
     ),
     401: errorResponse('Thiếu hoặc sai access token'),
   },

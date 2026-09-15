@@ -32,7 +32,7 @@ export const favoriteRepository = {
   /** Toàn bộ id đã lưu — client dùng để tô tim trên danh sách, nên không phân trang. */
   async listingIdsOf(userId: Types.ObjectId): Promise<Types.ObjectId[]> {
     const rows = await Favorite.find({ userId })
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1, _id: -1 })
       .select('listingId')
       .lean()
       .exec()
@@ -42,7 +42,7 @@ export const favoriteRepository = {
   async paginate(userId: Types.ObjectId, { skip, limit }: PaginationParams) {
     const [rows, total] = await Promise.all([
       Favorite.find({ userId })
-        .sort({ createdAt: -1 })
+        .sort({ createdAt: -1, _id: -1 })
         .skip(skip)
         .limit(limit)
         .select('listingId')

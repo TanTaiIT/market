@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
-import { REPORT_KIND, REPORT_STATUS, REPORT_TARGET } from '../../common/constants'
+import { REPORT_KIND, REPORT_STATUS, REPORT_TARGET, PAGINATION } from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
@@ -17,7 +17,7 @@ export const createReportSchema = z
 export const reportQuerySchema = z.object({
   status: z.nativeEnum(REPORT_STATUS).optional(),
   page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 export const reportParamsSchema = z.object({ id: objectId })

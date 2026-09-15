@@ -6,14 +6,22 @@ import {
   MODERATABLE_STATUSES,
   REJECTION_SEVERITIES,
   VN_PROVINCE_NAMES,
+  PAGINATION,
 } from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const modListingQuerySchema = z.object({
   status: z.enum(MODERATABLE_STATUSES).optional(),
+  /**
+   * Thu hẹp phía SERVER — bàn duyệt đã phân trang nên client không còn lọc tại chỗ được: lọc
+   * trên 10 dòng vừa về là danh sách ngắn hơn màn hình, `onEndReached` bắn liên tiếp và kéo hết
+   * mọi trang về chỉ để tìm vài dòng. `q` khớp tiêu đề và tên người đăng.
+   */
+  category: objectId.optional(),
+  q: z.string().trim().min(1).max(100).optional(),
   page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 export const rerouteListingSchema = z
@@ -50,7 +58,7 @@ export const modParamsSchema = z.object({ id: objectId })
 
 export const activityQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 export const setListingStatusSchema = z

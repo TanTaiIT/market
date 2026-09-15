@@ -28,7 +28,7 @@ export const chatRepository = {
   async paginateForUser(userId: Types.ObjectId, { skip, limit }: PaginationParams) {
     const filter = { 'participants.user': userId }
     const [items, total] = await Promise.all([
-      Conversation.find(filter).sort({ lastMessageAt: -1 }).skip(skip).limit(limit),
+      Conversation.find(filter).sort({ lastMessageAt: -1, _id: -1 }).skip(skip).limit(limit),
       Conversation.countDocuments(filter),
     ])
     return { items, total }
@@ -45,7 +45,7 @@ export const chatRepository = {
   async paginateMessages(conversationId: string, { skip, limit }: PaginationParams) {
     const filter = { conversationId: new Types.ObjectId(conversationId) }
     const [items, total] = await Promise.all([
-      Message.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Message.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
       Message.countDocuments(filter),
     ])
     return { items, total }

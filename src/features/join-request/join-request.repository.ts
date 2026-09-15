@@ -1,6 +1,7 @@
 import { Types } from 'mongoose'
 import { JoinRequest, IJoinRequest, IJoinRequestDocument } from './join-request.model'
 import { JOIN_REQUEST_STATUS } from '../../common/constants'
+import { PaginationParams } from '../../common/utils/pagination'
 
 type Id = string | Types.ObjectId
 
@@ -13,14 +14,26 @@ export const joinRequestRepository = {
     return JoinRequest.findOne({ _id: id }).exec()
   },
 
-  listByOrganization(organizationId: Id, status?: string): Promise<IJoinRequestDocument[]> {
+  /**
+   * Phân trang chứ không trả hết: hàng đợi đơn của một trường 2.000 học sinh đầu năm là hàng
+   * trăm dòng, mà màn duyệt chỉ vẽ được mười dòng đầu.
+   */
+  async paginateByOrganization(
+    organizationId: Id,
+    status: string | undefined,
+    { skip, limit }: PaginationParams,
+  ) {
     const filter: Record<string, unknown> = { organizationId }
     if (status) filter.status = status
-    return JoinRequest.find(filter).sort({ createdAt: -1 }).exec()
+    const [items, total] = await Promise.all([
+      JoinRequest.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit).exec(),
+      JoinRequest.countDocuments(filter).exec(),
+    ])
+    return { items, total }
   },
 
   listByUser(userId: Id): Promise<IJoinRequestDocument[]> {
-    return JoinRequest.find({ userId }).sort({ createdAt: -1 }).exec()
+    return JoinRequest.find({ userId }).sort({ createdAt: -1, _id: -1 }).exec()
   },
 
   countPendingByUser(userId: Id) {

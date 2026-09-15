@@ -6,6 +6,7 @@ import {
   VN_PROVINCE_NAMES,
   impersonatesMaster,
   isWardOfProvince,
+  PAGINATION,
 } from '../../common/constants'
 
 export const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
@@ -163,7 +164,7 @@ export const adminUserQuerySchema = z.object({
   q: z.string().max(120).optional(),
   status: z.enum(['active', 'locked']).optional(),
   page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 /**

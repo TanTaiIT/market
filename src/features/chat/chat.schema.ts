@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PAGINATION } from '../../common/constants'
 import { registry } from '../../config/openapi'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
@@ -22,7 +23,7 @@ export const conversationParamsSchema = z.object({ id: objectId })
 
 export const conversationQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().positive().max(100).optional(),
+  limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 export const conversationResponseSchema = z

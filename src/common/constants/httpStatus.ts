@@ -13,6 +13,8 @@ export const httpStatus = {
   TOO_MANY_REQUESTS: 429,
   INTERNAL_SERVER_ERROR: 500,
   NOT_IMPLEMENTED: 501,
+  /** Tính năng có trong code nhưng CHƯA cấu hình trên máy chủ này — vd đăng nhập Google thiếu client ID. */
+  SERVICE_UNAVAILABLE: 503,
 } as const
 
 export type HttpStatus = (typeof httpStatus)[keyof typeof httpStatus]

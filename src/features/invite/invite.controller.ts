@@ -10,9 +10,9 @@ export const inviteController = {
   }),
 
   // GET /invites
-  list: catchAsync(async (_req, res) => {
-    const data = await inviteService.list()
-    success(res, { message: 'Invites', data })
+  list: catchAsync(async (req, res) => {
+    const { items, meta } = await inviteService.list(req.query as never)
+    success(res, { message: 'Invites', data: items, meta })
   }),
 
   // GET /invites/mine

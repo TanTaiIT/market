@@ -2,8 +2,8 @@ import { Types } from 'mongoose'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { reportRepository } from './report.repository'
 import { CreateReportInput, ReportQuery, ResolveReportInput } from './report.schema'
-import { IReportDocument } from './report.model'
-import { listingService } from '../listing/listing.service'
+import { IReport, IReportDocument } from './report.model'
+import { assertCanModerateListing, listingService } from '../listing/listing.service'
 import { trustRepository } from '../trust/trust.repository'
 import type { TrustState } from '../trust/trust.policy'
 import { userRepository } from '../user/user.repository'
@@ -15,13 +15,18 @@ import {
   REPORT_STATUS,
   REPORT_TARGET,
 } from '../../common/constants'
-import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
-import { Grant } from '../../common/authz/policy'
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
+import { Grant, canModerateAnyInOrg, isMaster } from '../../common/authz/policy'
+import { currentScope } from '../../common/tenant/tenantContext'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 
+/** Người gửi báo cáo — chỉ cần `id`: trục của báo cáo lấy từ ĐỐI TƯỢNG, không từ người gửi. */
 export interface ReportActor {
   id: string
-  organizationId: string
+}
+
+export interface ReportModerator extends ReportActor {
+  grants: Grant[]
 }
 
 function toDto(report: IReportDocument, count: number) {
@@ -39,51 +44,101 @@ function toDto(report: IReportDocument, count: number) {
   }
 }
 
-/** Tên hiển thị của đối tượng bị báo cáo, snapshot ngay lúc gửi (§2.3 cấm populate). */
-async function targetTitleOf(input: CreateReportInput): Promise<string> {
+/** Toạ độ trục của đối tượng bị báo cáo — thứ quyết định AI xử báo cáo này. */
+type ReportTarget = Pick<
+  IReport,
+  'targetTitle' | 'organizationId' | 'category' | 'provinceCode' | 'wardCode'
+>
+
+/**
+ * Snapshot đối tượng bị báo cáo (§2.3 cấm populate), và quan trọng hơn: TRỤC của nó.
+ *
+ * Báo cáo đi theo trục của TIN, không theo org của người tố. Bản cũ để `tenantPlugin` đóng dấu
+ * org của người tố, nên phải chặn tin công khai bằng câu "sắp có": ba org tố cùng một tin là ba
+ * hàng đợi rời nhau mà không ai trong đó xử được, còn người không thuộc org nào thì 500. Giờ:
+ *
+ * - tin nội bộ → `organizationId` của tin: quản trị org đó xử;
+ * - tin công khai → `null` + toạ độ ô (`category`, `provinceCode`, `wardCode`): người phụ trách ô
+ *   xử, master là fallback — đúng luật của hàng đợi duyệt (`assertCanModerateListing`).
+ *
+ * Báo cáo về NGƯỜI không có trục tự nhiên: đóng dấu org người tố đang đứng (như trước), không
+ * có org thì lên trục công khai và chỉ master xử (xem `assertCanResolve`).
+ *
+ * `getById` chạy trong scope của người tố nên tin họ không đọc được (tin nội bộ của org khác,
+ * tin công khai chưa duyệt) là 404 ngay ở đây — không báo cáo được thứ mình không thấy.
+ */
+async function targetOf(input: CreateReportInput): Promise<ReportTarget> {
   if (input.targetType === REPORT_TARGET.LISTING) {
     const listing = await listingService.getById(input.targetId)
-
-    /*
-     * Chặn TƯỜNG MINH tin trục danh mục, cùng cách `chat.service.open` từ chối mở hội thoại
-     * ở đó — `Report` là collection có tenant nên báo cáo sẽ rơi vào org của NGƯỜI BÁO CÁO,
-     * còn tin thì thuộc người phụ trách danh mục. Hậu quả: ba org báo cáo cùng một tin sinh ra
-     * ba hàng đợi rời nhau, và không ai trong số họ có thẩm quyền xử (`assertCanModerateListing`
-     * chặn) — báo cáo gửi xong rơi vào hư không.
-     *
-     * Trả lỗi thay vì nhận rồi bỏ đó: hàng đợi báo cáo cho trục danh mục là việc còn nợ cùng
-     * gói với `AuditLog` dual-axis (v2-org-permission.plan.md).
-     */
-    if (!listing.organizationId) {
-      throw new BadRequestError('Chưa báo cáo được tin công khai ngoài tổ chức — sắp có')
+    const isPublic = !listing.organizationId
+    return {
+      targetTitle: listing.title,
+      organizationId: listing.organizationId ?? null,
+      category: isPublic ? listing.category : null,
+      provinceCode: isPublic ? listing.provinceCode : null,
+      wardCode: isPublic ? listing.wardCode : null,
     }
-    return listing.title
   }
+
   const user = await userRepository.findById(input.targetId)
   if (!user) throw new NotFoundError('Không tìm thấy người dùng này')
-  return user.name
+  return {
+    targetTitle: user.name,
+    organizationId: currentScope()?.ownOrgId ?? null,
+    category: null,
+    provinceCode: null,
+    wardCode: null,
+  }
+}
+
+/**
+ * Thẩm quyền đóng MỘT báo cáo, theo trục của nó — đối xứng với `assertCanModerateListing`.
+ *
+ * - Trục org: duyệt được gì đó trong org đó (`canModerateAnyInOrg`). Không → 404, không phải 403:
+ *   xác nhận "báo cáo này tồn tại" cho người ngoài org là máy dò hồ sơ của tổ chức khác.
+ * - Trục công khai, báo cáo về TIN: đúng phép kiểm ô của chính tin đó — người phụ trách ô khác
+ *   thấy 403 với lý do rõ ràng.
+ * - Trục công khai, báo cáo về NGƯỜI: chỉ master, vì không có ô nào để quy về.
+ */
+async function assertCanResolve(report: IReportDocument, grants: Grant[]): Promise<void> {
+  if (report.organizationId) {
+    if (!canModerateAnyInOrg(grants, report.organizationId.toString())) {
+      throw new NotFoundError('Report not found')
+    }
+    return
+  }
+
+  if (report.targetType === REPORT_TARGET.LISTING) {
+    const listing = await listingService.getForModeration(report.targetId.toString())
+    assertCanModerateListing(listing, grants)
+    return
+  }
+
+  if (!isMaster(grants)) {
+    throw new ForbiddenError('Báo cáo về người dùng ngoài tổ chức do master xử')
+  }
 }
 
 export const reportService = {
   async create(input: CreateReportInput, actor: ReportActor) {
     if (input.targetId === actor.id) throw new BadRequestError('Không tự báo cáo chính mình')
 
-    const [targetTitle, reporter] = await Promise.all([
-      targetTitleOf(input),
+    const [target, reporter] = await Promise.all([
+      targetOf(input),
       userRepository.findById(actor.id),
     ])
     if (!reporter) throw new NotFoundError('User not found')
 
     try {
       const report = await reportRepository.create({
+        ...target,
         targetType: input.targetType,
         targetId: new Types.ObjectId(input.targetId),
-        targetTitle,
         kind: input.kind,
         quote: input.quote,
         reporterId: reporter._id,
-        // Snapshot này moderator của org đọc được — master báo cáo thì che tên thật, cùng
-        // lý do với `audit_logs.actorName`.
+        // Snapshot này người duyệt đọc được — master báo cáo thì che tên thật, cùng lý do với
+        // `audit_logs.actorName`.
         reporterName: (await roleGrantRepository.isMasterUser(reporter._id))
           ? MASTER_DISPLAY_NAME
           : reporter.name,
@@ -98,6 +153,7 @@ export const reportService = {
     }
   },
 
+  /** Hàng đợi theo scope đã dựng ở `requireReportReader` — plugin lo việc lọc hai trục. */
   async list(query: ReportQuery) {
     const pagination = parsePagination(query)
     const { items, total } = await reportRepository.paginate(query.status, pagination)
@@ -113,9 +169,10 @@ export const reportService = {
    * Đóng báo cáo. `hide_target` ẩn luôn tin bị nhắm tới — báo cáo về người dùng thì chỉ đóng,
    * vì khoá tài khoản là thao tác nặng hơn và thuộc màn Người dùng.
    */
-  async resolve(id: string, input: ResolveReportInput, actor: ReportActor & { grants: Grant[] }) {
-    const report = await reportRepository.findById(id)
+  async resolve(id: string, input: ResolveReportInput, actor: ReportModerator) {
+    const report = await reportRepository.findByIdForModeration(id)
     if (!report) throw new NotFoundError('Report not found')
+    await assertCanResolve(report, actor.grants)
     if (report.status !== REPORT_STATUS.OPEN) {
       throw new BadRequestError('Báo cáo này đã được xử lý rồi')
     }
@@ -127,8 +184,8 @@ export const reportService = {
     let trust: TrustState | null = null
 
     if (hideTarget) {
-      // `grants` là bắt buộc: `setModerationStatus` tự chốt phạm vi duyệt theo TRỤC của tin,
-      // nên báo cáo về một tin trục danh mục sẽ bị 403 ở đây thay vì để quyền org ẩn nó.
+      // `grants` là bắt buộc: `setModerationStatus` tự chốt phạm vi duyệt theo TRỤC của tin —
+      // cùng phép kiểm `assertCanResolve` vừa làm, giữ lại vì đây là hàm public có caller khác.
       const hidden = await listingService.setModerationStatus(
         report.targetId.toString(),
         {
@@ -154,7 +211,7 @@ export const reportService = {
       trust = await trustRepository.record(hidden.seller, false)
     }
 
-    await reportRepository.resolveAllForTarget(report.targetId, {
+    await reportRepository.resolveAllForTarget(report.targetId, report.organizationId, {
       status: hideTarget ? REPORT_STATUS.RESOLVED : REPORT_STATUS.DISMISSED,
       resolution: {
         action: input.action,
@@ -174,12 +231,12 @@ export const reportService = {
         targetType: 'report',
         targetId: report._id,
       },
-      // Báo cáo LUÔN thuộc một org (`Report` là collection có tenant, không dual-axis), nên
-      // vết của nó không bao giờ rơi vào nhánh "trục danh mục" của `recordAudit`.
+      // Trục công khai (`null`) thì `recordAudit` chỉ ghi logger: `AuditLog` chưa dual-axis —
+      // cùng hạng mục nợ trong v2-org-permission.plan.md, không phải việc của báo cáo.
       report.organizationId,
     )
 
-    const updated = await reportRepository.findById(id)
+    const updated = await reportRepository.findByIdForModeration(id)
     return toDto(updated!, 0)
   },
 }

@@ -45,6 +45,12 @@ export const moderationController = {
     success(res, { message: 'Activity', data: items, meta })
   }),
 
+  // GET /moderation/listings/:id
+  listing: catchAsync(async (req, res) => {
+    const listing = await moderationService.getListing(req.params.id, req.grants!)
+    success(res, { message: 'Listing', data: listing })
+  }),
+
   // PATCH /moderation/listings/:id
   setListingStatus: catchAsync(async (req, res) => {
     const listing = await moderationService.setListingStatus(req.params.id, req.body, {

@@ -381,10 +381,17 @@ export const REPORT_WINDOW = {
   [REPORT_GRANULARITY.YEAR]: { defaultBuckets: 5, maxBuckets: 20 },
 } as const
 
+/**
+ * Mỗi trang TỐI ĐA 10 dòng, và client không xin hơn được: mọi schema `limit` khai
+ * `.max(PAGINATION.MAX_LIMIT)` — xin 11 là 400, không phải bị kẹp âm thầm. Con số nhỏ có chủ ý:
+ * app tải-tới-đâu-cuộn-tới-đó, một trang chỉ cần đủ lấp màn hình; trang 50–100 dòng như trước là
+ * trả cả kho cho một màn chỉ vẽ được 6 dòng đầu, và phần còn lại là băng thông lẫn decode ảnh
+ * ném đi. Từ điển bounded (danh mục, tỉnh/xã, cụm cấm…) không đi qua đây — chúng trả đủ.
+ */
 export const PAGINATION = {
   DEFAULT_PAGE: 1,
-  DEFAULT_LIMIT: 20,
-  MAX_LIMIT: 100,
+  DEFAULT_LIMIT: 10,
+  MAX_LIMIT: 10,
 } as const
 
 export const INVITE_CHANNELS = { EMAIL: 'email', PHONE: 'phone' } as const
@@ -400,3 +407,18 @@ export type InviteStatus = (typeof INVITE_STATUS)[keyof typeof INVITE_STATUS]
 
 /** Lời mời sống 14 ngày: đủ để người ta thấy tin nhắn, ngắn để một link rò rỉ không sống mãi. */
 export const INVITE_TTL_DAYS = 14
+
+/**
+ * Trạng thái của một đánh giá do tổ chức xã hội gửi lên (cụm TẠM THỜI — xem
+ * `features/social-feedback/social-feedback.model.ts`).
+ *
+ * `pending` là mặc định vì cửa gửi KHÔNG đăng nhập: bất kỳ ai cũng POST được, nên không có
+ * bước duyệt thì trang công bố pháp lý thành bảng tin của người qua đường.
+ */
+export const SOCIAL_FEEDBACK_STATUS = {
+  PENDING: 'pending',
+  PUBLISHED: 'published',
+  REJECTED: 'rejected',
+} as const
+export type SocialFeedbackStatus =
+  (typeof SOCIAL_FEEDBACK_STATUS)[keyof typeof SOCIAL_FEEDBACK_STATUS]

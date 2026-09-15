@@ -50,8 +50,11 @@ export const listingController = {
   // GET /listings/report
   report: catchAsync(async (req, res) => {
     // validate() đã parse + điền default vào req.query — chỉ việc chuyển tiếp.
+    // Org từ SCOPE: quản trị nhóm (hoặc master đứng trong một org) xem bản của nhóm; master
+    // không kèm org xem toàn hệ thống. `requireOrgReadOrMaster` đã chặn mọi ca còn lại.
     const data = await listingService.listingReport(
       req.query as unknown as Parameters<typeof listingService.listingReport>[0],
+      currentScope()?.ownOrgId ?? null,
     )
     success(res, { message: 'Listing report', data })
   }),
@@ -91,6 +94,12 @@ export const listingController = {
   // GET /listings/:id
   getById: catchAsync(async (req, res) => {
     const listing = await listingService.getByIdAndTrackView(req.params.id)
+    success(res, { message: 'Listing detail', data: listing })
+  }),
+
+  // GET /listings/mine/:id
+  getOwn: catchAsync(async (req, res) => {
+    const listing = await listingService.getOwn(req.params.id, req.user!.id)
     success(res, { message: 'Listing detail', data: listing })
   }),
 

@@ -110,6 +110,14 @@ export interface IListing {
   autoApproval?: {
     trustLevel: number
     reason: AutoApprovalReason
+    /**
+     * Các hold máy quét nhanh đã bắn lúc đăng, khi `reason === 'content_flagged'`.
+     *
+     * Trước đây bị VỨT — đường tự-đăng chỉ ghi `content_flagged` rồi thôi, nên người đăng
+     * thấy "chờ duyệt" mà không ai nói vì sao, dù 3/3 ca đo được đều là lỗi họ tự sửa
+     * được trong mười giây (giá sai đơn vị). `listing.review.ts` dịch mảng này thành câu.
+     */
+    holds?: MachineHold[]
   }
   /**
    * Vết của người duyệt MÁY (job quét hàng đợi) — khác `autoApproval` (quyết định lúc đăng).
@@ -251,6 +259,7 @@ const listingSchema = new Schema<IListingDocument>(
         {
           trustLevel: { type: Number, required: true, min: 0 },
           reason: { type: String, enum: [...AUTO_APPROVAL_REASONS], required: true },
+          holds: { type: [String], enum: [...MACHINE_HOLDS], default: undefined },
         },
         { _id: false },
       ),
@@ -317,8 +326,9 @@ const listingSchema = new Schema<IListingDocument>(
         // trang, cho một field không client nào đọc.
         delete r.attrs
         // `autoApproval` là hồ sơ kiểm duyệt nội bộ: nói cho người mua biết người bán này bậc
-        // thấp là chuyện của hệ thống, không phải của trang tin. Muốn hiện cho CHÍNH chủ tin
-        // thì mở bằng một endpoint riêng, đừng nới cái DTO mà ai cũng đọc được.
+        // thấp là chuyện của hệ thống, không phải của trang tin. CHÍNH chủ tin đọc nó đã dịch
+        // thành câu (`review`, xem `listing.review.ts`) qua `toOwnerListing` trên
+        // `/listings/mine*` — không nới cái DTO mà ai cũng đọc được.
         delete r.autoApproval
         // Cùng lý do với autoApproval: hồ sơ kiểm duyệt nội bộ, không thuộc về trang tin.
         delete r.machineReview
@@ -342,18 +352,18 @@ listingSchema.plugin(tenantPlugin, { dualAxis: true })
  * pending lọc qua prefix của index rankAt rồi sort trong bộ nhớ — tập pending bị quota chặn
  * trần nên luôn nhỏ.
  */
-listingSchema.index({ organizationId: 1, status: 1, rankAt: -1 })
-listingSchema.index({ organizationId: 1, category: 1, status: 1, rankAt: -1 })
-listingSchema.index({ organizationId: 1, seller: 1, status: 1, rankAt: -1 })
+listingSchema.index({ organizationId: 1, status: 1, rankAt: -1, _id: -1 })
+listingSchema.index({ organizationId: 1, category: 1, status: 1, rankAt: -1, _id: -1 })
+listingSchema.index({ organizationId: 1, seller: 1, status: 1, rankAt: -1, _id: -1 })
 // Hàng đợi duyệt của staff nhóm con.
 listingSchema.index({ organizationId: 1, unitId: 1, status: 1, createdAt: -1 })
 
 /*
  * Bộ lọc khu vực. Bản cũ index `location.ward` mà KHÔNG có `location.province` — phục vụ một
- * query shape không tồn tại: `buildFilter` chỉ có tham số `province`, còn `findByArea` thì luôn
- * dùng cả cặp, không bao giờ lọc xã trần.
+ * query shape không tồn tại: cả `buildFilter` (`?ward=` bắt buộc kèm `?province=`) lẫn
+ * `findByArea` đều dùng cả cặp, không bao giờ lọc xã trần.
  *
- * `ward` cố tình KHÔNG nằm trong index, dù `findByArea` có lọc nó. Nhét vào giữa
+ * `ward` cố tình KHÔNG nằm trong index, dù `findByArea` và `?ward=` có lọc nó. Nhét vào giữa
  * `location.province` và `createdAt` thì `?province=` — bộ lọc chính của bảng tin — mất sort
  * index-backed và phải sort trong bộ nhớ TOÀN BỘ tin của tỉnh đó (đo được: 36 doc ở seed 1000
  * tin, và con số này lớn tuyến tính theo dữ liệu). Để `ward` làm residual filter thì
@@ -363,8 +373,14 @@ listingSchema.index({ organizationId: 1, unitId: 1, status: 1, createdAt: -1 })
  * Chú ý `location.province` (TÊN tỉnh, người dùng chọn để lọc) khác `provinceCode` (snapshot
  * định tuyến hàng đợi duyệt) — hai field khác nhau, index của cái này không đỡ cái kia.
  */
-listingSchema.index({ organizationId: 1, 'location.province': 1, status: 1, rankAt: -1 })
-listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, rankAt: -1 })
+/*
+ * `_id` đứng CUỐI mọi index bảng tin: sort của `paginate`/`findByArea` là `{ rankAt: -1, _id: -1 }`
+ * — khoá phụ để hai tin cùng `rankAt` (seed, bump cùng giây) không đổi chỗ giữa hai lượt
+ * `skip/limit`, tức trang 2 không lặp lại dòng của trang 1. Không có `_id` trong index thì Mongo
+ * phải sort trong bộ nhớ toàn bộ tin của tỉnh — đúng cái giá mà ghi chú phía trên đang tránh.
+ */
+listingSchema.index({ organizationId: 1, 'location.province': 1, status: 1, rankAt: -1, _id: -1 })
+listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, rankAt: -1, _id: -1 })
 
 /*
  * KHÔNG có index cho khoảng giá. Bản cũ có `{organizationId, price, status}` và nó vừa sai thứ
@@ -376,7 +392,7 @@ listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, rankAt: 
 
 // Trục danh mục: bảng tin công khai (visibility + status) và hàng đợi của manager danh mục
 // (visibility + category + tỉnh).
-listingSchema.index({ visibility: 1, status: 1, rankAt: -1 })
+listingSchema.index({ visibility: 1, status: 1, rankAt: -1, _id: -1 })
 // Ô của trục danh mục là (danh mục × tỉnh × phường) nên `wardCode` đứng ngay sau `provinceCode`:
 // grant cấp tỉnh chỉ dùng tới tiền tố `…provinceCode` và vẫn khớp chính index này.
 listingSchema.index({
@@ -387,7 +403,7 @@ listingSchema.index({
   status: 1,
   rankAt: -1,
 })
-listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, rankAt: -1 })
+listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, rankAt: -1, _id: -1 })
 
 /*
  * "Tin của tôi" — NGOẠI LỆ của rule 13 (index trên collection có tenant phải mở đầu bằng

@@ -52,11 +52,51 @@ export const authResponseSchema = z
   })
   .openapi('AuthResponse')
 
+/**
+ * Đăng nhập bằng Google — client chỉ gửi `id_token`, KHÔNG gửi email/tên.
+ *
+ * Cố tình không nhận thêm field nào: email và tên phải đến từ token đã kiểm chữ ký
+ * (`google.verify.ts`). Nhận `email` trong body là mở đúng cửa mà việc kiểm token sinh ra để
+ * đóng — ai cũng gửi được một email bất kỳ kèm một token thật của chính mình.
+ */
+export const googleAuthSchema = z
+  .object({
+    idToken: z.string().min(1, 'Thiếu id_token của Google'),
+  })
+  .strict()
+  .openapi('GoogleAuthInput')
+
 export type RegisterInput = z.infer<typeof registerSchema>
 export type LoginInput = z.infer<typeof loginSchema>
 export type RefreshInput = z.infer<typeof refreshSchema>
+export type GoogleAuthInput = z.infer<typeof googleAuthSchema>
 
 registry.register('RegisterInput', registerSchema)
 registry.register('LoginInput', loginSchema)
 registry.register('RefreshInput', refreshSchema)
+registry.register('GoogleAuthInput', googleAuthSchema)
 registry.register('AuthResponse', authResponseSchema)
+
+// ── XÁC THỰC EMAIL BẰNG MÃ 6 SỐ ─────────────────────────────────────────────
+
+export const verifyEmailSchema = z
+  .object({
+    /**
+     * Chuỗi chứ không `number`: mã `012345` là hợp lệ, mà số thì mất số 0 đầu. Regex thay cho
+     * `.length(6)` để "12 34 5" hay "12-3456" bị chặn ngay ở cửa thay vì thành một lượt so hash.
+     */
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, 'Mã gồm đúng 6 chữ số')
+      .openapi({ example: '042913' }),
+  })
+  .strict()
+  .openapi('VerifyEmail')
+
+export const sendCodeResponseSchema = z
+  .object({
+    expiresInSeconds: z.number(),
+    resendAfterSeconds: z.number(),
+  })
+  .openapi('SendVerificationCode')

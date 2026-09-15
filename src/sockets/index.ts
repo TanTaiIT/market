@@ -5,7 +5,7 @@ import { membershipRepository } from '../features/membership/membership.reposito
 import { env } from '../config/env'
 import { logger } from '../config/logger'
 import { registerChatHandlers } from './chat.socket'
-import { setSocketServer } from './emit'
+import { orgMembersRoom, setSocketServer, userRoom } from './emit'
 
 let io: SocketServer | null = null
 
@@ -52,12 +52,32 @@ export function initSockets(httpServer: HttpServer): SocketServer {
         : undefined
 
     socket.data.userId = userId
+    // Danh sách nhóm để `connection` vào phòng thành viên — handshake đã tải `memberships`
+    // cho việc chọn org hoạt động, nên đây chỉ là dùng lại chứ không phải một lượt tra nữa.
+    socket.data.orgIds = memberships.map((m) => m.organizationId.toString())
     socket.data.organizationId = membership?.organizationId.toString() ?? null
     next()
   })
 
   io.on('connection', (socket) => {
     logger.debug('socket connected', { userId: socket.data.userId })
+
+    /*
+     * Vào phòng riêng NGAY, không chờ client xin.
+     *
+     * Đây là thứ cho phép báo 'có tin nhắn mới' khi người dùng đang ở màn khác. Phòng hội
+     * thoại thì phải `chat:join` mới vào, mà lúc đang ở bảng tin thì không ai join cả — nên
+     * nếu chỉ có phòng hội thoại thì tín hiệu realtime chỉ tới được người ĐÃ nhìn thấy tin.
+     *
+     * Không có sự kiện `user:join` cho client gọi: danh tính đến từ handshake đã xác thực, cho
+     * client tự khai id là mở đường nghe lén hộp thư người khác.
+     */
+    socket.join(userRoom(socket.data.userId))
+    // Thông báo phát chung của nhóm đi vào những phòng này — xem `orgMembersRoom`.
+    for (const orgId of (socket.data.orgIds as string[]) ?? []) {
+      socket.join(orgMembersRoom(orgId))
+    }
+
     registerChatHandlers(socket)
 
     socket.on('disconnect', () => {

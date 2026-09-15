@@ -16,7 +16,9 @@ export interface IUser {
   name: string
   email: string
   phone?: string
-  password: string
+  /** Vắng khi tài khoản đăng nhập bằng Google — xem khai báo schema. */
+  password?: string
+  googleId?: string
   avatar: string
   gender: Gender
   /**
@@ -61,7 +63,21 @@ const userSchema = new Schema<IUserDocument>(
     name: { type: String, required: true, trim: true, maxlength: 100 },
     email: { type: String, required: true, lowercase: true, trim: true },
     phone: { type: String, trim: true },
-    password: { type: String, required: true, select: false, minlength: 6 },
+    /*
+     * KHÔNG còn `required`: tài khoản tạo bằng Google không có mật khẩu nào cả.
+     *
+     * Đừng 'chữa' bằng cách sinh một mật khẩu ngẫu nhiên cho họ — làm thế là lưu một chứng
+     * chỉ có thật trong DB mà chủ tài khoản không biết, và một luồng quên-mật-khẩu sau này
+     * sẽ lặng lẽ biến tài khoản Google thành tài khoản mật khẩu.
+     */
+    password: { type: String, select: false, minlength: 6 },
+    /**
+     * `sub` của Google — khoá ổn định của một tài khoản Google, KHÔNG đổi khi họ đổi email.
+     *
+     * `sparse` để hàng nghìn tài khoản mật khẩu (không có field này) không đụng unique index.
+     * Khớp theo `sub` TRƯỚC khi khớp theo email: email đổi được, `sub` thì không.
+     */
+    googleId: { type: String, unique: true, sparse: true, default: undefined },
     avatar: { type: String, default: '' },
     gender: { type: String, enum: Object.values(GENDER), default: GENDER.UNDISCLOSED },
     // `_id: false`: subdoc thuần dữ liệu, không cần khoá riêng để tham chiếu tới.
@@ -122,11 +138,23 @@ const BCRYPT_ROUNDS = 12
 
 userSchema.pre('save', async function hashPassword(next) {
   if (!this.isModified('password')) return next()
+  // Tài khoản Google không có mật khẩu: `hash(undefined)` ném, và nó ném ở giữa một lượt
+  // `save()` nên lỗi hiện ra là 500 ở một đường không liên quan gì tới mật khẩu.
+  if (!this.password) return next()
   this.password = await hash(this.password, BCRYPT_ROUNDS)
   next()
 })
 
-userSchema.methods.comparePassword = function comparePassword(candidate: string) {
+userSchema.methods.comparePassword = async function comparePassword(candidate: string) {
+  /*
+   * `false`, KHÔNG phải một lượt `verify` với `undefined`.
+   *
+   * Tài khoản chỉ-Google không có hash nào để so. `verify(candidate, undefined)` ném, và
+   * `authService.login` không bắt — nên một lượt thử mật khẩu vào tài khoản Google sẽ trả
+   * 500 thay vì 401. Ngoài chuyện xấu, nó còn là một kênh phân biệt: 500 nghĩa là "email
+   * này tồn tại và là tài khoản Google", còn 401 thì không nói gì.
+   */
+  if (!this.password) return false
   return verify(candidate, this.password)
 }
 

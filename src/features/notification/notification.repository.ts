@@ -112,7 +112,7 @@ export const notificationRepository = {
     }
 
     const [items, total] = await Promise.all([
-      Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Notification.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
       Notification.countDocuments(filter),
     ])
     return { items, total }
@@ -122,7 +122,7 @@ export const notificationRepository = {
   async paginateManaged(audience: ManagedAudience, { skip, limit }: PaginationParams) {
     const filter = managedFilter(audience)
     const [items, total] = await Promise.all([
-      Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+      Notification.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
       Notification.countDocuments(filter),
     ])
     return { items, total }

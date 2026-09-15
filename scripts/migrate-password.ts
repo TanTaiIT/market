@@ -52,7 +52,15 @@ async function main() {
    * `updateMany` không dính. Cố ý để nguyên như vậy — tài khoản đã xoá mềm mà được khôi phục
    * sau này thì cũng phải mở được bằng cùng mật khẩu, chứ không giữ một hash mồ côi.
    */
-  const res = await User.updateMany({}, { $set: { password: passwordHash } })
+  /*
+   * Chỉ tài khoản CÓ mật khẩu. Từ khi có đăng nhập Google, `password` là tuỳ chọn — đặt mật
+   * khẩu cho một tài khoản chỉ-Google là tự tay mở thêm một cửa vào đó mà chủ tài khoản không
+   * biết, và mật khẩu ấy còn được in ra màn hình ở cuối script này.
+   */
+  const res = await User.updateMany(
+    { password: { $exists: true } },
+    { $set: { password: passwordHash } },
+  )
   console.log(`Đã đổi mật khẩu ${res.modifiedCount}/${res.matchedCount} tài khoản.`)
 
   /*
@@ -61,9 +69,9 @@ async function main() {
    * `password` khai `select: false` nên phải xin tường minh; quên `.select('+password')` là
    * `verify` nhận `undefined` và ném, chứ không lặng lẽ báo sai.
    */
-  const sample = await User.findOne().select('+password email')
-  if (!sample) {
-    console.warn('Database không có tài khoản nào — không kiểm chứng được.')
+  const sample = await User.findOne({ password: { $exists: true } }).select('+password email')
+  if (!sample?.password) {
+    console.warn('Không có tài khoản mật khẩu nào — không kiểm chứng được.')
   } else if (await verify(PASSWORD, sample.password)) {
     console.log(`Kiểm chứng OK: ${sample.email} đăng nhập được bằng mật khẩu mới.`)
   } else {

@@ -2,6 +2,7 @@ import { userService } from './user.service'
 import { toMeProfileDto, toPublicProfileDto } from './user.types'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success } from '../../common/utils/apiResponse'
+import { currentScope } from '../../common/tenant/tenantContext'
 
 export const userController = {
   // POST /users/:id/clear-rejections
@@ -51,8 +52,10 @@ export const userController = {
 
   // GET /users/report
   report: catchAsync(async (req, res) => {
+    // Cùng luật với `listingController.report`: org từ scope, không org = toàn hệ thống.
     const data = await userService.userReport(
       req.query as unknown as Parameters<typeof userService.userReport>[0],
+      currentScope()?.ownOrgId ?? null,
     )
     success(res, { message: 'User report', data })
   }),

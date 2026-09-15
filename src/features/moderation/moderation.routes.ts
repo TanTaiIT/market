@@ -77,6 +77,15 @@ router.patch(
  * slug một org bất kỳ thì ăn 404 vì tenant scope lúc đó không phủ tin công khai chưa duyệt.
  * Kết quả: tin công khai của người không thuộc nhóm nào kẹt `pending` vĩnh viễn.
  */
+// ĐỌC một tin cho bàn duyệt cũng đi cửa này: người xử báo cáo cần mở được tin bị tố ở mọi
+// trạng thái, và master cần mở được tin nội bộ của org mình không đứng trong.
+router.get(
+  '/listings/:id',
+  authenticate,
+  requireAnyModerator,
+  validate({ params: modParamsSchema }),
+  moderationController.listing,
+)
 router.patch(
   '/listings/:id',
   authenticate,
@@ -162,6 +171,25 @@ registry.registerPath({
     ),
     401: unauthorized,
     403: notModerator,
+  },
+})
+
+registry.registerPath({
+  method: 'get',
+  path: '/moderation/listings/{id}',
+  operationId: 'moderationGetListing',
+  tags: ['Moderation'],
+  summary: 'Một tin cho bàn duyệt, ở bất kỳ trạng thái',
+  description:
+    'Dùng khi xử báo cáo: mở được tin đã ẩn / chờ duyệt, và tin nội bộ của org mình không đứng ' +
+    'trong (master). Thẩm quyền chốt theo trục của tin.',
+  ...protectedRoute,
+  request: { params: modParamsSchema },
+  responses: {
+    200: jsonResponse('Tin', envelope(listingResponseSchema)),
+    401: unauthorized,
+    403: wrongScope,
+    404: errorResponse('Không tìm thấy tin'),
   },
 })
 
