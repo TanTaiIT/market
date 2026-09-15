@@ -24,6 +24,7 @@ import bannedPhraseRoutes from './banned-phrase/banned-phrase.routes'
 import listingProductRoutes from './listing-product/listing-product.routes'
 import walletRoutes from './wallet/wallet.routes'
 import metricsRoutes from './metrics/metrics.routes'
+import supportRoutes from './support/support.routes'
 
 const router = Router()
 
@@ -37,6 +38,8 @@ router.use('/join-requests', joinRequestRoutes)
 router.use('/memberships', membershipRoutes)
 router.use('/invites', inviteRoutes)
 router.use('/role-grants', roleGrantRoutes)
+// Kênh người dùng <-> đội ngũ nền tảng. KHÔNG đọc `X-Org-Slug` — xem docblock của routes.
+router.use('/support', supportRoutes)
 router.use('/categories', categoryRoutes)
 router.use('/field-definitions', fieldDefinitionRoutes)
 // Mẫu template mặc định — không thuộc danh mục nào, nên không nằm dưới /categories.
