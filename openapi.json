@@ -4219,6 +4219,35 @@
           "waiting"
         ]
       },
+      "SendVerificationCode": {
+        "type": "object",
+        "properties": {
+          "expiresInSeconds": {
+            "type": "number"
+          },
+          "resendAfterSeconds": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "expiresInSeconds",
+          "resendAfterSeconds"
+        ]
+      },
+      "VerifyEmail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^\\d{6}$",
+            "example": "042913"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "additionalProperties": false
+      },
       "ClearRejections": {
         "type": "object",
         "properties": {
@@ -15118,8 +15147,8 @@
               }
             }
           },
-          "429": {
-            "description": "Gửi quá nhiều lần, thử lại sau",
+          "401": {
+            "description": "Thiếu hoặc sai access token",
             "content": {
               "application/json": {
                 "schema": {
@@ -15522,6 +15551,406 @@
           },
           "404": {
             "description": "Không tìm thấy luồng hỗ trợ này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/social-feedback": {
+      "post": {
+        "operationId": "socialFeedbackSubmit",
+        "tags": [
+          "SocialFeedback"
+        ],
+        "summary": "Gửi đánh giá, phản ánh, kiến nghị của tổ chức xã hội (công khai)",
+        "description": "Cửa tiếp nhận ý kiến của tổ chức xã hội tham gia bảo vệ quyền lợi người tiêu dùng. Không cần đăng nhập, giới hạn 5 lượt / 10 phút / IP. Ý kiến vào trạng thái chờ duyệt và CHƯA hiện ở danh sách công bố cho tới khi master duyệt.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSocialFeedback"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã tiếp nhận",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SocialFeedback"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Gửi quá nhiều lần, thử lại sau",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "socialFeedbackList",
+        "tags": [
+          "SocialFeedback"
+        ],
+        "summary": "Danh sách đánh giá đã công bố (công khai)",
+        "description": "CHỈ trả bản đã duyệt, và không kèm `status` — trang này là bản công bố, không phải hàng đợi. Không cần đăng nhập.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 10
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Danh sách đã công bố",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SocialFeedback"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "number"
+                        },
+                        "limit": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        },
+                        "totalPages": {
+                          "type": "number"
+                        },
+                        "hasNextPage": {
+                          "type": "boolean"
+                        },
+                        "hasPrevPage": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "page",
+                        "limit",
+                        "total",
+                        "totalPages",
+                        "hasNextPage",
+                        "hasPrevPage"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/social-feedback/review": {
+      "get": {
+        "operationId": "socialFeedbackReviewQueue",
+        "tags": [
+          "SocialFeedback"
+        ],
+        "summary": "Hàng đợi duyệt ý kiến (master)",
+        "description": "Bỏ trống `status` = hàng đợi chờ duyệt. Kèm `status` để xem bản đã xử lý.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 10
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "published",
+                "rejected"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hàng đợi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SocialFeedbackAdmin"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "number"
+                        },
+                        "limit": {
+                          "type": "number"
+                        },
+                        "total": {
+                          "type": "number"
+                        },
+                        "totalPages": {
+                          "type": "number"
+                        },
+                        "hasNextPage": {
+                          "type": "boolean"
+                        },
+                        "hasPrevPage": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "page",
+                        "limit",
+                        "total",
+                        "totalPages",
+                        "hasNextPage",
+                        "hasPrevPage"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data",
+                    "meta"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/social-feedback/{id}": {
+      "patch": {
+        "operationId": "socialFeedbackReview",
+        "tags": [
+          "SocialFeedback"
+        ],
+        "summary": "Duyệt hoặc từ chối một ý kiến (master)",
+        "description": "`published` đưa ý kiến lên trang công bố; `rejected` giữ lại bản ghi nhưng không công bố. Không có đường xoá: đã tiếp nhận thì phải còn vết.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewSocialFeedback"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã xử lý",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/SocialFeedbackAdmin"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy ý kiến",
             "content": {
               "application/json": {
                 "schema": {

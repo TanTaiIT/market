@@ -10,7 +10,14 @@ import {
   parsePagination,
   PaginationParams,
 } from '../../common/utils/pagination'
+import { emitToUser } from '../../sockets/emit'
 import { logger } from '../../config/logger'
+
+/**
+ * Tên sự kiện socket — khai một chỗ, cả BE lẫn RN đọc từ đây (RN có union `ServerEvent`
+ * riêng nên hai bên vẫn phải khớp bằng mắt; gõ nhầm ở một bên là im lặng không ai nghe).
+ */
+export const SUPPORT_REPLY_EVENT = 'support:reply'
 
 const DUPLICATE_KEY = 11000
 
@@ -150,6 +157,11 @@ export const supportService = {
    * KHÔNG bắn thêm `notificationService.notifyUser`: một sự việc báo bằng hai kênh thì người
    * dùng đọc một kênh rồi kênh kia vẫn sáng, và họ học được rằng dấu hiệu ở đây không đáng
    * tin. Chấm đỏ trên icon hỗ trợ là nơi câu trả lời này thuộc về.
+   *
+   * Socket chỉ là đường BÁO NHANH, không phải nguồn sự thật: nó mang đúng một mốc thời gian,
+   * client nghe được thì đi đọc lại `GET /support/me`. Gửi cả nội dung tin qua socket là
+   * đẻ ra đường thứ hai để dựng trạng thái, và hai đường sẽ lệch nhau ngay lần đầu một gói tin
+   * rớt giữa chừng.
    */
   async reply(threadId: string, masterId: string, body: string) {
     const thread = await supportRepository.findById(threadId)
@@ -165,6 +177,17 @@ export const supportService = {
       },
       'lastMasterAt',
     )
+    /*
+     * Phát vào PHÒNG RIÊNG của người dùng, nên mọi thiết bị họ đang mở đều nghe thấy — và
+     * người khác thì không, kể cả khi đoán trúng id luồng: phòng đó được vào ngay lúc bắt tay
+     * bằng danh tính đã xác thực, client không tự khai được (xem `userRoom` ở `sockets/emit`).
+     *
+     * `emitToUser` là no-op khi chưa init socket — test HTTP và các job nền gọi thẳng service
+     * vẫn chạy bình thường, không cần dựng socket giả.
+     */
+    emitToUser(updated!.userId.toString(), SUPPORT_REPLY_EVENT, {
+      at: new Date().toISOString(),
+    })
     logger.info('support: master trả lời', { threadId, masterId })
 
     return {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import request from 'supertest'
 import mongoose from 'mongoose'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
@@ -11,6 +11,17 @@ import {
   seedBannedPhrases,
   startTestDb,
 } from '../helpers/fixtures'
+import { emitToUser } from '../../src/sockets/emit'
+
+/*
+ * Socket thật không chạy trong test HTTP (`startAgenda`/`initSockets` chỉ do `server.ts`
+ * gọi), nên `emitToUser` vốn là no-op và không quan sát được. Thay nó bằng spy để kiểm
+ * đúng thứ cần kiểm: master trả lời thì sự kiện có được bắn, và bắn tới ĐÚNG người.
+ */
+vi.mock('../../src/sockets/emit', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/sockets/emit')>()),
+  emitToUser: vi.fn(),
+}))
 
 let app: Application
 let mongod: MongoMemoryReplSet
@@ -110,6 +121,32 @@ describe('Hỗ trợ — master trả lời', () => {
     const after = await myThread(alice).expect(200)
     expect(after.body.data.unread).toBe(true)
     expect(after.body.data.messages.at(-1)).toMatchObject({ from: 'master' })
+  }, 60_000)
+
+  /**
+   * Đường báo nhanh: không có nó thì chấm đỏ chỉ hiện ở nhịp polling kế tiếp.
+   *
+   * Kiểm cả NGƯỜI NHẬN chứ không chỉ "có gọi hay không": bắn nhầm phòng là rò một tín hiệu
+   * riêng tư sang người khác, mà lỗi đó không có biểu hiện nào ở phía người đúng.
+   */
+  it('trả lời xong thì bắn sự kiện socket tới đúng người dùng của luồng', async () => {
+    vi.mocked(emitToUser).mockClear()
+    const threadId = (await myThread(alice).expect(200)).body.data.id
+
+    await reply(threadId, 'Câu trả lời có kèm tín hiệu socket').expect(200)
+
+    expect(emitToUser).toHaveBeenCalledTimes(1)
+    const [userId, event] = vi.mocked(emitToUser).mock.calls[0]!
+    expect(userId).toBe(alice.id)
+    expect(event).toBe('support:reply')
+    // KHÔNG bắn cho người khác — bob không liên quan tới luồng này.
+    expect(userId).not.toBe(bob.id)
+  }, 60_000)
+
+  it('người dùng tự nhắn thì KHÔNG bắn sự kiện cho chính họ', async () => {
+    vi.mocked(emitToUser).mockClear()
+    await send(alice, 'Tin này của tôi, không cần ai đánh thức tôi cả').expect(200)
+    expect(emitToUser).not.toHaveBeenCalled()
   }, 60_000)
 
   it('đọc xong thì tắt chấm đỏ, và nó không tự bật lại', async () => {
