@@ -10,7 +10,7 @@ import {
   messageResponseSchema,
 } from './chat.schema'
 import { validate } from '../../middlewares/validate.middleware'
-import { authenticate } from '../../middlewares/auth.middleware'
+import { authenticate, requireVerifiedEmail } from '../../middlewares/auth.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
   registry,
@@ -27,6 +27,7 @@ const router = Router()
 router.post(
   '/',
   authenticate,
+  requireVerifiedEmail,
   apiLimiter,
   validate({ body: openConversationSchema }),
   chatController.open,
@@ -47,6 +48,7 @@ router.get(
 router.post(
   '/:id/messages',
   authenticate,
+  requireVerifiedEmail,
   apiLimiter,
   validate({ params: conversationParamsSchema, body: sendMessageSchema }),
   chatController.send,

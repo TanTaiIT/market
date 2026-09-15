@@ -22,6 +22,7 @@ import {
   authenticate,
   requireMaster,
   requireOrgReadOrMaster,
+  requireVerifiedEmail,
 } from '../../middlewares/auth.middleware'
 import { requireAnyModerator } from '../moderation/moderation.middleware'
 import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
@@ -100,6 +101,7 @@ router.get('/:id', validate({ params: listingParamsSchema }), listingController.
 router.post(
   '/',
   authenticate,
+  requireVerifiedEmail,
   apiLimiter,
   validate({ body: createListingSchema }),
   listingController.create,

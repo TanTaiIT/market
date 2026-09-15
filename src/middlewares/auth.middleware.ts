@@ -7,6 +7,7 @@ import { enrichRequestContext } from '../common/observability/requestContext'
 import { canAdminOrg, canModerateAnyInOrg, isMaster, Grant } from '../common/authz/policy'
 import { roleGrantService } from '../features/role-grant/role-grant.service'
 import { organizationRepository } from '../features/organization/organization.repository'
+import { User } from '../features/user/user.model'
 
 function extractToken(req: Request): string | null {
   const header = req.headers.authorization ?? ''
@@ -157,5 +158,25 @@ export const requireOrgAdmin = catchAsync(async (req, _res, next) => {
 export const requireMaster = catchAsync(async (req, _res, next) => {
   const grants = await loadGrants(req)
   if (!isMaster(grants)) throw new ForbiddenError('Cần quyền master')
+  next()
+})
+
+/**
+ * Hành động PHÁT NỘI DUNG TỚI NGƯỜI KHÁC — đăng tin, mở hội thoại, gửi tin nhắn.
+ *
+ * Chỉ gác những đường đó, KHÔNG gác đăng nhập lẫn đường đọc. Gác đăng nhập sẽ khoá chết người
+ * dùng: `/auth/email/send-code` đòi access token, mà token thì chỉ `/auth/login` phát ra —
+ * chặn login là họ vĩnh viễn không xin được mã để mà xác thực.
+ *
+ * Đọc DB chứ không đọc claim trong token, và đó là chủ ý: nhét `emailVerified` vào JWT thì
+ * người vừa nhập đúng mã vẫn bị chặn cho tới khi token cũ hết hạn (15 phút). "Tôi vừa xác
+ * thực xong mà vẫn không đăng được tin" là lỗi không ai tự đoán ra nguyên nhân. Một lượt đọc
+ * thêm chỉ rơi vào các đường GHI, vốn thưa hơn đường đọc nhiều bậc.
+ */
+export const requireVerifiedEmail = catchAsync(async (req, _res, next) => {
+  const user = await User.findById(req.user!.id).select('emailVerifiedAt').lean().exec()
+  if (!user?.emailVerifiedAt) {
+    throw new ForbiddenError('Xác thực email trước khi đăng tin hoặc nhắn tin')
+  }
   next()
 })

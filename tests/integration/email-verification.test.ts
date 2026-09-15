@@ -36,8 +36,10 @@ vi.mock('../../src/features/auth/email.sender', () => ({
 beforeAll(async () => {
   mongod = await startTestDb()
   app = await createTestApp()
-  ai = await registerUser(app, 'can-xac-thuc@ghim.local', 'Người cần xác thực')
-  nguoiKhac = await registerUser(app, 'nguoi-khac@ghim.local', 'Người khác')
+  // `verified: false` tường minh: mặc định của fixture là ĐÃ xác thực (xem `registerUser`),
+  // mà cả file này canh đúng cái cửa đó nên phải bắt đầu từ trạng thái chưa qua.
+  ai = await registerUser(app, 'can-xac-thuc@ghim.local', 'Người cần xác thực', { verified: false })
+  nguoiKhac = await registerUser(app, 'nguoi-khac@ghim.local', 'Người khác', { verified: false })
 }, 120_000)
 
 afterAll(async () => {
@@ -161,5 +163,79 @@ describe('Nhập mã', () => {
 
   it('đã xác thực rồi thì không gửi mã nữa → 409', async () => {
     await sendCode(ai).expect(409)
+  }, 60_000)
+})
+
+/**
+ * Chốt `requireVerifiedEmail` — gác HÀNH ĐỘNG, không gác đăng nhập.
+ *
+ * Ca đầu tiên là ca quan trọng nhất và nó khẳng định một điều KHÔNG xảy ra: đăng nhập vẫn
+ * phải chạy khi chưa xác thực. Gác login sẽ khoá chết người dùng — `/auth/email/send-code`
+ * đòi access token, mà chỉ login mới phát ra nó. Test này giữ cho lần sau không ai "siết
+ * thêm" bằng cách đóng đúng cái cửa duy nhất dẫn tới chỗ xác thực.
+ */
+describe('Chưa xác thực thì chặn tới đâu', () => {
+  let chuaXacThuc: TestUser
+  let categoryId = ''
+
+  beforeAll(async () => {
+    const { createCategory } = await import('../helpers/fixtures')
+    categoryId = await createCategory('Đồ gác', 'do-gac')
+    chuaXacThuc = await registerUser(app, 'chua-xac-thuc@ghim.local', 'Chưa xác thực', {
+      verified: false,
+    })
+  }, 60_000)
+
+  it('VẪN đăng nhập được — không có cửa nào bị khoá chết', async () => {
+    const { PASSWORD } = await import('../helpers/fixtures')
+    await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: chuaXacThuc.email, password: PASSWORD })
+      .expect(200)
+  }, 60_000)
+
+  it('VẪN đọc được tin công khai', async () => {
+    await request(app).get('/api/v1/listings').set(auth(chuaXacThuc)).expect(200)
+  }, 60_000)
+
+  it('đăng tin → 403', async () => {
+    const { listingPayload } = await import('../helpers/fixtures')
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(auth(chuaXacThuc))
+      .send({
+        ...listingPayload('Tin bị chặn', categoryId),
+        visibility: 'public',
+        provinceCode: 'Hồ Chí Minh',
+      })
+      .expect(403)
+
+    expect(res.body.message).toMatch(/xác thực email/i)
+  }, 60_000)
+
+  it('mở hội thoại → 403', async () => {
+    await request(app)
+      .post('/api/v1/chats')
+      .set(auth(chuaXacThuc))
+      .send({ listingId: new mongoose.Types.ObjectId().toString() })
+      .expect(403)
+  }, 60_000)
+
+  /** Chốt "không lệch nhịp": xác thực xong là đăng được NGAY, không phải chờ token mới. */
+  it('xác thực xong → đăng tin được ngay, không cần làm mới token', async () => {
+    await sendCode(chuaXacThuc).expect(200)
+    await verify(chuaXacThuc, daGui.get(chuaXacThuc.email)!).expect(200)
+
+    const { listingPayload } = await import('../helpers/fixtures')
+    await request(app)
+      .post('/api/v1/listings')
+      // CÙNG access token với lượt 403 ở trên — middleware đọc DB chứ không đọc claim.
+      .set(auth(chuaXacThuc))
+      .send({
+        ...listingPayload('Tin qua cửa', categoryId),
+        visibility: 'public',
+        provinceCode: 'Hồ Chí Minh',
+      })
+      .expect(201)
   }, 60_000)
 })

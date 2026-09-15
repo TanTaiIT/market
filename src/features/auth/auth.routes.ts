@@ -157,7 +157,7 @@ registry.registerPath({
   description:
     'Địa chỉ nhận lấy từ TOKEN, không nhận trong body — body có email thì endpoint này thành ' +
     'máy dò tài khoản. Mỗi tài khoản chỉ có một mã sống: gọi lại là mã cũ chết ngay. Chờ 60 ' +
-    'giây giữa hai lượt gửi, mã sống 10 phút. 503 = máy chủ chưa cấu hình `RESEND_API_KEY`.',
+    'giây giữa hai lượt gửi, mã sống 10 phút. 503 = máy chủ chưa cấu hình `GMAIL_USER`/`GMAIL_APP_PASSWORD`, hoặc không gửi được thư.',
   responses: {
     200: jsonResponse('Đã gửi mã', envelope(sendCodeResponseSchema)),
     401: errorResponse('Thiếu hoặc sai access token'),

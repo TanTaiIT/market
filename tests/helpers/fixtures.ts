@@ -56,17 +56,35 @@ export async function createTestApp(): Promise<Application> {
   return createApp()
 }
 
-export async function registerUser(app: Application, email: string, name = 'Người dùng') {
+/**
+ * Tài khoản đã ĐĂNG KÝ VÀ ĐÃ XÁC THỰC EMAIL — mặc định của mọi test.
+ *
+ * `verified` mặc định `true` vì đó là trạng thái của gần như mọi người dùng thật: tài khoản
+ * Google được đánh dấu ngay từ lượt đăng nhập đầu, tài khoản cũ được `migrate:grandfather-email`
+ * miễn, còn người mới thì nhập mã xong mới bắt đầu dùng app. Để mặc định `false` sẽ bắt hơn
+ * sáu chục test không liên quan gì tới email phải tự đi xác thực trước khi đăng nổi một tin.
+ *
+ * Truyền `verified: false` khi test CHÍNH chốt `requireVerifiedEmail` — xem
+ * `email-verification.test.ts`.
+ */
+export async function registerUser(
+  app: Application,
+  email: string,
+  name = 'Người dùng',
+  opts: { verified?: boolean } = {},
+) {
   const res = await request(app)
     .post('/api/v1/auth/register')
     .send({ name, email, password: PASSWORD })
     .expect(201)
 
-  return {
-    token: res.body.data.tokens.accessToken as string,
-    id: res.body.data.user.id as string,
-    email,
+  const id = res.body.data.user.id as string
+  if (opts.verified ?? true) {
+    const { User } = await import('../../src/features/user/user.model')
+    await User.updateOne({ _id: id }, { emailVerifiedAt: new Date() }).exec()
   }
+
+  return { token: res.body.data.tokens.accessToken as string, id, email }
 }
 
 /** Master đầu tiên phải dựng thẳng vào DB — đúng như thực tế, nó do script bootstrap tạo. */

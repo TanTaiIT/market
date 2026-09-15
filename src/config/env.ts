@@ -89,21 +89,23 @@ const envSchema = z.object({
   GOOGLE_CLIENT_IDS: z.string().optional(),
 
   /**
-   * Khoá API của Resend — nhà gửi thư của luồng xác thực email.
+   * Hộp thư Gmail dùng để gửi mã xác thực — cũng chính là địa chỉ người nhận nhìn thấy.
    *
-   * Vắng mặt = TẮT hẳn luồng đó (route trả 503), cùng lối `GOOGLE_CLIENT_IDS`. Không có mặc
-   * định và không có nhánh "in mã ra log cho môi trường dev": một mã 6 số nằm trong log là
-   * một mã ai đọc được log cũng dùng được, và nhánh đó sẽ theo lên production đúng một lần.
+   * Vắng mặt = TẮT hẳn luồng xác thực email (route trả 503), cùng lối `GOOGLE_CLIENT_IDS`.
+   * Không có mặc định và không có nhánh "in mã ra log cho môi trường dev": một mã 6 số nằm
+   * trong log là một mã ai đọc được log cũng dùng được, và nhánh đó sẽ theo lên production
+   * đúng một lần.
    */
-  RESEND_API_KEY: z.string().optional(),
+  GMAIL_USER: z.string().optional(),
   /**
-   * Địa chỉ người gửi. Tên miền phải đã xác minh ở Resend, nếu không Resend từ chối gửi.
+   * **Mật khẩu ứng dụng** 16 ký tự, KHÔNG phải mật khẩu đăng nhập Gmail.
    *
-   * Mặc định là `onboarding@resend.dev` — hộp thử của Resend, chỉ gửi được TỚI email của
-   * chính chủ tài khoản Resend. Đủ để chạy thử, không đủ để chạy thật; giá trị này phải đổi
-   * trước khi phát hành.
+   * Google đã chặn hẳn đường đăng nhập SMTP bằng mật khẩu chính, nên điền mật khẩu thật ở đây
+   * chỉ cho ra một lỗi xác thực khó đoán. Muốn tạo được nó thì tài khoản phải bật xác minh 2
+   * bước TRƯỚC — không có 2FA thì mục 'App passwords' không hiện ra trong trang bảo mật của
+   * Google, và đó là chỗ người ta mất nhiều thời gian nhất.
    */
-  MAIL_FROM: z.string().default('Ghim <tantaiIT3000@gmail.com>'),
+  GMAIL_APP_PASSWORD: z.string().optional(),
 
   JWT_SECRET: z.string().min(1, 'JWT_SECRET is required'),
   // 15 phút, không phải 7 ngày: suspend một Organization phải có hiệu lực trong vài phút,
