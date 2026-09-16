@@ -6,6 +6,7 @@ import { env } from './env'
 import { logger } from './logger'
 import { machineReviewService } from '../features/moderation/moderation.machine.service'
 import { listingExpiryService } from '../features/listing/listing.expiry.service'
+import { unverifiedCleanupService } from '../features/auth/unverified-cleanup.service'
 import {
   cleanupConfigFromEnv,
   uploadCleanupService,
@@ -26,6 +27,7 @@ const JOBS = {
   MACHINE_REVIEW: 'machine-review:sweep',
   IMAGE_CLEANUP: 'image-cleanup:sweep',
   LISTING_EXPIRY: 'listing-expiry:sweep',
+  UNVERIFIED_CLEANUP: 'unverified-cleanup:sweep',
 } as const
 
 let agenda: Agenda | null = null
@@ -65,6 +67,21 @@ export async function startAgenda(): Promise<void> {
     { lockLifetime: 2 * 60 * 1000 },
   )
 
+  /*
+   * Dọn tài khoản đăng ký rồi bỏ, quá hạn xác thực email.
+   *
+   * `lockLifetime` rộng nhất trong ba job đầu: nó XOÁ, và mỗi ứng viên tốn ba phép đếm để chắc
+   * tài khoản thật sự trống (`hasAnything`). Một mẻ 200 người vì thế chạy lâu hơn hẳn một
+   * `updateMany` đi trọn index — lock hết hạn giữa chừng là hai instance cùng xoá một mẻ.
+   */
+  agenda.define(
+    JOBS.UNVERIFIED_CLEANUP,
+    async () => {
+      await unverifiedCleanupService.sweep()
+    },
+    { lockLifetime: 15 * 60 * 1000 },
+  )
+
   // Chỉ đăng ký khi có đủ CLOUDINARY_* — thiếu là tính năng chưa bật, đừng chạy một job mà
   // lượt nào cũng bỏ qua rồi ghi log "thiếu env" mỗi ngày.
   if (cleanupConfigFromEnv()) {
@@ -80,12 +97,14 @@ export async function startAgenda(): Promise<void> {
   await agenda.start()
   await agenda.every(env.MACHINE_REVIEW_EVERY, JOBS.MACHINE_REVIEW)
   await agenda.every(env.LISTING_EXPIRY_EVERY, JOBS.LISTING_EXPIRY)
+  await agenda.every(env.UNVERIFIED_CLEANUP_EVERY, JOBS.UNVERIFIED_CLEANUP)
   if (cleanupConfigFromEnv()) {
     await agenda.every(env.IMAGE_CLEANUP_EVERY, JOBS.IMAGE_CLEANUP)
   }
   logger.info(
     `⏱️  Agenda started — machine review every ${env.MACHINE_REVIEW_EVERY}` +
       `, listing expiry every ${env.LISTING_EXPIRY_EVERY}` +
+      `, unverified cleanup every ${env.UNVERIFIED_CLEANUP_EVERY} (TTL ${env.UNVERIFIED_TTL_DAYS}d)` +
       (cleanupConfigFromEnv() ? `, image cleanup every ${env.IMAGE_CLEANUP_EVERY}` : ''),
   )
 }

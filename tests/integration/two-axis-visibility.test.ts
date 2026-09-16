@@ -226,3 +226,64 @@ describe('THÀNH VIÊN org đọc được gì', () => {
     expect(titles).toContain('Tin CÔNG KHAI không thuộc trường nào')
   })
 })
+
+/*
+ * HỒ SƠ NGƯỜI BÁN — `GET /listings?seller=<id>`.
+ *
+ * Mọi assertion phía trên đọc BẢNG TIN CHUNG. Đây là một câu hỏi khác và là câu người dùng thật
+ * sự hỏi: "người ngoài mở hồ sơ tôi ra thì có thấy tin tôi đăng trong nhóm kín không". Đường này
+ * thêm đúng một dòng vào filter (`buildFilter`: `filter.seller = params.seller`) rồi đi tiếp qua
+ * `tenantPlugin` như mọi lượt đọc khác — nhưng "đáng lẽ an toàn vì dùng chung cơ chế" không phải
+ * bằng chứng, và trước file này không test nào chạm tới `?seller=`.
+ */
+describe('Người ngoài xem TIN CỦA MỘT NGƯỜI (?seller=)', () => {
+  const titlesOfSeller = async (
+    sellerId: string,
+    viewer: TestUser | null,
+    headers: Record<string, string> = {},
+  ) => {
+    const req = request(app).get('/api/v1/listings').query({ seller: sellerId })
+    if (viewer) req.set(bearer(viewer))
+    const res = await req.set(headers).expect(200)
+    return res.body.data.map((l: { title: string }) => l.title)
+  }
+
+  it('KHÔNG thấy tin nội bộ — bộ lọc người bán không phải cửa hậu', async () => {
+    const titles = await titlesOfSeller(member.id, outsider)
+
+    expect(titles).not.toContain('Tin NỘI BỘ của trường')
+    // Và vẫn thấy phần công khai: chốt này siết đúng chỗ, không siết chết cả hồ sơ.
+    expect(titles).toContain('Tin CÔNG KHAI từ trường')
+  })
+
+  it('khách CHƯA đăng nhập cũng vậy', async () => {
+    const titles = await titlesOfSeller(member.id, null)
+
+    expect(titles).not.toContain('Tin NỘI BỘ của trường')
+    expect(titles).toContain('Tin CÔNG KHAI từ trường')
+  })
+
+  /** Gộp hai cửa hậu đã biết: slug của nhóm + bộ lọc người bán. Cả hai cùng lúc vẫn phải đóng. */
+  it('kèm X-Org-Slug của nhóm cũng không mở ra được', async () => {
+    const titles = await titlesOfSeller(member.id, outsider, { 'X-Org-Slug': SLUG })
+    expect(titles).not.toContain('Tin NỘI BỘ của trường')
+  })
+
+  it('người ngoài cố lọc ?visibility=org_internal trên hồ sơ người khác → RỖNG', async () => {
+    const res = await request(app)
+      .get('/api/v1/listings')
+      .query({ seller: member.id, visibility: 'org_internal' })
+      .set(bearer(outsider))
+      .expect(200)
+
+    expect(res.body.data).toEqual([])
+  })
+
+  /** Chốt không siết quá tay: chính chủ và người cùng nhóm vẫn phải thấy đủ. */
+  it('THÀNH VIÊN mở hồ sơ của chính người đó thì thấy CẢ HAI', async () => {
+    const titles = await titlesOfSeller(member.id, member, { 'X-Org-Slug': SLUG })
+
+    expect(titles).toContain('Tin NỘI BỘ của trường')
+    expect(titles).toContain('Tin CÔNG KHAI từ trường')
+  })
+})

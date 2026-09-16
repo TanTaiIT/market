@@ -65,6 +65,22 @@ const envSchema = z.object({
   LISTING_EXPIRY_EVERY: z.string().default('1 hour'),
 
   /*
+   * Hạn xác thực email. Quá mốc này mà tài khoản chưa nhập mã thì job dọn nó đi và TRẢ LẠI
+   * địa chỉ email — xem `unverified-cleanup.service`.
+   *
+   * 7 ngày chứ không phải vài giờ: mã sống 10 phút, nhưng người ta bấm đăng ký rồi đi họp, rồi
+   * cuối tuần mới mở lại thư. Hạn ngắn biến một bất tiện nhỏ (xin mã mới) thành mất tài khoản.
+   * Đủ dài để không ai bị oan, đủ ngắn để địa chỉ gõ nhầm không bị giữ chỗ hàng tháng.
+   */
+  UNVERIFIED_TTL_DAYS: z.coerce.number().int().positive().default(7),
+
+  /*
+   * Nhịp quét. Thưa hơn hẳn các job khác vì mốc so là NGÀY: quét 6 tiếng một lần thì trễ tối
+   * đa 6 tiếng trên một hạn 7 ngày — không ai nhận ra, mà số lượt chạy vô ích giảm bốn lần.
+   */
+  UNVERIFIED_CLEANUP_EVERY: z.string().default('6 hours'),
+
+  /*
    * Nơi nhận lỗi 5xx. THIẾU = tắt hẳn, không phải lỗi cấu hình — dev và test không gửi gì đi
    * đâu, và không ai phải có tài khoản Sentry để chạy `npm test`.
    */
