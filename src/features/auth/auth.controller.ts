@@ -1,5 +1,6 @@
 import { authService } from './auth.service'
 import { emailVerificationService } from './email-verification.service'
+import { passwordResetService } from './password-reset.service'
 import { toAuthResponseDto } from './auth.types'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
@@ -55,5 +56,29 @@ export const authController = {
   verifyEmail: catchAsync(async (req, res) => {
     await emailVerificationService.verify(req.user!.id, req.body.code)
     success(res, { message: 'Đã xác thực email' })
+  }),
+
+  /*
+   * POST /auth/password/forgot — LUÔN 200, kể cả email không có tài khoản.
+   *
+   * Câu trả lời cố ý mơ hồ ("nếu địa chỉ này có tài khoản…"): nó đúng trong cả hai ca, nên
+   * người dùng thật không bị đánh đố mà máy dò cũng không đọc được gì từ nó.
+   */
+  forgotPassword: catchAsync(async (req, res) => {
+    await passwordResetService.requestReset(req.body.email)
+    success(res, { message: 'Nếu địa chỉ này có tài khoản, mã đặt lại đã được gửi tới hộp thư' })
+  }),
+
+  // POST /auth/password/verify-code
+  verifyResetCode: catchAsync(async (req, res) => {
+    const resetToken = await passwordResetService.verifyCode(req.body.email, req.body.code)
+    success(res, { message: 'Mã hợp lệ', data: { resetToken } })
+  }),
+
+  // POST /auth/password/reset
+  resetPassword: catchAsync(async (req, res) => {
+    const { email, resetToken, password } = req.body
+    await passwordResetService.resetPassword(email, resetToken, password)
+    success(res, { message: 'Đã đặt lại mật khẩu, vui lòng đăng nhập lại' })
   }),
 }

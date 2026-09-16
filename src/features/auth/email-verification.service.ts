@@ -1,20 +1,9 @@
-import { randomInt } from 'node:crypto'
-import { hash, verify } from '@node-rs/bcrypt'
 import { Types } from 'mongoose'
-import {
-  CODE_TTL_MS,
-  EmailVerification,
-  MAX_ATTEMPTS,
-  RESEND_COOLDOWN_MS,
-} from './email-verification.model'
+import { CODE_PURPOSE } from './email-verification.model'
 import { sendVerificationCode } from './email.sender'
+import { consumeCode, dropCode, issueCode } from './verification-code.service'
 import { userRepository } from '../user/user.repository'
-import {
-  BadRequestError,
-  ConflictError,
-  NotFoundError,
-  TooManyRequestsError,
-} from '../../common/errors'
+import { ConflictError, NotFoundError } from '../../common/errors'
 import { logger } from '../../config/logger'
 
 /**
@@ -24,17 +13,10 @@ import { logger } from '../../config/logger'
  * body sẽ dựng ra một máy dò: gửi thử từng địa chỉ, ai nhận 200 là có tài khoản. Đăng ký xong
  * client đã có token rồi (`register` trả luôn phiên), nên không mất gì.
  *
- * Bcrypt rounds cố ý thấp hơn mật khẩu (xem `BCRYPT_ROUNDS` của `user.model`): mã sống 10 phút
- * và chỉ có 5 lượt đoán, nên chi phí phải trả cho mỗi lượt kiểm không cần bằng một mật khẩu
- * sống nhiều năm.
+ * Khác hẳn `forgot-password`, nơi email BẮT BUỘC phải nằm trong body — và vì thế đường đó phải
+ * trả 200 cho mọi địa chỉ. Hai luồng dùng chung `verification-code.service` nhưng ngược nhau ở
+ * đúng điểm này.
  */
-const CODE_ROUNDS = 8
-
-/** 6 chữ số từ CSPRNG. `Math.random` đoán được từ các giá trị trước — không dùng ở đây. */
-function newCode(): string {
-  return String(randomInt(0, 1_000_000)).padStart(6, '0')
-}
-
 export interface SendCodeResult {
   /** Còn bao nhiêu giây nữa mã hết hạn — client đếm ngược bằng con số này. */
   expiresInSeconds: number
@@ -43,85 +25,29 @@ export interface SendCodeResult {
 }
 
 export const emailVerificationService = {
-  /**
-   * Phát một mã mới và gửi đi. Mã cũ (nếu còn) bị GHI ĐÈ, không cộng thêm: một người dùng chỉ
-   * có đúng một mã sống, nên bấm "gửi lại" là mã trong thư trước hết hiệu lực ngay.
-   */
   async sendCode(userId: string): Promise<SendCodeResult> {
     const user = await userRepository.findById(userId)
     if (!user) throw new NotFoundError('Không tìm thấy tài khoản')
     if (user.emailVerifiedAt) throw new ConflictError('Email này đã được xác thực')
 
-    const existing = await EmailVerification.findOne({ userId: user._id }).exec()
-    if (existing) {
-      const waited = Date.now() - existing.sentAt.getTime()
-      if (waited < RESEND_COOLDOWN_MS) {
-        throw new TooManyRequestsError(
-          `Vui lòng chờ ${Math.ceil((RESEND_COOLDOWN_MS - waited) / 1000)} giây rồi gửi lại`,
-        )
-      }
-    }
-
-    const code = newCode()
-    const now = new Date()
-    const expiresAt = new Date(now.getTime() + CODE_TTL_MS)
-
-    // Ghi TRƯỚC rồi mới gửi, và xoá lại nếu gửi hỏng. Thứ tự ngược lại thì một lượt ghi hỏng
-    // để người dùng cầm một mã không kiểm được, và họ không có cách nào biết điều đó.
-    await EmailVerification.findOneAndUpdate(
-      { userId: user._id },
-      { codeHash: await hash(code, CODE_ROUNDS), expiresAt, attempts: 0, sentAt: now },
-      { upsert: true, new: true },
-    ).exec()
-
+    const issued = await issueCode(user._id, CODE_PURPOSE.VERIFY_EMAIL)
     try {
-      await sendVerificationCode(user.email, code)
+      await sendVerificationCode(user.email, issued.code)
     } catch (err) {
-      // Xoá để họ bấm gửi lại được NGAY, không phải chờ hết hạn chờ của một mã chưa từng tới.
-      await EmailVerification.deleteOne({ userId: user._id }).exec()
+      await dropCode(user._id, CODE_PURPOSE.VERIFY_EMAIL)
       throw err
     }
 
     logger.info('verification code sent', { userId })
     return {
-      expiresInSeconds: Math.floor(CODE_TTL_MS / 1000),
-      resendAfterSeconds: Math.floor(RESEND_COOLDOWN_MS / 1000),
+      expiresInSeconds: issued.expiresInSeconds,
+      resendAfterSeconds: issued.resendAfterSeconds,
     }
   },
 
-  /**
-   * Đổi mã lấy dấu đã xác thực.
-   *
-   * Mọi nhánh hỏng đều trả CÙNG MỘT câu "Mã không đúng hoặc đã hết hạn" — không phân biệt
-   * "chưa gửi mã nào", "mã đã hết hạn" và "mã sai". Phân biệt ra là nói cho người đang dò
-   * biết họ đang dò đúng hướng nào.
-   */
   async verify(userId: string, code: string): Promise<void> {
-    const wrong = () => new BadRequestError('Mã không đúng hoặc đã hết hạn')
-
-    const row = await EmailVerification.findOne({ userId: new Types.ObjectId(userId) }).exec()
-    // `expiresAt` so tay chứ không dựa TTL index: Mongo quét mỗi ~60 giây nên bản ghi hết hạn
-    // vẫn đọc được một lúc — xem ghi chú ở chỗ khai index.
-    if (!row || row.expiresAt.getTime() <= Date.now() || row.attempts >= MAX_ATTEMPTS) {
-      throw wrong()
-    }
-
-    if (!(await verify(code, row.codeHash))) {
-      const after = await EmailVerification.findOneAndUpdate(
-        { _id: row._id },
-        { $inc: { attempts: 1 } },
-        { new: true },
-      ).exec()
-      // Chạm trần thì XOÁ, không để bản ghi chết nằm lại: người dùng bấm gửi lại là có mã mới
-      // ngay, còn kẻ đang dò mất luôn mục tiêu.
-      if (after && after.attempts >= MAX_ATTEMPTS) {
-        await EmailVerification.deleteOne({ _id: row._id }).exec()
-      }
-      throw wrong()
-    }
-
+    await consumeCode(new Types.ObjectId(userId), CODE_PURPOSE.VERIFY_EMAIL, code)
     await userRepository.updateById(userId, { emailVerifiedAt: new Date() })
-    await EmailVerification.deleteOne({ _id: row._id }).exec()
     logger.info('email verified', { userId })
   },
 }

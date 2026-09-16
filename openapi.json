@@ -4248,6 +4248,75 @@
         ],
         "additionalProperties": false
       },
+      "ForgotPassword": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "nguyenvana@example.com"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "additionalProperties": false
+      },
+      "ResetPassword": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "resetToken": {
+            "type": "string",
+            "minLength": 1
+          },
+          "password": {
+            "type": "string",
+            "minLength": 6,
+            "maxLength": 72
+          }
+        },
+        "required": [
+          "email",
+          "resetToken",
+          "password"
+        ],
+        "additionalProperties": false
+      },
+      "ResetTicket": {
+        "type": "object",
+        "properties": {
+          "resetToken": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "resetToken"
+        ]
+      },
+      "VerifyResetCode": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "code": {
+            "type": "string",
+            "pattern": "^\\d{6}$",
+            "example": "042913"
+          }
+        },
+        "required": [
+          "email",
+          "code"
+        ],
+        "additionalProperties": false
+      },
       "ClearRejections": {
         "type": "object",
         "properties": {
@@ -5097,7 +5166,7 @@
           }
         ],
         "summary": "Gửi mã xác thực 6 số tới email của chính mình",
-        "description": "Địa chỉ nhận lấy từ TOKEN, không nhận trong body — body có email thì endpoint này thành máy dò tài khoản. Mỗi tài khoản chỉ có một mã sống: gọi lại là mã cũ chết ngay. Chờ 60 giây giữa hai lượt gửi, mã sống 10 phút. 503 = máy chủ chưa cấu hình `RESEND_API_KEY`.",
+        "description": "Địa chỉ nhận lấy từ TOKEN, không nhận trong body — body có email thì endpoint này thành máy dò tài khoản. Mỗi tài khoản chỉ có một mã sống: gọi lại là mã cũ chết ngay. Chờ 60 giây giữa hai lượt gửi, mã sống 10 phút. 503 = máy chủ chưa cấu hình `GMAIL_USER`/`GMAIL_APP_PASSWORD`, hoặc không gửi được thư.",
         "responses": {
           "200": {
             "description": "Đã gửi mã",
@@ -5235,6 +5304,216 @@
           },
           "401": {
             "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password/forgot": {
+      "post": {
+        "operationId": "authForgotPassword",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Xin mã đặt lại mật khẩu (công khai)",
+        "description": "LUÔN trả 200, kể cả khi địa chỉ không có tài khoản, đang bị khoá, hay gửi thư hỏng — phân biệt các ca đó là biến endpoint này thành máy dò tài khoản. Mã 6 số sống 10 phút, chờ 60 giây giữa hai lượt xin. Tài khoản chỉ-Google (không có mật khẩu) cũng xin được: gõ đúng mã chứng minh quyền kiểm soát hộp thư, đúng bằng chứng mà Google cấp hộ.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPassword"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã tiếp nhận",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Email sai định dạng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password/reset": {
+      "post": {
+        "operationId": "authResetPassword",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Đổi VÉ lấy mật khẩu mới (công khai)",
+        "description": "Nhận `resetToken` từ `/auth/password/verify-code`, KHÔNG nhận mã 6 số — mã đã bị tiêu thụ ở bước đó. Thành công thì làm BA việc: đặt mật khẩu mới, đánh dấu email đã xác thực (mã vừa chứng minh hộp thư), và `$inc tokenVersion` để CẮT MỌI PHIÊN đang mở — người đặt lại mật khẩu thường đang nghi bị chiếm tài khoản, để phiên của kẻ kia sống tiếp 14 ngày thì chưa giải quyết gì. Vé dùng đúng một lần. Mọi nhánh hỏng trả CÙNG một câu 400 — kể cả email không tồn tại, vì mã trạng thái khác nhau cũng đủ để dò.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPassword"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã đặt lại mật khẩu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Mã không đúng hoặc đã hết hạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password/verify-code": {
+      "post": {
+        "operationId": "authVerifyResetCode",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Đổi mã 6 số lấy vé đặt lại (công khai)",
+        "description": "Bước giữa, tách khỏi bước đặt mật khẩu vì trần 5 lần gõ sai: gộp hai việc thì mỗi lần gõ nhầm mã bắt người dùng gõ lại cả mật khẩu — một ô họ không nhìn thấy để soát — và vẫn đốt một lượt trong năm lượt. Mã bị TIÊU THỤ ở đây; đổi lại là một vé dùng đúng một lần, sống 10 phút tính từ lúc phát. Sai 5 lần thì mã chết, phải xin mã mới.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyResetCode"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mã hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/ResetTicket"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Mã không đúng hoặc đã hết hạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
             "content": {
               "application/json": {
                 "schema": {
@@ -12022,6 +12301,67 @@
             }
           }
         }
+      },
+      "delete": {
+        "operationId": "chatRemoveAll",
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Xoá mọi hội thoại khỏi hộp thư của tôi",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã xoá",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "deleted": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "deleted"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/chats/{id}": {
@@ -12066,6 +12406,81 @@
                     },
                     "data": {
                       "$ref": "#/components/schemas/Conversation"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy hội thoại, hoặc bạn không thuộc hội thoại này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "chatRemove",
+        "tags": [
+          "Chat"
+        ],
+        "summary": "Xoá hội thoại khỏi hộp thư của tôi",
+        "description": "Chỉ ẩn phía người gọi và cắt lịch sử tại thời điểm xoá — hộp thư của người kia không đổi. Người kia nhắn tiếp thì hội thoại quay lại, nhưng chỉ mang tin từ lúc đó trở đi.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã xoá",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "nullable": true
                     }
                   },
                   "required": [
@@ -12610,6 +13025,60 @@
           },
           "403": {
             "description": "Ngoài phạm vi được cấp",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "notificationClear",
+        "tags": [
+          "Notification"
+        ],
+        "summary": "Xoá tất cả thông báo trong hộp thư của tôi",
+        "description": "Đẩy mốc `notificationsClearedAt` lên hiện tại: từ đó chỉ còn đọc được thông báo tạo sau thời điểm này. Không xoá document nào — thông báo phát chung dùng chung cho cả nhóm, xoá là xoá của mọi người. Vì vậy thao tác này không lùi lại được và cũng không chọn lọc được.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã xoá",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
             "content": {
               "application/json": {
                 "schema": {

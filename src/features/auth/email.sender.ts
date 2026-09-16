@@ -46,7 +46,25 @@ export function mailEnabled(): boolean {
  */
 const senderName = 'Ghim'
 
-export async function sendVerificationCode(to: string, code: string): Promise<void> {
+export function sendVerificationCode(to: string, code: string): Promise<void> {
+  return send(to, `${code} là mã xác thực Ghim của bạn`, VERIFY_INTRO, code)
+}
+
+/**
+ * Thư đặt lại mật khẩu — tách khỏi thư xác thực vì NGỮ CẢNH khác, không phải vì định dạng khác.
+ *
+ * Người nhận thư này có thể KHÔNG phải người vừa bấm nút: ai biết địa chỉ cũng xin được mã. Nên
+ * câu mở đầu phải nói rõ chuyện gì đang xảy ra, và câu cuối phải nói bỏ qua thì không mất gì —
+ * đó là toàn bộ thứ báo cho nạn nhân biết có người đang dò tài khoản họ.
+ */
+export function sendPasswordResetCode(to: string, code: string): Promise<void> {
+  return send(to, `${code} là mã đặt lại mật khẩu Ghim`, RESET_INTRO, code)
+}
+
+const VERIFY_INTRO = 'Mã xác thực tài khoản Ghim của bạn:'
+const RESET_INTRO = 'Mã đặt lại mật khẩu Ghim của bạn:'
+
+async function send(to: string, subject: string, intro: string, code: string): Promise<void> {
   if (!mailEnabled()) {
     throw new ApiError(
       httpStatus.SERVICE_UNAVAILABLE,
@@ -63,9 +81,9 @@ export async function sendVerificationCode(to: string, code: string): Promise<vo
     await transporter.sendMail({
       from: `${senderName} <${env.GMAIL_USER}>`,
       to,
-      subject: `${code} là mã xác thực Ghim của bạn`,
-      text: codeText(code),
-      html: codeHtml(code),
+      subject,
+      text: codeText(intro, code),
+      html: codeHtml(intro, code),
     })
   } catch (err) {
     /*
@@ -96,14 +114,23 @@ export async function sendVerificationCode(to: string, code: string): Promise<vo
  * thì tính năng coi như hỏng với đúng những người đang cần nó. Gửi qua Gmail cá nhân vốn đã
  * thiệt điểm vì không có SPF/DKIM riêng, nên đừng bỏ thêm điểm ở chỗ không cần bỏ.
  */
-function codeText(code: string): string {
+function codeText(intro: string, code: string): string {
   return [
-    `Mã xác thực của bạn là: ${code}`,
+    `${intro} ${code}`,
     '',
     'Mã có hiệu lực trong 10 phút và chỉ dùng được một lần.',
-    'Nếu bạn không đăng ký tài khoản Ghim, hãy bỏ qua thư này.',
+    FOOTER,
   ].join('\n')
 }
+
+/**
+ * Một câu cho cả hai loại thư, và nó phải đúng với cả hai.
+ *
+ * Người nhận thư đặt lại mật khẩu có thể là nạn nhân của một lượt dò — ai biết địa chỉ cũng xin
+ * được mã. Câu này là thứ duy nhất báo cho họ biết điều đó, nên nó nói "không làm gì thì không
+ * mất gì", chứ không chỉ "bỏ qua thư này".
+ */
+const FOOTER = 'Nếu bạn không yêu cầu, hãy bỏ qua thư này — tài khoản của bạn không đổi gì.'
 
 /**
  * HTML nội tuyến, không template engine và không ảnh.
@@ -112,11 +139,11 @@ function codeText(code: string): string {
  * để thành CHỮ chọn được, không phải ảnh: người dùng cần copy được nó, và ảnh thì phần lớn
  * hộp thư chặn mặc định.
  */
-function codeHtml(code: string): string {
+function codeHtml(intro: string, code: string): string {
   return `<div style="font-family:system-ui,-apple-system,'Segoe UI',sans-serif;max-width:420px;margin:0 auto;padding:24px;color:#17181C">
-  <p style="font-size:15px;line-height:22px;margin:0 0 20px">Mã xác thực tài khoản Ghim của bạn:</p>
+  <p style="font-size:15px;line-height:22px;margin:0 0 20px">${intro}</p>
   <p style="font-size:34px;font-weight:700;letter-spacing:8px;margin:0 0 20px;color:#16A05B">${code}</p>
   <p style="font-size:13px;line-height:19px;color:#6B7280;margin:0 0 8px">Mã có hiệu lực trong 10 phút và chỉ dùng được một lần.</p>
-  <p style="font-size:13px;line-height:19px;color:#6B7280;margin:0">Nếu bạn không đăng ký tài khoản Ghim, hãy bỏ qua thư này.</p>
+  <p style="font-size:13px;line-height:19px;color:#6B7280;margin:0">${FOOTER}</p>
 </div>`
 }

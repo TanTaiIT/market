@@ -50,4 +50,10 @@ export const notificationController = {
     const notification = await notificationService.markRead(req.params.id, req.user!.id)
     success(res, { message: 'Notification marked as read', data: notification })
   }),
+
+  // DELETE /notifications
+  clear: catchAsync(async (req, res) => {
+    await notificationService.clearInbox(req.user!.id)
+    success(res, { message: 'Notifications cleared', data: null })
+  }),
 }

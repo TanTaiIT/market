@@ -55,4 +55,16 @@ export const chatController = {
     const conversation = await chatService.markRead(req.params.id, actorOf(req))
     success(res, { message: 'Conversation marked as read', data: conversation })
   }),
+
+  // DELETE /chats/:id
+  remove: catchAsync(async (req, res) => {
+    await chatService.remove(req.params.id, actorOf(req))
+    success(res, { message: 'Conversation deleted', data: null })
+  }),
+
+  // DELETE /chats
+  removeAll: catchAsync(async (req, res) => {
+    const deleted = await chatService.removeAll(actorOf(req))
+    success(res, { message: 'Conversations deleted', data: { deleted } })
+  }),
 }

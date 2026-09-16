@@ -45,6 +45,21 @@ export interface IUser {
    * Không bao giờ giảm, và không mang ý nghĩa nào ngoài "so khớp hay không".
    */
   tokenVersion: number
+  /**
+   * Mốc "dọn hộp thư": chỉ đọc thông báo tạo SAU thời điểm này. `null` = chưa dọn lần nào.
+   *
+   * Nằm trên `User` chứ không trên `Membership`, và cũng không phải một cột `deletedBy` trên
+   * `Notification`. Lý do là hình dạng của chính `Notification`: phần lớn là bản PHÁT CHUNG —
+   * một document cho cả nhóm 500 người (xem `readBy`). Xoá document đó là xoá của 499 người
+   * khác, còn thêm mảng "ai đã xoá" là đúng cái phình 6 KB/dòng mà model đã cố tránh.
+   *
+   * `Membership` cũng không đúng chỗ: hộp thư gộp cả thông báo đích danh (`userId`), thứ tồn
+   * tại cả với tài khoản không thuộc nhóm nào. Một mốc trên người là một lượt ghi, 8 byte, và
+   * phủ mọi nhánh.
+   *
+   * Hệ quả có chủ ý: "Xoá tất cả" không xoá được chọn lọc — nó là một lằn ranh thời gian.
+   */
+  notificationsClearedAt: Date | null
   ratingAvg: number
   ratingCount: number
   lastLoginAt?: Date
@@ -103,6 +118,7 @@ const userSchema = new Schema<IUserDocument>(
     // Tài khoản có TRƯỚC trường này không mang nó -> Mongoose hydrate thành 0, khớp với refresh
     // token cũ (cũng không có `ver`, đọc là 0). Không cần migration, không ai bị đá ra.
     tokenVersion: { type: Number, default: 0 },
+    notificationsClearedAt: { type: Date, default: null },
 
     // Denormalize thống kê người bán để đọc nhanh
     ratingAvg: { type: Number, default: 0, min: 0, max: 5 },

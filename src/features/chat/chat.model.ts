@@ -25,6 +25,28 @@ export interface IParticipant {
   avatar: string
   /** `null` = chưa đọc lần nào. So với `lastMessageAt` để ra huy hiệu chưa đọc. */
   lastReadAt: Date | null
+  /**
+   * Ẩn khỏi hộp thư của RIÊNG người này. Bật khi họ bấm "Xoá hội thoại".
+   *
+   * Xoá hẳn document là xoá luôn của người kia — hội thoại thuộc về hai người, và không bên nào
+   * được quyết hộ bên còn lại. `deletedAt` ở cấp document vẫn còn nhưng là việc khác: nó dành
+   * cho quản trị gỡ cả hội thoại.
+   *
+   * `touch` TẮT cờ này cho cả hai người mỗi khi có tin mới, nên hội thoại tự quay lại khi người
+   * kia nhắn tiếp. Nhờ vậy câu lọc danh sách chỉ cần `hidden: false` — không phải so
+   * `lastMessageAt` với một mốc, thứ đòi `$expr` và làm hỏng index.
+   */
+  hidden: boolean
+  /**
+   * Mốc cắt lịch sử của RIÊNG người này: chỉ đọc được tin nhắn tạo SAU thời điểm đây.
+   *
+   * Tách khỏi `hidden` chứ không dùng chung một field, vì hai cái có vòng đời ngược nhau —
+   * `hidden` phải tắt khi có tin mới (để hội thoại quay lại), còn mốc cắt phải GIỮ NGUYÊN mãi
+   * mãi (nếu không, tin đã xoá sẽ hiện lại cùng lúc hội thoại quay lại).
+   *
+   * `null` = chưa xoá lần nào, đọc được toàn bộ lịch sử.
+   */
+  clearedAt: Date | null
 }
 
 export interface IConversation {
@@ -65,6 +87,10 @@ const participantSchema = new Schema<IParticipant>(
     name: { type: String, required: true, trim: true, maxlength: 100 },
     avatar: { type: String, default: '', trim: true },
     lastReadAt: { type: Date, default: null },
+    // Hội thoại có TRƯỚC hai field này hydrate thành `false`/`null` — đúng nghĩa "chưa ai xoá",
+    // nên không cần migration.
+    hidden: { type: Boolean, default: false },
+    clearedAt: { type: Date, default: null },
   },
   { _id: false },
 )

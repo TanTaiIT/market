@@ -60,6 +60,17 @@ router.patch(
   chatController.markRead,
 )
 
+// KHÔNG có `requireVerifiedEmail`: dọn hộp thư của chính mình không tạo ra nội dung nào cho
+// người khác đọc, mà đó là thứ duy nhất cổng xác thực email đang bảo vệ.
+router.delete('/', authenticate, apiLimiter, chatController.removeAll)
+router.delete(
+  '/:id',
+  authenticate,
+  apiLimiter,
+  validate({ params: conversationParamsSchema }),
+  chatController.remove,
+)
+
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
 const conversationResponse = envelope(conversationResponseSchema)
@@ -156,6 +167,37 @@ registry.registerPath({
     401: unauthorized,
     404: notMember,
     429: errorResponse('Quá nhiều request'),
+  },
+})
+
+registry.registerPath({
+  method: 'delete',
+  path: '/chats/{id}',
+  operationId: 'chatRemove',
+  tags: ['Chat'],
+  summary: 'Xoá hội thoại khỏi hộp thư của tôi',
+  description:
+    'Chỉ ẩn phía người gọi và cắt lịch sử tại thời điểm xoá — hộp thư của người kia không đổi. ' +
+    'Người kia nhắn tiếp thì hội thoại quay lại, nhưng chỉ mang tin từ lúc đó trở đi.',
+  ...protectedRoute,
+  request: { params: conversationParamsSchema },
+  responses: {
+    200: jsonResponse('Đã xoá', envelope(z.null())),
+    401: unauthorized,
+    404: notMember,
+  },
+})
+
+registry.registerPath({
+  method: 'delete',
+  path: '/chats',
+  operationId: 'chatRemoveAll',
+  tags: ['Chat'],
+  summary: 'Xoá mọi hội thoại khỏi hộp thư của tôi',
+  ...protectedRoute,
+  responses: {
+    200: jsonResponse('Đã xoá', envelope(z.object({ deleted: z.number().int() }))),
+    401: unauthorized,
   },
 })
 

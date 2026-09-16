@@ -10,6 +10,7 @@ import type { Grant } from '../../common/authz/policy'
 import type { OrgActor } from '../../common/utils/actor'
 import { membershipRepository } from '../membership/membership.repository'
 import { orgUnitRepository } from '../org-unit/org-unit.repository'
+import { userRepository } from '../user/user.repository'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToOrgMembers, emitToUser } from '../../sockets/emit'
@@ -157,7 +158,13 @@ export const notificationService = {
       }
     }
 
-    const memberships = await membershipRepository.listActiveByUser(viewer.id)
+    // Song song: hai câu hỏi độc lập cho cùng một người đọc, nối tiếp chỉ cộng thêm một vòng
+    // vào đúng màn được mở thường xuyên nhất.
+    const [memberships, me] = await Promise.all([
+      membershipRepository.listActiveByUser(viewer.id),
+      userRepository.findById(viewer.id),
+    ])
+
     const { items, total } = await notificationRepository.paginateInbox(
       {
         recipientId: new Types.ObjectId(viewer.id),
@@ -166,6 +173,7 @@ export const notificationService = {
           unitId: m.unitId,
           joinedAt: m.joinedAt,
         })),
+        clearedAt: me?.notificationsClearedAt ?? null,
       },
       pagination,
     )
@@ -299,5 +307,19 @@ export const notificationService = {
     const notification = await notificationRepository.markRead(id, viewerId)
     if (!notification) throw new NotFoundError('Notification not found')
     return toNotificationDto(notification, { id: userId, seenAt: new Map() })
+  },
+
+  /**
+   * Dọn hộp thư: đẩy mốc `notificationsClearedAt` lên hiện tại — xem field đó ở `user.model.ts`.
+   *
+   * MỘT lượt ghi 8 byte, không đụng tới `Notification` nào, nên nó rẻ như nhau với người có 5
+   * dòng lẫn người có 5.000. Đổi lại là không xoá chọn lọc được: đây là một lằn ranh thời gian,
+   * không phải một danh sách.
+   *
+   * Không trả về số dòng đã dọn: đếm chúng là đúng câu truy vấn mà mốc này sinh ra để khỏi phải
+   * chạy, và màn hình cũng không cần con số đó — danh sách rỗng đi là đủ.
+   */
+  async clearInbox(userId: string) {
+    await userRepository.updateById(userId, { notificationsClearedAt: new Date() })
   },
 }

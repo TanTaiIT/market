@@ -87,8 +87,22 @@ export const chatService = {
       buyerId,
       sellerId: seller._id,
       participants: [
-        { user: buyer._id, name: buyer.name, avatar: buyer.avatar, lastReadAt: new Date() },
-        { user: seller._id, name: seller.name, avatar: seller.avatar, lastReadAt: null },
+        {
+          user: buyer._id,
+          name: buyer.name,
+          avatar: buyer.avatar,
+          lastReadAt: new Date(),
+          hidden: false,
+          clearedAt: null,
+        },
+        {
+          user: seller._id,
+          name: seller.name,
+          avatar: seller.avatar,
+          lastReadAt: null,
+          hidden: false,
+          clearedAt: null,
+        },
       ],
       lastMessage: '',
       lastMessageAt: new Date(),
@@ -116,10 +130,17 @@ export const chatService = {
   },
 
   async messages(id: string, query: ConversationQuery, actor: ChatActor) {
-    await requireMembership(id, actor)
+    const conversation = await requireMembership(id, actor)
 
     const pagination = parsePagination(query)
-    const { items, total } = await chatRepository.paginateMessages(id, pagination)
+    // Mốc cắt của CHÍNH người đọc: ai đã xoá hội thoại thì không đọc lại được phần trước đó,
+    // kể cả khi hội thoại quay lại vì người kia nhắn tiếp.
+    const me = conversation.participants.find((p) => p.user.toString() === actor.id)
+    const { items, total } = await chatRepository.paginateMessages(
+      id,
+      pagination,
+      me?.clearedAt ?? null,
+    )
     return {
       items: items.map(toMessageDto),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
@@ -191,5 +212,21 @@ export const chatService = {
     const conversation = await chatRepository.markRead(id, new Types.ObjectId(actor.id))
     if (!conversation) throw new NotFoundError('Conversation not found')
     return toConversationDto(conversation, actor.id)
+  },
+
+  /**
+   * Xoá hội thoại khỏi hộp thư của người gọi. KHÔNG xoá của người kia — xem `IParticipant.hidden`.
+   *
+   * Đi qua `requireMembership` như mọi thao tác khác, nên người lạ đoán id nhận 404 chứ không
+   * phải một lệnh ghi im lặng không khớp gì.
+   */
+  async remove(id: string, actor: ChatActor) {
+    await requireMembership(id, actor)
+    await chatRepository.hideForUser(id, new Types.ObjectId(actor.id))
+  },
+
+  /** Dọn cả hộp thư. Trả về số hội thoại đã ẩn để client hiện đúng câu xác nhận. */
+  async removeAll(actor: ChatActor): Promise<number> {
+    return chatRepository.hideAllForUser(new Types.ObjectId(actor.id))
   },
 }

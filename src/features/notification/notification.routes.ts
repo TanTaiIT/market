@@ -9,6 +9,7 @@ import {
 } from './notification.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authenticate, requireOrg, requireOrgModerator } from '../../middlewares/auth.middleware'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
   registry,
   bearerAuth,
@@ -40,6 +41,8 @@ router.patch(
   validate({ params: notificationParamsSchema }),
   notificationController.markRead,
 )
+// Không `requireOrg`: cùng lý do với `GET /` — hộp thư thuộc về người, không thuộc tổ chức.
+router.delete('/', authenticate, apiLimiter, notificationController.clear)
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
@@ -81,6 +84,23 @@ registry.registerPath({
     401: errorResponse('Thiếu hoặc sai access token'),
     400: errorResponse('Nhóm con không tồn tại trong tổ chức này'),
     403: errorResponse('Ngoài phạm vi được cấp'),
+  },
+})
+
+registry.registerPath({
+  method: 'delete',
+  path: '/notifications',
+  operationId: 'notificationClear',
+  tags: ['Notification'],
+  summary: 'Xoá tất cả thông báo trong hộp thư của tôi',
+  description:
+    'Đẩy mốc `notificationsClearedAt` lên hiện tại: từ đó chỉ còn đọc được thông báo tạo sau ' +
+    'thời điểm này. Không xoá document nào — thông báo phát chung dùng chung cho cả nhóm, xoá ' +
+    'là xoá của mọi người. Vì vậy thao tác này không lùi lại được và cũng không chọn lọc được.',
+  ...protectedRoute,
+  responses: {
+    200: jsonResponse('Đã xoá', envelope(z.null())),
+    401: errorResponse('Thiếu hoặc sai access token'),
   },
 })
 

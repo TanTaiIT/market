@@ -9,6 +9,10 @@ import {
   authResponseSchema,
   verifyEmailSchema,
   sendCodeResponseSchema,
+  forgotPasswordSchema,
+  verifyResetCodeSchema,
+  resetTicketSchema,
+  resetPasswordSchema,
 } from './auth.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authLimiter } from '../../middlewares/rateLimiter.middleware'
@@ -57,6 +61,34 @@ router.post(
   authLimiter,
   validate({ body: verifyEmailSchema }),
   authController.verifyEmail,
+)
+
+/*
+ * Quên mật khẩu — CÔNG KHAI, và phải thế: người quên mật khẩu không đăng nhập được, nên không
+ * có token nào để lấy danh tính ra. Email buộc phải nằm trong body, nên cả hai đường đều trả
+ * lời giống nhau cho địa chỉ có thật lẫn địa chỉ lạ (xem `passwordResetService`).
+ *
+ * `authLimiter` (theo IP) ở đây gánh nặng hơn ở luồng xác thực email: chốt 60 giây của service
+ * chỉ chặn việc nhắm MỘT tài khoản, còn cửa này mở cho mọi địa chỉ nên một máy quét có thể
+ * chạy qua hàng nghìn email mà không lần nào chạm chốt đó.
+ */
+router.post(
+  '/password/forgot',
+  authLimiter,
+  validate({ body: forgotPasswordSchema }),
+  authController.forgotPassword,
+)
+router.post(
+  '/password/verify-code',
+  authLimiter,
+  validate({ body: verifyResetCodeSchema }),
+  authController.verifyResetCode,
+)
+router.post(
+  '/password/reset',
+  authLimiter,
+  validate({ body: resetPasswordSchema }),
+  authController.resetPassword,
 )
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
@@ -186,3 +218,62 @@ registry.registerPath({
 })
 
 export default router
+
+registry.registerPath({
+  method: 'post',
+  path: '/auth/password/forgot',
+  operationId: 'authForgotPassword',
+  tags: ['Auth'],
+  summary: 'Xin mã đặt lại mật khẩu (công khai)',
+  description:
+    'LUÔN trả 200, kể cả khi địa chỉ không có tài khoản, đang bị khoá, hay gửi thư hỏng — phân ' +
+    'biệt các ca đó là biến endpoint này thành máy dò tài khoản. Mã 6 số sống 10 phút, chờ 60 ' +
+    'giây giữa hai lượt xin. Tài khoản chỉ-Google (không có mật khẩu) cũng xin được: gõ đúng mã ' +
+    'chứng minh quyền kiểm soát hộp thư, đúng bằng chứng mà Google cấp hộ.',
+  request: { body: { content: { 'application/json': { schema: forgotPasswordSchema } } } },
+  responses: {
+    200: jsonResponse('Đã tiếp nhận', envelope(z.null())),
+    400: errorResponse('Email sai định dạng'),
+    429: errorResponse('Quá nhiều request'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/auth/password/reset',
+  operationId: 'authResetPassword',
+  tags: ['Auth'],
+  summary: 'Đổi VÉ lấy mật khẩu mới (công khai)',
+  description:
+    'Nhận `resetToken` từ `/auth/password/verify-code`, KHÔNG nhận mã 6 số — mã đã bị tiêu thụ ở ' +
+    'bước đó. Thành công thì làm BA việc: đặt mật khẩu mới, đánh dấu email đã xác thực (mã vừa ' +
+    'chứng minh hộp thư), và `$inc tokenVersion` để CẮT MỌI PHIÊN đang mở — người đặt lại mật ' +
+    'khẩu thường đang nghi bị chiếm tài khoản, để phiên của kẻ kia sống tiếp 14 ngày thì chưa ' +
+    'giải quyết gì. Vé dùng đúng một lần. Mọi nhánh hỏng trả CÙNG một câu 400 — kể cả email ' +
+    'không tồn tại, vì mã trạng thái khác nhau cũng đủ để dò.',
+  request: { body: { content: { 'application/json': { schema: resetPasswordSchema } } } },
+  responses: {
+    200: jsonResponse('Đã đặt lại mật khẩu', envelope(z.null())),
+    400: errorResponse('Mã không đúng hoặc đã hết hạn'),
+    429: errorResponse('Quá nhiều request'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/auth/password/verify-code',
+  operationId: 'authVerifyResetCode',
+  tags: ['Auth'],
+  summary: 'Đổi mã 6 số lấy vé đặt lại (công khai)',
+  description:
+    'Bước giữa, tách khỏi bước đặt mật khẩu vì trần 5 lần gõ sai: gộp hai việc thì mỗi lần gõ ' +
+    'nhầm mã bắt người dùng gõ lại cả mật khẩu — một ô họ không nhìn thấy để soát — và vẫn đốt ' +
+    'một lượt trong năm lượt. Mã bị TIÊU THỤ ở đây; đổi lại là một vé dùng đúng một lần, sống ' +
+    '10 phút tính từ lúc phát. Sai 5 lần thì mã chết, phải xin mã mới.',
+  request: { body: { content: { 'application/json': { schema: verifyResetCodeSchema } } } },
+  responses: {
+    200: jsonResponse('Mã hợp lệ', envelope(resetTicketSchema)),
+    400: errorResponse('Mã không đúng hoặc đã hết hạn'),
+    429: errorResponse('Quá nhiều request'),
+  },
+})

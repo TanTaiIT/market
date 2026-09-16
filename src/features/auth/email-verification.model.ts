@@ -14,8 +14,27 @@ import mongoose, { Schema, Document, Model, Types } from 'mongoose'
  *
  * KHÔNG gắn `tenantPlugin` — cùng lý do `User` không gắn: người dùng không thuộc tổ chức nào.
  */
+/**
+ * Hai cửa dùng CHUNG một bảng mã vì chúng giống nhau đến từng luật: hash bcrypt, sống 10 phút,
+ * 5 lần gõ sai là chết, 60 giây giữa hai lượt gửi. Tách thành hai collection là hai bản sao của
+ * cùng bộ luật, rồi một bên siết mà bên kia không.
+ */
+export const CODE_PURPOSE = {
+  VERIFY_EMAIL: 'verify_email',
+  RESET_PASSWORD: 'reset_password',
+  /** Vé đổi được từ một mã đã nhập đúng — xem `issueTicket`. */
+  RESET_TICKET: 'reset_ticket',
+} as const
+export type CodePurpose = (typeof CODE_PURPOSE)[keyof typeof CODE_PURPOSE]
+
 export interface IEmailVerification {
   userId: Types.ObjectId
+  /**
+   * Mã này mở CỬA NÀO. Một người có thể cùng lúc có một mã xác thực email và một mã đặt lại
+   * mật khẩu, và mã của cửa này KHÔNG được mở cửa kia — nên nó nằm trong cả khoá duy nhất lẫn
+   * mọi lượt tra, không phải một nhãn để đọc cho biết.
+   */
+  purpose: CodePurpose
   /**
    * Hash bcrypt của mã, KHÔNG phải mã.
    *
@@ -47,7 +66,8 @@ export const RESEND_COOLDOWN_MS = 60 * 1000
 
 const emailVerificationSchema = new Schema<IEmailVerificationDocument>(
   {
-    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
+    userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    purpose: { type: String, enum: Object.values(CODE_PURPOSE), required: true },
     codeHash: { type: String, required: true },
     expiresAt: { type: Date, required: true },
     attempts: { type: Number, default: 0, required: true },
@@ -66,6 +86,13 @@ const emailVerificationSchema = new Schema<IEmailVerificationDocument>(
  * mà test sẽ không bắt được, vì test chạy nhanh hơn vòng quét.
  */
 emailVerificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })
+
+/*
+ * Một mã sống cho mỗi CẶP (người, cửa) — không phải mỗi người. Khoá duy nhất chỉ trên `userId`
+ * sẽ để một lượt xin mã đặt lại mật khẩu GHI ĐÈ mã xác thực email đang chờ, và người dùng mất
+ * mã vừa nhận mà không có gì nói cho họ biết vì sao.
+ */
+emailVerificationSchema.index({ userId: 1, purpose: 1 }, { unique: true })
 
 export const EmailVerification: Model<IEmailVerificationDocument> =
   mongoose.model<IEmailVerificationDocument>('EmailVerification', emailVerificationSchema)

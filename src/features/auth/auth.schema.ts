@@ -100,3 +100,40 @@ export const sendCodeResponseSchema = z
     resendAfterSeconds: z.number(),
   })
   .openapi('SendVerificationCode')
+
+// ── QUÊN MẬT KHẨU ───────────────────────────────────────────────────────────
+
+export const forgotPasswordSchema = z
+  .object({
+    email: z.string().email().openapi({ example: 'nguyenvana@example.com' }),
+  })
+  .strict()
+  .openapi('ForgotPassword')
+
+export const verifyResetCodeSchema = z
+  .object({
+    email: z.string().email(),
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, 'Mã gồm đúng 6 chữ số')
+      .openapi({ example: '042913' }),
+  })
+  .strict()
+  .openapi('VerifyResetCode')
+
+export const resetTicketSchema = z.object({ resetToken: z.string().min(1) }).openapi('ResetTicket')
+
+export const resetPasswordSchema = z
+  .object({
+    email: z.string().email(),
+    /** Vé nhận ở bước xác minh mã — KHÔNG phải mã 6 số. */
+    resetToken: z.string().min(1),
+    /**
+     * Cùng ràng buộc với `registerSchema.password` — một mật khẩu đặt lại phải qua đúng cửa mà
+     * mật khẩu đăng ký đã qua, nếu không thì đây là đường vòng để lách luật độ mạnh.
+     */
+    password: z.string().min(6).max(72),
+  })
+  .strict()
+  .openapi('ResetPassword')

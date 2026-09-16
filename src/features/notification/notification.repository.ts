@@ -26,6 +26,8 @@ export type InboxGroup = {
 export type InboxAudience = {
   recipientId: Types.ObjectId
   groups: InboxGroup[]
+  /** Mốc "Xoá tất cả" của người đọc (`User.notificationsClearedAt`). `null` = chưa dọn bao giờ. */
+  clearedAt: Date | null
 }
 
 /** Bàn quản trị: thứ mình GỬI được, luôn trong đúng một org. `all` bỏ điều kiện nhóm con. */
@@ -109,6 +111,14 @@ export const notificationRepository = {
     const filter: FilterQuery<INotificationDocument> = {
       $or: branches,
       actorId: { $ne: audience.recipientId },
+      /*
+       * Mốc dọn hộp thư, áp ở CẤP NGOÀI nên phủ cả nhánh đích danh lẫn mọi nhánh phát chung.
+       *
+       * Không đụng độ với `createdAt: { $gte: joinedAt }` bên trong từng nhánh `$or`: hai điều
+       * kiện nằm ở hai object khác nhau nên Mongo AND chúng lại, và kết quả đúng là "sau khi
+       * vào nhóm, VÀ sau lần dọn gần nhất".
+       */
+      ...(audience.clearedAt ? { createdAt: { $gt: audience.clearedAt } } : {}),
     }
 
     const [items, total] = await Promise.all([
