@@ -24,7 +24,7 @@ import {
 const router = Router()
 
 /*
- * Kênh hỗ trợ KHÔNG đọc `X-Org-Slug`: đây là đường giữa một người và đội ngũ nền tảng, không
+ * Kênh hỗ trợ KHÔNG đọc `X-Org-Id`: đây là đường giữa một người và đội ngũ nền tảng, không
  * thuộc tổ chức nào. Người chưa vào nhóm nào vẫn phải nhắn được — mà đó chính là nhóm hay cần
  * hỏi nhất.
  */

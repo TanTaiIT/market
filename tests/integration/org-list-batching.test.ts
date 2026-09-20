@@ -11,6 +11,7 @@ import {
   makeMaster,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -41,7 +42,7 @@ beforeAll(async () => {
     const owner = await registerUser(app, `chu${i}@truong.local`, `Chủ ${i}`)
     const org = await createOrg(app, master.token, {
       name: `Trường Số ${i}`,
-      slug: `truong-so-${i}`,
+      key: `truong-so-${i}`,
       ownerEmail: owner.email,
     })
     await addMember(member.id, org.id)
@@ -61,11 +62,11 @@ describe('GET /organizations/mine — nạp theo lô', () => {
       .expect(200)
 
     expect(res.body.data).toHaveLength(ORG_COUNT)
-    expect(res.body.data.map((o: { slug: string }) => o.slug).sort()).toEqual([
-      'truong-so-0',
-      'truong-so-1',
-      'truong-so-2',
-      'truong-so-3',
+    expect(res.body.data.map((o: { name: string }) => o.name).sort()).toEqual([
+      'Trường Số 0',
+      'Trường Số 1',
+      'Trường Số 2',
+      'Trường Số 3',
     ])
   })
 
@@ -95,15 +96,15 @@ describe('GET /organizations/mine — nạp theo lô', () => {
 
   it('org bị xoá mềm rơi khỏi danh sách thay vì thành một dòng rỗng', async () => {
     const { Organization } = await import('../../src/features/organization/organization.model')
-    await Organization.updateOne({ slug: 'truong-so-0' }, { deletedAt: new Date() }).exec()
+    await Organization.updateOne({ _id: orgIdOf('truong-so-0') }, { deletedAt: new Date() }).exec()
 
     const res = await request(app)
       .get('/api/v1/organizations/mine')
       .set('Authorization', `Bearer ${member.token}`)
       .expect(200)
 
-    const slugs = res.body.data.map((o: { slug: string }) => o.slug)
-    expect(slugs).not.toContain('truong-so-0')
-    expect(slugs).toHaveLength(ORG_COUNT - 1)
+    const names = res.body.data.map((o: { name: string }) => o.name)
+    expect(names).not.toContain('Trường Số 0')
+    expect(names).toHaveLength(ORG_COUNT - 1)
   })
 })

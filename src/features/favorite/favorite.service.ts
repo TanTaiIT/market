@@ -6,13 +6,16 @@ import { buildPaginationMeta, parsePagination } from '../../common/utils/paginat
 
 export const favoriteService = {
   /**
-   * Lưu tin. Đọc tin TRƯỚC khi ghi để `tenantPlugin` có chỗ lên tiếng: tin của org khác trả
-   * 404 ngay ở đây, thay vì để người dùng lưu được một id mà mãi mãi không mở nổi nội dung.
+   * Lưu tin. Đọc tin TRƯỚC khi ghi, qua đúng chốt của màn chi tiết (`getForViewer`): tin mình
+   * không xem được thì 404 ngay ở đây, thay vì để người dùng lưu được một id mà mãi mãi không
+   * mở nổi nội dung. Xét theo QUAN HỆ (thành viên nhóm) chứ không theo `X-Org-Id` — nên bấm
+   * tim trên tin nội bộ của nhóm A khi app đang đứng ở nhóm B vẫn lưu được, và tin chưa duyệt
+   * thì không lưu được, khớp với việc nó cũng không mở được.
    *
    * Bộ đếm chỉ động khi bản ghi THẬT SỰ mới — bấm tim hai lần không cộng hai.
    */
   async add(userId: string, listingId: string) {
-    const listing = await listingService.getById(listingId)
+    const listing = await listingService.getForViewer(listingId, userId)
     const created = await favoriteRepository.add(new Types.ObjectId(userId), listing._id)
     if (created) await listingService.adjustFavoriteCount(listing._id, 1)
     return { listingId, favorited: true }

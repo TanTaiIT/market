@@ -6,7 +6,6 @@ import { IConversationDocument } from './chat.model'
 import { listingService } from '../listing/listing.service'
 import { userRepository } from '../user/user.repository'
 import { BadRequestError, NotFoundError } from '../../common/errors'
-import { PUBLIC_LISTING_STATUSES } from '../../common/constants'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToConversation, emitToUser } from '../../sockets/emit'
 
@@ -43,22 +42,20 @@ export const chatService = {
    * đẻ thêm bản ghi — unique index `(organizationId, listingId, buyerId)` là chốt cuối.
    */
   async open(input: OpenConversationInput, actor: ChatActor) {
-    const listing = await listingService.getById(input.listingId)
-
-    // Tin chưa duyệt / đã từ chối / đang ẩn thì không mở hội thoại được. Trả 404 chứ không
-    // 403: 403 là xác nhận tin đó có tồn tại, đúng thứ `PUBLIC_LISTING_STATUSES` sinh ra để giấu.
-    if (!PUBLIC_LISTING_STATUSES.includes(listing.status)) {
-      throw new NotFoundError('Listing not found')
-    }
+    // Đọc theo QUAN HỆ của người mở: tin chưa public, hoặc tin nội bộ của nhóm mình không
+    // thuộc về, đều 404 ngay tại đây — cùng một chốt với màn chi tiết, không lặp lại luật.
+    const listing = await listingService.getForViewer(input.listingId, actor.id)
 
     /*
      * KHÔNG kiểm org nữa — nhắn cho người đăng tin không đòi phải cùng nhóm, cũng không đòi
      * phải thuộc nhóm nào.
      *
-     * Chốt thay thế đã nằm sẵn ở dòng `getById` phía trên và nó chặt hơn: `Listing` vẫn gắn
-     * `tenantPlugin` dual-axis, nên một tin NỘI BỘ của nhóm mình không thuộc về sẽ 404 ngay từ
-     * lúc đọc — chưa tới được đây. Còn tin công khai thì ai đọc được cũng nhắn được, đúng như
-     * mọi sàn rao vặt. Nói gọn: mở hội thoại được với đúng những tin mình XEM được.
+     * Chốt thay thế nằm ở `getForViewer` phía trên, và nó xét đúng thứ cần xét: tin NỘI BỘ chỉ
+     * mở được khi người này là THÀNH VIÊN nhóm sở hữu tin — bất kể họ đang gửi `X-Org-Id`
+     * của nhóm nào. Bản trước dựa vào `tenantPlugin` lọc theo scope của request, nên người
+     * thuộc hai nhóm bấm "Nhắn tin" trên tin của nhóm A trong lúc app đang đứng ở nhóm B nhận
+     * 404 cho chính tin mình vừa đọc được. Còn tin công khai thì ai đọc được cũng nhắn được,
+     * đúng như mọi sàn rao vặt. Nói gọn: mở hội thoại được với đúng những tin mình XEM được.
      */
     if (listing.seller.toString() === actor.id) {
       throw new BadRequestError('Đây là tin của bạn')

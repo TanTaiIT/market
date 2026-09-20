@@ -3,9 +3,9 @@ import { randomInt } from 'node:crypto'
 /**
  * Mã nhóm — thứ người dùng gõ tay hoặc dán vào ô "tìm nhóm" để xin tham gia.
  *
- * Thay cho slug vì hai thứ có mục đích khác nhau: slug là địa chỉ CÔNG KHAI, đoán được và nằm
- * trong mọi đường dẫn; mã nhóm là thứ chỉ ai được đưa mới có, và **đổi được** khi rò rỉ. Dùng
- * slug để gia nhập nghĩa là bất kỳ ai nhìn thấy tên tổ chức cũng gõ được đơn xin vào.
+ * Tách khỏi `_id` của org vì hai thứ có mục đích khác nhau: id là địa chỉ CÔNG KHAI, nằm trong
+ * mọi đường dẫn đã phát và không đổi được; mã nhóm là thứ chỉ ai được đưa mới có, và **đổi
+ * được** khi rò rỉ. Dùng id để gia nhập nhóm kín nghĩa là ai cầm link cũng gõ được đơn xin vào.
  */
 
 /**

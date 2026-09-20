@@ -36,7 +36,7 @@ let master: TestUser
 let owner: TestUser
 let seller: TestUser
 let orgId = ''
-const SLUG = 'nhom-phan-trang'
+const ORG = 'nhom-phan-trang'
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -46,7 +46,7 @@ beforeAll(async () => {
   owner = await registerUser(app, 'chu@pt.local', 'Chủ nhóm')
   seller = await registerUser(app, 'ban@pt.local', 'Người bán')
   orgId = (
-    await createOrg(app, master.token, { name: 'Nhóm PT', slug: SLUG, ownerEmail: owner.email })
+    await createOrg(app, master.token, { name: 'Nhóm PT', key: ORG, ownerEmail: owner.email })
   ).id
 
   // 11 = trần + 1: đủ để trang đầu đầy và trang hai còn đúng một dòng. Cùng giá để máy quét không
@@ -57,13 +57,13 @@ beforeAll(async () => {
       .set({ Authorization: `Bearer ${seller.token}` })
       .send({
         ...listingPayload(`Món số ${i}`, categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: 'Hồ Chí Minh',
       })
       .expect(201)
     await request(app)
       .post('/api/v1/invites')
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .send({ channel: 'email', value: `nguoi${i}@moi.local` })
       .expect(201)
   }
@@ -111,19 +111,19 @@ describe('Trần 10 dòng một trang, mọi danh sách', () => {
 
   it('GET /invites: từ "cắt cứng 200" thành phân trang thật', async () => {
     const p1 = (
-      await request(app).get('/api/v1/invites').set(orgAuth(owner.token, SLUG)).expect(200)
+      await request(app).get('/api/v1/invites').set(orgAuth(owner.token, ORG)).expect(200)
     ).body as Page
     expect(p1.data).toHaveLength(PAGINATION.MAX_LIMIT)
     expect(p1.meta).toMatchObject({ total: OVER, hasNextPage: true })
     await request(app)
       .get(`/api/v1/invites?limit=${OVER}`)
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .expect(400)
   }, 60_000)
 
   it('GET /join-requests: từ "trả hết" thành phân trang thật', async () => {
     const p1 = (
-      await request(app).get('/api/v1/join-requests').set(orgAuth(owner.token, SLUG)).expect(200)
+      await request(app).get('/api/v1/join-requests').set(orgAuth(owner.token, ORG)).expect(200)
     ).body as Page
     expect(p1.data).toHaveLength(PAGINATION.MAX_LIMIT)
     expect(p1.meta).toMatchObject({ total: OVER, hasNextPage: true })
@@ -131,7 +131,7 @@ describe('Trần 10 dòng một trang, mọi danh sách', () => {
     const p2 = (
       await request(app)
         .get('/api/v1/join-requests?page=2')
-        .set(orgAuth(owner.token, SLUG))
+        .set(orgAuth(owner.token, ORG))
         .expect(200)
     ).body as Page
     expect(p2.data).toHaveLength(1)

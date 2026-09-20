@@ -14,6 +14,7 @@ import {
   orgAuth,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -40,7 +41,7 @@ let ownerA: TestUser
 let catManager: TestUser
 let categoryId = ''
 
-const SLUG_A = 'nhom-metrics-a'
+const ORG_A = 'nhom-metrics-a'
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -51,7 +52,7 @@ beforeAll(async () => {
   ownerA = await registerUser(app, 'owner-a@metrics.local', 'Chủ nhóm A')
   catManager = await registerUser(app, 'cat@metrics.local', 'Quản danh mục')
 
-  await createOrg(app, master.token, { name: 'Nhóm A', slug: SLUG_A, ownerEmail: ownerA.email })
+  await createOrg(app, master.token, { name: 'Nhóm A', key: ORG_A, ownerEmail: ownerA.email })
 
   await grantRole({
     userId: catManager.id,
@@ -71,8 +72,12 @@ beforeAll(async () => {
    */
   await request(app)
     .post('/api/v1/listings')
-    .set(orgAuth(ownerA.token, SLUG_A))
-    .send({ ...listingPayload('Tin nội bộ của nhóm A', categoryId), orgSlug: SLUG_A })
+    .set(orgAuth(ownerA.token, ORG_A))
+    .send({
+      ...listingPayload('Tin nội bộ của nhóm A', categoryId),
+      orgId: orgIdOf(ORG_A),
+      reach: 'members',
+    })
     .expect(201)
 
   await request(app)
@@ -80,7 +85,7 @@ beforeAll(async () => {
     .set({ Authorization: `Bearer ${ownerA.token}` })
     .send({
       ...listingPayload('Tin công khai', categoryId),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: 'Hồ Chí Minh',
     })
     .expect(201)
@@ -104,7 +109,7 @@ describe('Cách ly bàn tổng quan hệ thống', () => {
 
   it('admin org KHÔNG đọc được, kể cả khi gửi kèm org của mình', async () => {
     await get(ownerA.token).expect(403)
-    await request(app).get('/api/v1/metrics/system').set(orgAuth(ownerA.token, SLUG_A)).expect(403)
+    await request(app).get('/api/v1/metrics/system').set(orgAuth(ownerA.token, ORG_A)).expect(403)
   }, 60_000)
 
   it('manager trục danh mục KHÔNG đọc được', async () => {
@@ -121,10 +126,11 @@ describe('Số liệu KHÔNG bị trục tenant cắt', () => {
   it('đếm cả tin nội bộ của nhóm mà master không thuộc về', async () => {
     const { listings } = (await get(master.token).expect(200)).body.data
 
-    // Hai tin đã tạo ở `beforeAll`, mỗi trục một tin. Thiếu `runUnscoped` thì `orgInternal` = 0
-    // và `total` = 1 — đúng hình dạng, sai số liệu.
-    expect(listings.orgInternal).toBe(1)
-    expect(listings.publicAxis).toBe(1)
+    // Hai tin đã tạo ở `beforeAll`, mỗi bậc một tin. Thiếu `runUnscoped` thì `members` = 0 và
+    // `total` = 1 — đúng hình dạng, sai số liệu.
+    expect(listings.members).toBe(1)
+    expect(listings.marketplace).toBe(1)
+    expect(listings.groupOpen).toBe(0)
     expect(listings.total).toBe(2)
   }, 60_000)
 

@@ -11,13 +11,10 @@ import {
   VERIFICATION_TIERS,
   VerificationTier,
 } from '../../common/constants'
-import { normalizeOrgSlug, orgNameTokens } from '../../common/utils/orgSlug'
+import { orgNameTokens } from '../../common/utils/orgName'
 
 export interface IOrganization {
   name: string
-  slug: string
-  /** Khoá so trùng (bỏ dấu gạch, fold ký tự nhìn giống Latin) — chống mạo danh, không hiển thị. */
-  slugNormalized: string
   /** Tên tách theo TỪ đã chuẩn hoá — khoá tra của dropdown, xem `orgNameTokens`. */
   nameTokens: string[]
   orgType: OrgType
@@ -33,8 +30,8 @@ export interface IOrganization {
    * Cùng đường mà ảnh tin đăng đang đi: không có file nào chạy qua server này.
    */
   /**
-   * Mã để xin gia nhập. Đổi được — rò mã thì xoay mã, không phải đổi slug (slug nằm trong mọi
-   * link đã phát ra ngoài). Xem `common/utils/joinCode.ts`.
+   * Mã để xin gia nhập. Đổi được — rò mã thì xoay mã; `_id` của org (định danh trong mọi link
+   * đã phát ra ngoài) thì không bao giờ đổi. Xem `common/utils/joinCode.ts`.
    */
   joinCode: string
   avatarUrl: string | null
@@ -43,7 +40,7 @@ export interface IOrganization {
   /**
    * Nhóm có được LIỆT KÊ và xin vào tự do không.
    *
-   * `true` (mặc định): hiện ở gợi ý, mở được hồ sơ theo slug, bấm là gửi đơn — không cần mã.
+   * `true` (mặc định): hiện ở gợi ý, mở được hồ sơ theo id, bấm là gửi đơn — không cần mã.
    * `false`: không xuất hiện ở bất kỳ danh sách công khai nào, chỉ vào được bằng `joinCode`.
    *
    * Tách khỏi `allowJoinRequests` vì hai câu hỏi khác nhau: cái này là "ai TÌM THẤY nhóm",
@@ -88,8 +85,6 @@ const capabilitiesSchema = new Schema<OrgCapabilities>(
 const organizationSchema = new Schema<IOrganizationDocument>(
   {
     name: { type: String, required: true, trim: true, maxlength: 150 },
-    slug: { type: String, required: true, lowercase: true, trim: true },
-    slugNormalized: { type: String, required: true, lowercase: true, trim: true },
     nameTokens: { type: [String], default: [] },
 
     orgType: { type: String, enum: Object.values(ORG_TYPES), default: ORG_TYPES.GENERIC },
@@ -129,14 +124,9 @@ const organizationSchema = new Schema<IOrganizationDocument>(
   { timestamps: true },
 )
 
-// Dẫn xuất ở model chứ không ở service: slug đổi qua nhiều đường (tạo, đổi tên, migration) và
-// một đường quên đồng bộ là khoá chống mạo danh im lặng lệch khỏi slug thật.
+// Dẫn xuất ở model chứ không ở service: tên đổi qua nhiều đường (tạo, đổi tên, migration), để
+// service tự nhớ đồng bộ là có ngày ô tìm nhóm tra theo tên cũ.
 organizationSchema.pre('validate', function syncDerivedKeys(next) {
-  if (this.slug && this.isModified('slug')) {
-    this.slugNormalized = normalizeOrgSlug(this.slug)
-  }
-  // Cùng lý do, cho khoá tra của dropdown: tên đổi qua đường đổi tên lẫn migration, để service
-  // tự nhớ đồng bộ là có ngày dropdown tìm theo tên cũ.
   if (this.name && this.isModified('name')) {
     this.nameTokens = orgNameTokens(this.name)
   }
@@ -145,18 +135,9 @@ organizationSchema.pre('validate', function syncDerivedKeys(next) {
 
 // Organization *là* tenant nên KHÔNG gắn tenantPlugin — truy cập nó đi qua
 // organization.repository (chạy runUnscoped), đó là nơi duy nhất được phép.
-organizationSchema.index({ slug: 1 }, { unique: true })
-// Unique thứ hai, không thừa: `slug` chặn trùng chính xác, `slugNormalized` chặn cả biến thể
-// nhìn giống nhau (`abc-edu` vs `abcedu` vs `аbc-edu` viết bằng а Cyrillic).
-organizationSchema.index({ slugNormalized: 1 }, { unique: true })
-
 /*
- * Dropdown chọn org, nhánh tra theo TÊN. Multikey nên mỗi từ có bounds riêng: gõ "hung" là một
- * lượt tra tiền tố, không phải quét cả bảng.
- *
- * Thay cho index đã bỏ, chưa từng được query nào chạm tới:
- * `{ provinceCode: 1, status: 1 }` — ghi chú cũ nói "dropdown lọc theo địa bàn", nhưng `search()`
- *   không hề lọc `provinceCode`; tham số cùng tên trên query string chỉ dùng để gợi ý slug.
+ * Ô tìm nhóm, tra theo TÊN. Multikey nên mỗi từ có bounds riêng: gõ "hung" là một lượt tra
+ * tiền tố, không phải quét cả bảng. Định danh của org là `_id` — không có khoá chữ nào khác.
  */
 organizationSchema.index({ nameTokens: 1 })
 // Đường tra của ô "tìm nhóm" và của mọi đơn xin gia nhập. Unique để hai org không bao giờ
@@ -166,36 +147,4 @@ organizationSchema.index({ joinCode: 1 }, { unique: true })
 export const Organization: Model<IOrganizationDocument> = mongoose.model<IOrganizationDocument>(
   'Organization',
   organizationSchema,
-)
-
-/**
- * Slug cũ → org, để URL đã phát ra ngoài không chết khi org đổi tên (§6.4).
- *
- * Nằm cùng file với Organization vì nó không có vòng đời riêng: mỗi bản ghi sinh ra đúng một
- * lần lúc đổi slug và không bao giờ được sửa. Bảng tra cứu định tuyến, không phải feature.
- */
-export interface IOrgSlugAlias {
-  oldSlug: string
-  organizationId: Types.ObjectId
-  createdAt: Date
-}
-
-export interface IOrgSlugAliasDocument extends IOrgSlugAlias, Document {
-  _id: Types.ObjectId
-}
-
-const orgSlugAliasSchema = new Schema<IOrgSlugAliasDocument>(
-  {
-    oldSlug: { type: String, required: true, lowercase: true, trim: true },
-    organizationId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
-  },
-  { timestamps: { createdAt: true, updatedAt: false } },
-)
-
-// Một slug cũ chỉ trỏ về đúng một org — nếu không, redirect 301 thành xổ số.
-orgSlugAliasSchema.index({ oldSlug: 1 }, { unique: true })
-
-export const OrgSlugAlias: Model<IOrgSlugAliasDocument> = mongoose.model<IOrgSlugAliasDocument>(
-  'OrgSlugAlias',
-  orgSlugAliasSchema,
 )

@@ -44,7 +44,7 @@ const post = (who: TestUser, body: Record<string, unknown>) =>
     .set(auth(who))
     .send({
       ...listingPayload('Tin', categoryId),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: 'Hồ Chí Minh',
       ...body,
     })

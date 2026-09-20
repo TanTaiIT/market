@@ -620,479 +620,6 @@
           "totals"
         ]
       },
-      "Organization": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "joinCode": {
-            "type": "string"
-          },
-          "avatarUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "description": {
-            "type": "string"
-          },
-          "orgType": {
-            "type": "string",
-            "enum": [
-              "school",
-              "company",
-              "community",
-              "generic"
-            ]
-          },
-          "verificationTier": {
-            "type": "string",
-            "enum": [
-              "unverified",
-              "claimed",
-              "verified"
-            ]
-          },
-          "provinceCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "suspended",
-              "pending_admin"
-            ]
-          },
-          "isPublic": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "slug",
-          "joinCode",
-          "avatarUrl",
-          "description",
-          "orgType",
-          "verificationTier",
-          "provinceCode",
-          "status",
-          "isPublic"
-        ]
-      },
-      "OrganizationLookup": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "joinCode": {
-            "type": "string"
-          },
-          "avatarUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "coverUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "memberCount": {
-            "type": "number"
-          },
-          "district": {
-            "type": "string",
-            "nullable": true
-          },
-          "provinceCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "allowJoinRequests": {
-            "type": "boolean"
-          },
-          "allowOutsiderPosts": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "slug",
-          "joinCode",
-          "avatarUrl",
-          "coverUrl",
-          "memberCount",
-          "district",
-          "provinceCode",
-          "allowJoinRequests",
-          "allowOutsiderPosts"
-        ]
-      },
-      "OrganizationProfile": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "joinCode": {
-            "type": "string"
-          },
-          "avatarUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "coverUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "description": {
-            "type": "string"
-          },
-          "provinceCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "district": {
-            "type": "string",
-            "nullable": true
-          },
-          "memberCount": {
-            "type": "number"
-          },
-          "postsThisWeek": {
-            "type": "number"
-          },
-          "rules": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "feedLayout": {
-            "type": "string",
-            "enum": [
-              "feed",
-              "grid"
-            ]
-          },
-          "allowJoinRequests": {
-            "type": "boolean"
-          },
-          "allowOutsiderPosts": {
-            "type": "boolean"
-          },
-          "joined": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "slug",
-          "joinCode",
-          "avatarUrl",
-          "coverUrl",
-          "description",
-          "provinceCode",
-          "district",
-          "memberCount",
-          "postsThisWeek",
-          "rules",
-          "feedLayout",
-          "allowJoinRequests",
-          "allowOutsiderPosts",
-          "joined"
-        ]
-      },
-      "MyOrganization": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "slug": {
-            "type": "string"
-          },
-          "avatarUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "coverUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "provinceCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "role": {
-            "type": "string"
-          },
-          "unitId": {
-            "type": "string",
-            "nullable": true
-          },
-          "feedLayout": {
-            "type": "string",
-            "enum": [
-              "feed",
-              "grid"
-            ]
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "suspended",
-              "pending_admin"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "slug",
-          "avatarUrl",
-          "coverUrl",
-          "provinceCode",
-          "role",
-          "unitId",
-          "feedLayout",
-          "status"
-        ]
-      },
-      "UpdateOrganization": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 150
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 500
-          },
-          "avatarUrl": {
-            "type": "string",
-            "nullable": true,
-            "format": "uri"
-          },
-          "coverUrl": {
-            "type": "string",
-            "nullable": true,
-            "format": "uri"
-          },
-          "allowJoinRequests": {
-            "type": "boolean"
-          },
-          "allowOutsiderPosts": {
-            "type": "boolean"
-          },
-          "rules": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 200
-            },
-            "maxItems": 10
-          },
-          "feedLayout": {
-            "type": "string",
-            "enum": [
-              "feed",
-              "grid"
-            ]
-          }
-        },
-        "additionalProperties": false
-      },
-      "OrganizationCard": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "avatarUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "description": {
-            "type": "string"
-          },
-          "provinceCode": {
-            "type": "string",
-            "nullable": true
-          },
-          "district": {
-            "type": "string",
-            "nullable": true
-          },
-          "memberCount": {
-            "type": "number"
-          },
-          "allowJoinRequests": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "avatarUrl",
-          "description",
-          "provinceCode",
-          "district",
-          "memberCount",
-          "allowJoinRequests"
-        ]
-      },
-      "SlugAvailability": {
-        "type": "object",
-        "properties": {
-          "slug": {
-            "type": "string"
-          },
-          "available": {
-            "type": "boolean"
-          },
-          "reason": {
-            "type": "string",
-            "enum": [
-              "invalid",
-              "reserved",
-              "taken"
-            ]
-          },
-          "suggestions": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": [
-          "slug",
-          "available"
-        ]
-      },
-      "CreateOrganization": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 150,
-            "example": "THPT Lý Thường Kiệt"
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 40,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$",
-            "example": "thpt-ly-thuong-kiet"
-          },
-          "orgType": {
-            "type": "string",
-            "enum": [
-              "school",
-              "company",
-              "community",
-              "generic"
-            ]
-          },
-          "provinceCode": {
-            "type": "string",
-            "maxLength": 60
-          },
-          "district": {
-            "type": "string",
-            "maxLength": 100
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "additionalProperties": false
-      },
-      "SetOrganizationStatus": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "enum": [
-              "active",
-              "suspended"
-            ]
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "additionalProperties": false
-      },
-      "ChangeOrganizationSlug": {
-        "type": "object",
-        "properties": {
-          "slug": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 40,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
-          }
-        },
-        "required": [
-          "slug"
-        ],
-        "additionalProperties": false
-      },
-      "OrgManager": {
-        "type": "object",
-        "properties": {
-          "userId": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string",
-            "nullable": true
-          },
-          "email": {
-            "type": "string",
-            "nullable": true
-          },
-          "avatar": {
-            "type": "string",
-            "nullable": true
-          },
-          "grantedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "userId",
-          "name",
-          "email",
-          "avatar",
-          "grantedAt"
-        ]
-      },
       "CreateListing": {
         "type": "object",
         "properties": {
@@ -1212,11 +739,12 @@
               ]
             }
           },
-          "visibility": {
+          "reach": {
             "type": "string",
             "enum": [
-              "org_internal",
-              "public"
+              "members",
+              "group_open",
+              "marketplace"
             ]
           },
           "provinceCode": {
@@ -1258,11 +786,9 @@
               "Cà Mau"
             ]
           },
-          "orgSlug": {
+          "orgId": {
             "type": "string",
-            "minLength": 3,
-            "maxLength": 40,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
+            "pattern": "^[0-9a-fA-F]{24}$"
           }
         },
         "required": [
@@ -1684,58 +1210,6 @@
                 }
               ]
             }
-          },
-          "visibility": {
-            "type": "string",
-            "enum": [
-              "org_internal",
-              "public"
-            ]
-          },
-          "provinceCode": {
-            "type": "string",
-            "enum": [
-              "Hà Nội",
-              "Cao Bằng",
-              "Tuyên Quang",
-              "Lào Cai",
-              "Điện Biên",
-              "Lai Châu",
-              "Sơn La",
-              "Thái Nguyên",
-              "Lạng Sơn",
-              "Quảng Ninh",
-              "Bắc Ninh",
-              "Phú Thọ",
-              "Hải Phòng",
-              "Hưng Yên",
-              "Ninh Bình",
-              "Thanh Hóa",
-              "Nghệ An",
-              "Hà Tĩnh",
-              "Quảng Trị",
-              "Huế",
-              "Đà Nẵng",
-              "Quảng Ngãi",
-              "Gia Lai",
-              "Đắk Lắk",
-              "Khánh Hòa",
-              "Lâm Đồng",
-              "Đồng Nai",
-              "Tây Ninh",
-              "Hồ Chí Minh",
-              "Đồng Tháp",
-              "Vĩnh Long",
-              "An Giang",
-              "Cần Thơ",
-              "Cà Mau"
-            ]
-          },
-          "orgSlug": {
-            "type": "string",
-            "minLength": 3,
-            "maxLength": 40,
-            "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
           }
         },
         "additionalProperties": false
@@ -1752,11 +1226,12 @@
             "nullable": true,
             "pattern": "^[0-9a-fA-F]{24}$"
           },
-          "visibility": {
+          "reach": {
             "type": "string",
             "enum": [
-              "org_internal",
-              "public"
+              "members",
+              "group_open",
+              "marketplace"
             ]
           },
           "provinceCode": {
@@ -1937,7 +1412,7 @@
         "required": [
           "_id",
           "organizationId",
-          "visibility",
+          "reach",
           "provinceCode",
           "title",
           "slug",
@@ -2017,6 +1492,428 @@
           "favorited"
         ]
       },
+      "Organization": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "joinCode": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "orgType": {
+            "type": "string",
+            "enum": [
+              "school",
+              "company",
+              "community",
+              "generic"
+            ]
+          },
+          "verificationTier": {
+            "type": "string",
+            "enum": [
+              "unverified",
+              "claimed",
+              "verified"
+            ]
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "pending_admin"
+            ]
+          },
+          "isPublic": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "joinCode",
+          "avatarUrl",
+          "description",
+          "orgType",
+          "verificationTier",
+          "provinceCode",
+          "status",
+          "isPublic"
+        ]
+      },
+      "OrganizationLookup": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "joinCode": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "memberCount": {
+            "type": "number"
+          },
+          "district": {
+            "type": "string",
+            "nullable": true
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "allowJoinRequests": {
+            "type": "boolean"
+          },
+          "allowOutsiderPosts": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "joinCode",
+          "avatarUrl",
+          "coverUrl",
+          "memberCount",
+          "district",
+          "provinceCode",
+          "allowJoinRequests",
+          "allowOutsiderPosts"
+        ]
+      },
+      "OrganizationProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "joinCode": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "district": {
+            "type": "string",
+            "nullable": true
+          },
+          "memberCount": {
+            "type": "number"
+          },
+          "postsThisWeek": {
+            "type": "number"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "feedLayout": {
+            "type": "string",
+            "enum": [
+              "feed",
+              "grid"
+            ]
+          },
+          "allowJoinRequests": {
+            "type": "boolean"
+          },
+          "allowOutsiderPosts": {
+            "type": "boolean"
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "joined": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "joinCode",
+          "avatarUrl",
+          "coverUrl",
+          "description",
+          "provinceCode",
+          "district",
+          "memberCount",
+          "postsThisWeek",
+          "rules",
+          "feedLayout",
+          "allowJoinRequests",
+          "allowOutsiderPosts",
+          "isPublic",
+          "joined"
+        ]
+      },
+      "MyOrganization": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "role": {
+            "type": "string"
+          },
+          "unitId": {
+            "type": "string",
+            "nullable": true
+          },
+          "isPublic": {
+            "type": "boolean"
+          },
+          "feedLayout": {
+            "type": "string",
+            "enum": [
+              "feed",
+              "grid"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended",
+              "pending_admin"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "avatarUrl",
+          "coverUrl",
+          "provinceCode",
+          "role",
+          "unitId",
+          "isPublic",
+          "feedLayout",
+          "status"
+        ]
+      },
+      "UpdateOrganization": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true,
+            "format": "uri"
+          },
+          "coverUrl": {
+            "type": "string",
+            "nullable": true,
+            "format": "uri"
+          },
+          "allowJoinRequests": {
+            "type": "boolean"
+          },
+          "allowOutsiderPosts": {
+            "type": "boolean"
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "maxItems": 10
+          },
+          "feedLayout": {
+            "type": "string",
+            "enum": [
+              "feed",
+              "grid"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "OrganizationCard": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "description": {
+            "type": "string"
+          },
+          "provinceCode": {
+            "type": "string",
+            "nullable": true
+          },
+          "district": {
+            "type": "string",
+            "nullable": true
+          },
+          "memberCount": {
+            "type": "number"
+          },
+          "allowJoinRequests": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "avatarUrl",
+          "description",
+          "provinceCode",
+          "district",
+          "memberCount",
+          "allowJoinRequests"
+        ]
+      },
+      "CreateOrganization": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 150,
+            "example": "THPT Lý Thường Kiệt"
+          },
+          "orgType": {
+            "type": "string",
+            "enum": [
+              "school",
+              "company",
+              "community",
+              "generic"
+            ]
+          },
+          "provinceCode": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "district": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false
+      },
+      "SetOrganizationStatus": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "suspended"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "additionalProperties": false
+      },
+      "OrgManager": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "avatar": {
+            "type": "string",
+            "nullable": true
+          },
+          "grantedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email",
+          "avatar",
+          "grantedAt"
+        ]
+      },
       "CreateJoinRequest": {
         "type": "object",
         "properties": {
@@ -2025,10 +1922,9 @@
             "minLength": 4,
             "maxLength": 16
           },
-          "slug": {
+          "orgId": {
             "type": "string",
-            "minLength": 3,
-            "maxLength": 40
+            "pattern": "^[0-9a-fA-F]{24}$"
           },
           "claimedName": {
             "type": "string",
@@ -2419,12 +2315,12 @@
       "AcceptInviteResult": {
         "type": "object",
         "properties": {
-          "organizationSlug": {
+          "organizationId": {
             "type": "string"
           }
         },
         "required": [
-          "organizationSlug"
+          "organizationId"
         ]
       },
       "CreateRoleGrant": {
@@ -3951,10 +3847,13 @@
               "new30d": {
                 "type": "integer"
               },
-              "publicAxis": {
+              "marketplace": {
                 "type": "integer"
               },
-              "orgInternal": {
+              "groupOpen": {
+                "type": "integer"
+              },
+              "members": {
                 "type": "integer"
               },
               "active": {
@@ -4018,8 +3917,9 @@
               "total",
               "new7d",
               "new30d",
-              "publicAxis",
-              "orgInternal",
+              "marketplace",
+              "groupOpen",
+              "members",
               "active",
               "pending",
               "hidden",
@@ -4807,7 +4707,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Tạo Organization mới + tài khoản owner đầu tiên",
+        "summary": "Tạo tài khoản — không gắn tổ chức nào, vào nhóm là bước sau",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4858,7 +4758,7 @@
             }
           },
           "409": {
-            "description": "Organization slug đã tồn tại",
+            "description": "Email đã có tài khoản",
             "content": {
               "application/json": {
                 "schema": {
@@ -4886,7 +4786,7 @@
         "tags": [
           "Auth"
         ],
-        "summary": "Đăng nhập trong phạm vi một Organization (subdomain hoặc orgSlug)",
+        "summary": "Đăng nhập — phiên không gắn tổ chức, org do từng request khai qua `X-Org-Id`",
         "requestBody": {
           "content": {
             "application/json": {
@@ -4927,17 +4827,7 @@
             }
           },
           "401": {
-            "description": "Sai thông tin đăng nhập, tài khoản bị khoá, hoặc thiếu organization",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Organization không tồn tại hoặc đã bị khoá",
+            "description": "Sai thông tin đăng nhập hoặc tài khoản bị khoá",
             "content": {
               "application/json": {
                 "schema": {
@@ -6736,14 +6626,29 @@
           },
           {
             "schema": {
-              "type": "string",
-              "enum": [
-                "org_internal",
-                "public"
-              ]
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "members",
+                  "group_open",
+                  "marketplace"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 3
             },
             "required": false,
-            "name": "visibility",
+            "name": "reach",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "orgId",
             "in": "query"
           },
           {
@@ -7155,14 +7060,29 @@
           },
           {
             "schema": {
-              "type": "string",
-              "enum": [
-                "org_internal",
-                "public"
-              ]
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "members",
+                  "group_open",
+                  "marketplace"
+                ]
+              },
+              "minItems": 1,
+              "maxItems": 3
             },
             "required": false,
-            "name": "visibility",
+            "name": "reach",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "orgId",
             "in": "query"
           },
           {
@@ -7437,7 +7357,13 @@
           "Listing"
         ],
         "summary": "Chi tiết tin đăng (tăng viewCount)",
-        "description": "Chỉ trả tin ở trạng thái public — không lộ draft/pending/rejected/hidden.",
+        "description": "Quyền đọc xét theo NGƯỜI GỌI, không theo `X-Org-Id`: tin công khai đã duyệt thì ai cũng đọc được (kể cả khách); tin nội bộ chỉ thành viên của nhóm sở hữu tin (hoặc người có quyền duyệt trong nhóm đó) mới đọc được, bất kể request đang chỉ ra nhóm nào. Gửi token để được xét là thành viên. Chỉ trả tin ở trạng thái public — không lộ draft/pending/rejected/hidden.",
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {}
+        ],
         "parameters": [
           {
             "schema": {
@@ -7480,7 +7406,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy tin hoặc tin chưa được public",
+            "description": "Không tìm thấy tin, tin chưa được public, hoặc tin nội bộ của nhóm mà bạn không thuộc về",
             "content": {
               "application/json": {
                 "schema": {
@@ -8171,7 +8097,7 @@
           "Organization"
         ],
         "summary": "Các tổ chức tôi đang là thành viên",
-        "description": "Nguồn của bộ chuyển tổ chức phía client: org hoạt động do client chỉ ra bằng header `X-Org-Slug`, nên client phải biết mình được phép gửi những slug nào.",
+        "description": "Nguồn của bộ chuyển tổ chức phía client: org hoạt động do client chỉ ra bằng header `X-Org-Id`, nên client phải biết mình được phép gửi những id nào.",
         "security": [
           {
             "bearerAuth": []
@@ -8230,7 +8156,7 @@
           "Organization"
         ],
         "summary": "Sửa hồ sơ tổ chức đang hoạt động (admin của chính tổ chức đó)",
-        "description": "Tổ chức lấy từ header `X-Org-Slug` / subdomain, không nhận id trên đường dẫn. Ảnh phải là đường dẫn `res.cloudinary.com` do client upload thẳng lên; gửi `null` để gỡ ảnh, bỏ trống để giữ nguyên. Đổi `slug` vẫn là việc của master.",
+        "description": "Tổ chức lấy từ header `X-Org-Id`, không nhận id trên đường dẫn. Ảnh phải là đường dẫn `res.cloudinary.com` do client upload thẳng lên; gửi `null` để gỡ ảnh, bỏ trống để giữ nguyên.",
         "security": [
           {
             "bearerAuth": []
@@ -8315,7 +8241,7 @@
           "Organization"
         ],
         "summary": "Xoay mã nhóm (admin của chính tổ chức đó)",
-        "description": "Mã cũ chết ngay lập tức. Đây là đường cắt khi mã lọt ra ngoài — đổi slug thì làm hỏng mọi link đã phát, còn mã thì sinh ra để đổi được.",
+        "description": "Mã cũ chết ngay lập tức. Đây là đường cắt khi mã lọt ra ngoài — id của nhóm nằm trong mọi link đã phát và không đổi được, còn mã thì sinh ra để đổi được.",
         "security": [
           {
             "bearerAuth": []
@@ -8381,7 +8307,7 @@
           "Organization"
         ],
         "summary": "Xem thẻ nhóm bằng mã (công khai)",
-        "description": "Đủ để người cầm mã nhận ra đúng nhóm trước khi bấm xin vào. Không trả `id`, `slug` hay chính cái mã — endpoint công khai nên chỉ đưa thứ cần để nhận diện.",
+        "description": "Đủ để người cầm mã nhận ra đúng nhóm trước khi bấm xin vào. Không trả `id` hay chính cái mã — endpoint công khai nên chỉ đưa thứ cần để nhận diện.",
         "parameters": [
           {
             "schema": {
@@ -8664,7 +8590,7 @@
             }
           },
           "409": {
-            "description": "Slug đã tồn tại hoặc bị cấm",
+            "description": "Không sinh được mã nhóm, thử lại",
             "content": {
               "application/json": {
                 "schema": {
@@ -8944,7 +8870,7 @@
           "Organization"
         ],
         "summary": "Công khai ↔ riêng tư (master)",
-        "description": "Riêng tư = rơi khỏi tìm kiếm, hồ sơ trả 404 cho người ngoài, và chỉ xin vào được bằng MÃ chứ không bằng slug. Có hiệu lực ngay; mọi link đã phát ra ngoài chết theo.",
+        "description": "Riêng tư = rơi khỏi tìm kiếm, hồ sơ trả 404 cho người ngoài, và chỉ xin vào được bằng MÃ chứ không bằng id. Có hiệu lực ngay; mọi link đã phát ra ngoài chết theo.",
         "security": [
           {
             "bearerAuth": []
@@ -9023,18 +8949,14 @@
         }
       }
     },
-    "/organizations/{organizationId}/slug": {
-      "patch": {
-        "operationId": "changeOrganizationSlug",
+    "/organizations/profile/{organizationId}": {
+      "get": {
+        "operationId": "organizationPublicProfile",
         "tags": [
           "Organization"
         ],
-        "summary": "Đổi slug, slug cũ tự thành alias redirect 301",
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
+        "summary": "Hồ sơ nhóm công khai (không cần đăng nhập)",
+        "description": "Chỉ nhóm `isPublic`. Nhóm riêng tư trả 404 — không phân biệt được với id không tồn tại, nên không quét ra được danh sách nhóm kín. Đăng nhập rồi thì có thêm cờ `joined`.",
         "parameters": [
           {
             "schema": {
@@ -9043,89 +8965,6 @@
             },
             "required": true,
             "name": "organizationId",
-            "in": "path"
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangeOrganizationSlug"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Đã đổi slug",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/Organization"
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "Cần quyền master",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Slug mới đã tồn tại hoặc bị cấm",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/organizations/profile/{slug}": {
-      "get": {
-        "operationId": "organizationPublicProfile",
-        "tags": [
-          "Organization"
-        ],
-        "summary": "Hồ sơ nhóm công khai (không cần đăng nhập)",
-        "description": "Chỉ nhóm `isPublic`. Nhóm riêng tư trả 404 — không phân biệt được với slug không tồn tại, nên không quét ra được danh sách nhóm kín. Đăng nhập rồi thì có thêm cờ `joined`.",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 3,
-              "maxLength": 40,
-              "pattern": "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$"
-            },
-            "required": true,
-            "name": "slug",
             "in": "path"
           }
         ],
@@ -9160,7 +8999,7 @@
             }
           },
           "404": {
-            "description": "Không tìm thấy nhóm công khai nào ở slug này",
+            "description": "Không tìm thấy nhóm công khai nào ở id này",
             "content": {
               "application/json": {
                 "schema": {
@@ -9188,7 +9027,7 @@
         "tags": [
           "Organization"
         ],
-        "summary": "Tìm nhóm công khai theo tên hoặc slug",
+        "summary": "Tìm nhóm công khai theo tên",
         "description": "CHỈ nhóm `isPublic` — nhóm riêng tư không lộ ra ở đây kể cả khi gõ đúng tên, cách vào duy nhất vẫn là mã. Bỏ trống `q` để lấy danh sách gợi ý. Trả DANH SÁCH để người dùng tự xác nhận: chọn nhầm nhóm là tin chạy vào hàng đợi của tổ chức khác.",
         "parameters": [
           {
@@ -9223,87 +9062,6 @@
                       "items": {
                         "$ref": "#/components/schemas/OrganizationLookup"
                       }
-                    }
-                  },
-                  "required": [
-                    "success",
-                    "message",
-                    "data"
-                  ]
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "Tra cứu quá nhiều lần",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/organizations/slug-availability": {
-      "get": {
-        "operationId": "organizationSlugAvailability",
-        "tags": [
-          "Organization"
-        ],
-        "summary": "Kiểm tra slug còn dùng được không (kèm gợi ý hậu tố)",
-        "description": "Chỉ trả available + gợi ý. KHÔNG trả tên tổ chức đang giữ slug đó — trả tên là biến endpoint công khai này thành công cụ liệt kê khách hàng.",
-        "parameters": [
-          {
-            "schema": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 80
-            },
-            "required": true,
-            "name": "slug",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "maxLength": 100
-            },
-            "required": false,
-            "name": "district",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string",
-              "maxLength": 60
-            },
-            "required": false,
-            "name": "provinceCode",
-            "in": "query"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Kết quả kiểm tra",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "enum": [
-                        true
-                      ]
-                    },
-                    "message": {
-                      "type": "string"
-                    },
-                    "data": {
-                      "$ref": "#/components/schemas/SlugAvailability"
                     }
                   },
                   "required": [
@@ -14200,7 +13958,7 @@
           "Report"
         ],
         "summary": "Hàng đợi báo cáo (quản trị)",
-        "description": "Hợp hai trục theo quyền của người gọi: báo cáo trong org đang đứng (kèm `X-Org-Slug`, nếu duyệt được ở đó) + báo cáo về tin công khai trong ô mình phụ trách. Master thấy tất cả. `count` là số người cùng báo cáo một đối tượng, tính lúc đọc.",
+        "description": "Hợp hai trục theo quyền của người gọi: báo cáo trong org đang đứng (kèm `X-Org-Id`, nếu duyệt được ở đó) + báo cáo về tin công khai trong ô mình phụ trách. Master thấy tất cả. `count` là số người cùng báo cáo một đối tượng, tính lúc đọc.",
         "security": [
           {
             "bearerAuth": []

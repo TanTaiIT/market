@@ -15,6 +15,7 @@ import {
   orgAuth,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 let app: Application
@@ -31,9 +32,9 @@ let orphan: TestUser
 let orgId = ''
 let unitId = ''
 
-const SLUG = 'notice-org'
-const asOwner = () => orgAuth(owner.token, SLUG)
-const asStaff = () => orgAuth(unitStaff.token, SLUG)
+const ORG = 'notice-org'
+const asOwner = () => orgAuth(owner.token, ORG)
+const asStaff = () => orgAuth(unitStaff.token, ORG)
 
 /** Tiêu đề của các thông báo trong response — thứ mọi assertion về phạm vi đọc cần tới. */
 const titlesOf = (body: { data: { title: string }[] }) => body.data.map((n) => n.title)
@@ -47,7 +48,7 @@ beforeAll(async () => {
   orgId = (
     await createOrg(app, master.token, {
       name: 'Trường Thông Báo',
-      slug: SLUG,
+      key: ORG,
       ownerEmail: owner.email,
       // `school` mới bật `capabilities.hasUnits` — org phẳng thì cả file này vô nghĩa.
       orgType: 'school',
@@ -120,7 +121,7 @@ describe('Phạm vi gửi bám theo phạm vi được cấp', () => {
   it('thành viên thường không gửi được gì', async () => {
     const res = await request(app)
       .post('/api/v1/notifications')
-      .set(orgAuth(memberInUnit.token, SLUG))
+      .set(orgAuth(memberInUnit.token, ORG))
       .send({ title: 'Tự phát', body: 'Không có quyền.' })
 
     expect(res.status).toBe(403)
@@ -131,7 +132,7 @@ describe('Người đọc chỉ thấy phần dành cho mình', () => {
   it('người trong nhóm thấy cả thông báo toàn trường lẫn thông báo của nhóm', async () => {
     const res = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(memberInUnit.token, SLUG))
+      .set(orgAuth(memberInUnit.token, ORG))
       .expect(200)
 
     const titles = res.body.data.map((n: { title: string }) => n.title)
@@ -142,7 +143,7 @@ describe('Người đọc chỉ thấy phần dành cho mình', () => {
   it('người ngoài nhóm KHÔNG thấy thông báo của nhóm đó', async () => {
     const res = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(memberOutsideUnit.token, SLUG))
+      .set(orgAuth(memberOutsideUnit.token, ORG))
       .expect(200)
 
     const titles = res.body.data.map((n: { title: string }) => n.title)
@@ -208,7 +209,7 @@ describe('Không rò `readBy` ra ngoài', () => {
   it('response mang isRead/readCount thay cho danh sách người đã đọc', async () => {
     const before = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(memberInUnit.token, SLUG))
+      .set(orgAuth(memberInUnit.token, ORG))
       .expect(200)
 
     const notice = before.body.data.find((n: { title: string }) => n.title === 'Nghỉ lễ')
@@ -217,12 +218,12 @@ describe('Không rò `readBy` ra ngoài', () => {
 
     await request(app)
       .patch(`/api/v1/notifications/${notice.id}/read`)
-      .set(orgAuth(memberInUnit.token, SLUG))
+      .set(orgAuth(memberInUnit.token, ORG))
       .expect(200)
 
     const after = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(memberInUnit.token, SLUG))
+      .set(orgAuth(memberInUnit.token, ORG))
       .expect(200)
     expect(after.body.data.find((n: { id: string }) => n.id === notice.id)).toMatchObject({
       isRead: true,
@@ -233,7 +234,7 @@ describe('Không rò `readBy` ra ngoài', () => {
     // với mình, nhưng `readCount` thì chung.
     const other = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(memberOutsideUnit.token, SLUG))
+      .set(orgAuth(memberOutsideUnit.token, ORG))
       .expect(200)
     expect(other.body.data.find((n: { id: string }) => n.id === notice.id)).toMatchObject({
       isRead: false,
@@ -267,13 +268,13 @@ describe('Thông báo đích danh', () => {
 
     const mine = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(memberInUnit.token, SLUG))
+      .set(orgAuth(memberInUnit.token, ORG))
       .expect(200)
     expect(titlesOf(mine.body)).toContain('Riêng cho người trong nhóm')
 
     const others = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(memberOutsideUnit.token, SLUG))
+      .set(orgAuth(memberOutsideUnit.token, ORG))
       .expect(200)
     expect(titlesOf(others.body)).not.toContain('Riêng cho người trong nhóm')
   })
@@ -299,12 +300,12 @@ describe('Thông báo đích danh', () => {
      * nào để phát thông báo — mà thông báo khi được duyệt mới là thứ ca này kiểm.
      */
     const { Organization } = await import('../../src/features/organization/organization.model')
-    await Organization.updateOne({ slug: SLUG }, { isPublic: false }).exec()
+    await Organization.updateOne({ _id: orgIdOf(ORG) }, { isPublic: false }).exec()
 
     await request(app)
       .post('/api/v1/join-requests')
       .set({ Authorization: `Bearer ${applicant.token}` })
-      .send({ code: await joinCodeOf(SLUG), claimedName: 'Người xin vào' })
+      .send({ code: await joinCodeOf(ORG), claimedName: 'Người xin vào' })
       .expect(201)
 
     const pending = await request(app).get('/api/v1/join-requests').set(asOwner()).expect(200)
@@ -318,7 +319,7 @@ describe('Thông báo đích danh', () => {
 
     const inbox = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(applicant.token, SLUG))
+      .set(orgAuth(applicant.token, ORG))
       .expect(200)
     expect(titlesOf(inbox.body)).toContain('Đơn xin vào tổ chức đã được duyệt')
   })

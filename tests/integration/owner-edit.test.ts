@@ -14,6 +14,7 @@ import {
   registerUser,
   setTrustLevel,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -40,7 +41,7 @@ let pendingId = ''
 /** Tin nội bộ của một nhóm mà `owner` thuộc về. */
 let internalId = ''
 
-const SLUG = 'nhom-owner-edit'
+const ORG = 'nhom-owner-edit'
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -51,7 +52,7 @@ beforeAll(async () => {
   owner = await registerUser(app, 'owner@edit.local', 'Chủ tin')
   stranger = await registerUser(app, 'la@edit.local', 'Người lạ')
 
-  await createOrg(app, master.token, { name: 'Nhóm', slug: SLUG, ownerEmail: owner.email })
+  await createOrg(app, master.token, { name: 'Nhóm', key: ORG, ownerEmail: owner.email })
 
   // Hạ bậc uy tín để tin mới nằm ở `pending` — đúng trạng thái đang hỏng.
   await setTrustLevel(owner.id, 0)
@@ -61,7 +62,7 @@ beforeAll(async () => {
     .set({ Authorization: `Bearer ${owner.token}` })
     .send({
       ...listingPayload('Tin công khai chờ duyệt', categoryId),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: 'Hồ Chí Minh',
     })
     .expect(201)
@@ -69,8 +70,14 @@ beforeAll(async () => {
 
   const internal = await request(app)
     .post('/api/v1/listings')
-    .set(orgAuth(owner.token, SLUG))
-    .send({ ...listingPayload('Tin nội bộ chờ duyệt', categoryId), orgSlug: SLUG })
+    .set(orgAuth(owner.token, ORG))
+    // `members` tường minh: nhóm trong fixture công khai (mặc định `isPublic`), nên bỏ trống là
+    // rơi vào `group_open` và ca dưới đo nhầm bậc.
+    .send({
+      ...listingPayload('Tin nội bộ chờ duyệt', categoryId),
+      orgId: orgIdOf(ORG),
+      reach: 'members',
+    })
     .expect(201)
   internalId = internal.body.data._id
 }, 120_000)
@@ -94,7 +101,7 @@ describe('Chính chủ đọc và sửa tin chờ duyệt', () => {
   }, 60_000)
 
   /**
-   * Ca then chốt: KHÔNG gửi `X-Org-Slug`. `owner` thuộc đúng một nhóm nên `resolveTenant` tự
+   * Ca then chốt: KHÔNG gửi `X-Org-Id`. `owner` thuộc đúng một nhóm nên `resolveTenant` tự
    * suy ra được — nhưng tin này ở trục công khai (`organizationId: null`) và đang `pending`, nên
    * vế công khai của predicate loại nó ra vì status. Đây chính là 404 mà nút sửa gặp.
    */
@@ -126,13 +133,69 @@ describe('Chính chủ đọc và sửa tin chờ duyệt', () => {
     expect(res.body.data.title).toBe('Tin nội bộ đã sửa')
   }, 60_000)
 
+  /**
+   * Khoá định tuyến KHÔNG sửa được sau khi đăng.
+   *
+   * Đây từng là một đường leo thang thật, mở ra vì `updateListingSchema` là `.partial()` của
+   * schema tạo: đăng tin trong nhóm → nhóm mình duyệt → `PATCH {"reach":"marketplace"}` → tin
+   * nằm ACTIVE trên bảng tin chung, chưa từng qua manager danh mục. `touchesReviewedContent`
+   * không soi bậc phủ sóng nên `status` cũng không bị đặt lại. `provinceCode` cùng dạng: đổi nó
+   * là đổi luôn bàn duyệt.
+   */
+  it('KHÔNG nâng được bậc phủ sóng qua PATCH — 400, và tin không nhúc nhích', async () => {
+    await request(app)
+      .patch(`/api/v1/listings/${internalId}`)
+      .set(auth(owner))
+      .send({ reach: 'marketplace' })
+      .expect(400)
+
+    const back = await request(app)
+      .get(`/api/v1/listings/mine/${internalId}`)
+      .set(auth(owner))
+      .expect(200)
+    expect(back.body.data.reach).toBe('members')
+  }, 60_000)
+
+  /** Tên cũ cũng không lọt: `.strict()` từ chối mọi khoá lạ, không riêng khoá mình biết tên. */
+  it('gửi tên field CŨ (`visibility`) cũng 400, không bị bỏ qua im lặng', async () => {
+    await request(app)
+      .patch(`/api/v1/listings/${internalId}`)
+      .set(auth(owner))
+      .send({ visibility: 'public' })
+      .expect(400)
+  }, 60_000)
+
+  it('KHÔNG đổi được `provinceCode` qua PATCH — đó là đổi bàn duyệt', async () => {
+    await request(app)
+      .patch(`/api/v1/listings/${pendingId}`)
+      .set(auth(owner))
+      .send({ provinceCode: 'Hà Nội' })
+      .expect(400)
+  }, 60_000)
+
+  it('gửi kèm khoá định tuyến cùng field hợp lệ cũng bị chặn cả lượt', async () => {
+    // `.strict()` từ chối nguyên payload — không có chuyện tiêu đề vào được còn `reach` bị lặng
+    // lẽ bỏ qua, vì "lặng lẽ bỏ qua" là cách người gửi tưởng mình vừa đổi được bậc.
+    await request(app)
+      .patch(`/api/v1/listings/${internalId}`)
+      .set(auth(owner))
+      .send({ title: 'Tiêu đề kèm trục', reach: 'marketplace' })
+      .expect(400)
+
+    const back = await request(app)
+      .get(`/api/v1/listings/mine/${internalId}`)
+      .set(auth(owner))
+      .expect(200)
+    expect(back.body.data.title).toBe('Tin nội bộ đã sửa')
+  }, 60_000)
+
   it('xoá được tin `pending` của mình', async () => {
     const doomed = await request(app)
       .post('/api/v1/listings')
       .set({ Authorization: `Bearer ${owner.token}` })
       .send({
         ...listingPayload('Tin sẽ xoá', categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: 'Hồ Chí Minh',
       })
       .expect(201)

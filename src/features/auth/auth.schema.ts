@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { registry } from '../../config/openapi'
 import { impersonatesMaster } from '../../common/constants'
 
-// Đăng ký chỉ tạo tài khoản: không có `organizationName`, không có `orgSlug`. Người dùng vào
+// Đăng ký chỉ tạo tài khoản: không có `organizationName`, không có tổ chức nào. Người dùng vào
 // org sau, bằng request tham gia từ trang profile (§7.1) — tách ra là điều kiện để người đăng
 // tin ở trục danh mục dùng được sản phẩm mà không thuộc tổ chức nào.
 export const registerSchema = z

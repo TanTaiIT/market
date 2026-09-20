@@ -30,7 +30,7 @@ let ownerA: TestUser
 let outsider: TestUser
 let orgId = ''
 
-const SLUG = 'nhom-managers'
+const ORG = 'nhom-managers'
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -42,7 +42,7 @@ beforeAll(async () => {
 
   const org = await createOrg(app, master.token, {
     name: 'Nhóm Managers',
-    slug: SLUG,
+    key: ORG,
     ownerEmail: ownerA.email,
   })
   orgId = org.id
@@ -75,7 +75,7 @@ describe('Người phụ trách của một tổ chức', () => {
     await managers(ownerA.token).expect(403)
     await request(app)
       .get(`/api/v1/organizations/${orgId}/managers`)
-      .set(orgAuth(ownerA.token, SLUG))
+      .set(orgAuth(ownerA.token, ORG))
       .expect(403)
     await managers(outsider.token).expect(403)
     await managers().expect(401)

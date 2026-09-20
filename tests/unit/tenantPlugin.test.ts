@@ -15,11 +15,17 @@ const Widget = mongoose.model('Widget', widgetSchema)
 let mongod: MongoMemoryServer
 
 const inOrgA = <T>(fn: () => T) =>
-  runWithTenant({ ownOrgId: ORG_A, readableOrgIds: [ORG_A], publicAxis: null }, fn)
+  runWithTenant(
+    { ownOrgId: ORG_A, readableOrgIds: [ORG_A], memberOrgIds: [], publicAxis: null },
+    fn,
+  )
 // Scope đọc nhiều org: middleware hiện không sinh ra ca này, nhưng plugin vẫn phải giữ đúng
 // ngữ nghĩa "đọc rộng, ghi hẹp" — trục công khai dựng trên chính ngữ nghĩa đó.
 const inWideRead = <T>(fn: () => T) =>
-  runWithTenant({ ownOrgId: ORG_A, readableOrgIds: [ORG_A, ORG_B], publicAxis: null }, fn)
+  runWithTenant(
+    { ownOrgId: ORG_A, readableOrgIds: [ORG_A, ORG_B], memberOrgIds: [], publicAxis: null },
+    fn,
+  )
 
 beforeAll(async () => {
   mongod = await MongoMemoryServer.create()

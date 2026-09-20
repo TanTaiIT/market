@@ -50,7 +50,7 @@ beforeAll(async () => {
       .set({ Authorization: `Bearer ${seller.token}` })
       .send({
         ...listingPayload(title, categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: PROVINCE,
         location: { province: PROVINCE, ward },
       })

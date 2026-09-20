@@ -49,7 +49,7 @@ describe('Auth v2 — tài khoản toàn cục', () => {
     expect(res.status).toBe(409)
   })
 
-  it('đăng nhập chỉ cần email + password, không cần orgSlug', async () => {
+  it('đăng nhập chỉ cần email + password, không cần orgId', async () => {
     const res = await request(app)
       .post('/api/v1/auth/login')
       .send({ email: EMAIL, password: PASSWORD })

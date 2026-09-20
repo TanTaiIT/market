@@ -64,7 +64,7 @@ beforeAll(async () => {
     .set({ Authorization: `Bearer ${seller.token}` })
     .send({
       ...listingPayload('Xe đạp cũ', categoryId),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: 'Hồ Chí Minh',
     })
     .expect(201)

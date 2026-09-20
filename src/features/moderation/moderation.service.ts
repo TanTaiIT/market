@@ -2,7 +2,7 @@ import { Types } from 'mongoose'
 import { moderationRepository } from './moderation.repository'
 import { ActivityQuery, ModListingQuery, SetListingStatusInput } from './moderation.schema'
 import { toAuditEventDto } from './moderation.types'
-import { assertCanModerateListing, listingService } from '../listing/listing.service'
+import { assertCanActOnListing, listingService } from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { IListingDocument } from '../listing/listing.model'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
@@ -14,11 +14,13 @@ import { userRepository } from '../user/user.repository'
 import { membershipRepository } from '../membership/membership.repository'
 import { notificationService } from '../notification/notification.service'
 import {
+  ACTION_BY_DECISION,
   AUDIT_ACTION,
   AuditAction,
   LISTING_STATUS,
   ListingStatus,
   MASTER_DISPLAY_NAME,
+  MODERATION_ACTION,
   MODERATION_QUEUE,
   SCOPE_TYPES,
   ModerationQueue,
@@ -32,7 +34,7 @@ import { logger } from '../../config/logger'
 
 /**
  * CHỈ có `id`. Thao tác duyệt chạy trên cả hai trục, nên "người duyệt thuộc nhóm nào" không
- * phải dữ kiện của nó: thẩm quyền do `assertCanModerateListing` phán theo trục của TIN, còn
+ * phải dữ kiện của nó: thẩm quyền do `assertCanActOnListing` phán theo trục của TIN, còn
  * vết kiểm toán ghi dưới org SỞ HỮU tin (`recordAudit`), không phải org của người bấm.
  */
 export interface ModeratorActor {
@@ -123,7 +125,7 @@ async function applyTrustEffect(
    * để mở: ai có quyền duyệt trong một nhóm chỉ cần đăng rồi tự bấm "duyệt" mười lần là lên
    * bậc 2, rồi tự đăng thẳng lên bảng tin công khai của cả sàn mà không ai từng nhìn qua.
    *
-   * `assertCanModerateListing` không chặn được: nó hỏi "có quyền duyệt tin này không", và câu
+   * `assertCanActOnListing` không chặn được: nó hỏi "có quyền duyệt tin này không", và câu
    * trả lời cho chính chủ đang giữ quyền admin nhóm là CÓ. Việc duyệt vẫn hợp lệ — chỉ có điều
    * nó không phải bằng chứng về uy tín, vì không ai độc lập nhìn tin đó.
    */
@@ -328,7 +330,7 @@ export const moderationService = {
     actor: ModeratorActor & { grants: Grant[] },
   ) {
     const existing = await listingService.getForModeration(id)
-    assertCanModerateListing(existing, actor.grants)
+    assertCanActOnListing(existing, actor.grants, ACTION_BY_DECISION[input.status])
 
     const name = await actorName(actor)
     const previousStatus = existing.status
@@ -472,7 +474,9 @@ export const moderationService = {
     input: { categoryId?: string; provinceCode?: string },
     actorId: string,
   ) {
-    const before = await listingService.getById(id)
+    // Đọc unscoped: đây là bàn duyệt (master), tin có thể nằm ở org mà master không có chân.
+    // `before` chỉ để lại vết audit; thẩm quyền đổi ô do `rerouteListing` tự chốt.
+    const before = await listingService.getForModeration(id)
     const listing = await listingService.rerouteListing(id, input)
 
     const summary =
@@ -508,12 +512,19 @@ export const moderationService = {
    */
   async getListing(id: string, grants: Grant[]) {
     const listing = await listingService.getForModeration(id)
-    assertCanModerateListing(listing, grants)
+    // Cửa GỠ, không phải cửa duyệt: quản trị nhóm gỡ được tin công khai mang tên nhóm mình, nên
+    // họ phải mở được màn chi tiết của chính tin đó. Chốt bằng cửa hẹp hơn là 403 ngay ở bước
+    // nhìn, và tính năng gỡ thành vô dụng.
+    assertCanActOnListing(listing, grants, MODERATION_ACTION.TAKEDOWN)
     return listing
   },
 
   async removeListing(id: string, actor: ModeratorActor & { grants: Grant[] }) {
-    assertCanModerateListing(await listingService.getForModeration(id), actor.grants)
+    assertCanActOnListing(
+      await listingService.getForModeration(id),
+      actor.grants,
+      MODERATION_ACTION.TAKEDOWN,
+    )
 
     const name = await actorName(actor)
     const listing = await listingService.removeByModerator(id, actor.grants)

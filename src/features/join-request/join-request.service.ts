@@ -78,17 +78,17 @@ async function joinPublicNow(
 export const joinRequestService = {
   /**
    * Gửi đơn xin vào org. Người gửi CHƯA thuộc org nào nên hàm này không dùng tenant scope —
-   * org đến từ slug người dùng đã xác nhận trên dropdown.
+   * org đến từ mã hoặc id người dùng đã xác nhận trên màn tìm nhóm.
    */
   async create(actorId: string, input: CreateJoinRequestInput) {
     /*
-     * `findPublicBySlug` chứ không `findActiveBySlug`: đường slug CHỈ mở cho nhóm công khai.
-     * Dùng bản không lọc `isPublic` ở đây là mở lại đúng bề mặt spam mà cái mã sinh ra để
-     * chặn — ai đoán ra slug của một nhóm kín cũng gửi được đơn vào đó.
+     * `findPublicById` chứ không `findAliveById`: đường id CHỈ mở cho nhóm công khai. Dùng bản
+     * không lọc `isPublic` ở đây là mở lại đúng bề mặt spam mà cái mã sinh ra để chặn — ai cầm
+     * được id của một nhóm kín (nó nằm trong mọi link) cũng gửi được đơn vào đó.
      */
     const full = input.code
       ? await organizationRepository.findActiveByJoinCode(normalizeJoinCode(input.code))
-      : await organizationRepository.findPublicBySlug(input.slug!)
+      : await organizationRepository.findPublicById(input.orgId!)
     if (!full) {
       throw new NotFoundError(
         input.code ? 'Không tìm thấy nhóm nào với mã này' : 'Không tìm thấy nhóm công khai này',
@@ -219,7 +219,7 @@ export const joinRequestService = {
     if (doc.expiresAt < new Date()) throw new ConflictError('Đơn đã hết hiệu lực')
 
     if (unitId) {
-      const unit = await orgUnitRepository.findById(unitId)
+      const unit = await orgUnitRepository.findInOrg(unitId, organizationId)
       if (!unit) throw new BadRequestError('Nhóm con không tồn tại trong tổ chức này')
     }
 

@@ -34,9 +34,14 @@ export const systemMetricsSchema = registry.register(
     }),
 
     listings: countBlock.extend({
-      /** Theo TRỤC, không theo tổ chức — `public` là trục danh mục, `orgInternal` là trục org. */
-      publicAxis: z.number().int(),
-      orgInternal: z.number().int(),
+      /**
+       * Theo BẬC PHỦ SÓNG, ba xô chứ không hai. `groupOpen` tách riêng chứ không gộp vào
+       * `members`: nó chính là con số nói lên các nhóm chịu mở nội dung ra ngoài tới đâu — thứ
+       * đáng theo dõi nhất sau khi thang phủ sóng ra đời, và gộp lại là mất hẳn.
+       */
+      marketplace: z.number().int(),
+      groupOpen: z.number().int(),
+      members: z.number().int(),
       active: z.number().int(),
       pending: z.number().int(),
       hidden: z.number().int(),

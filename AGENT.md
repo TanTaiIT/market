@@ -72,7 +72,7 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
     liệu khách hàng.** Bốn điều không được quên dù không mở tài liệu:
     (a) collection nghiệp vụ mới → `schema.plugin(tenantPlugin)`. Bản ghi **chỉ** thuộc một
     org → để mặc định. Bản ghi sống được ở cả hai trục (org và công khai) → `{ dualAxis: true }`,
-    lúc đó `organizationId` cho phép `null` và `visibility` mới là khoá định tuyến;
+    lúc đó `organizationId` cho phép `null` và `reach` mới là khoá định tuyến;
     (b) KHÔNG tự viết filter `organizationId` trong repository/service — scope đến từ context;
     (c) ghi luôn rơi về org của request; đọc trục công khai là read-only đối với org khác;
     (d) chạm dữ liệu ngoài request (seed/job/migration) → bọc `runUnscoped('lý do', ...)`,
@@ -82,7 +82,7 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
     Đúng **ba** ngoại lệ, mỗi cái phải có ghi chú ngay tại chỗ khai index nói vì sao:
     (a) TTL index — Mongo không cho compound;
     (b) collection `dualAxis` (hiện chỉ `Listing`): trục danh mục có `organizationId: null` nên
-        prefix đó vô dụng, index của trục này mở đầu bằng `visibility`;
+        prefix đó vô dụng, index của trục này mở đầu bằng `reach`;
     (c) đường đọc chạy trong `runUnscoped` và scope bằng khoá khác — hiện có ba ca, đều trên
         `Listing`: lọc theo `seller` (màn "tin của tôi") và hai index của máy quét duyệt tin
         (hàng đợi `status + machineReview`, mẫu giá `category + status`).

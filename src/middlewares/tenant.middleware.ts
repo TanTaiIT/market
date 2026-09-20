@@ -1,5 +1,5 @@
+import { Types } from 'mongoose'
 import { Request } from 'express'
-import { env } from '../config/env'
 import { catchAsync } from '../common/utils/catchAsync'
 import { ForbiddenError } from '../common/errors'
 import { TenantScope, publicOnlyScope, runWithTenant } from '../common/tenant/tenantContext'
@@ -13,18 +13,12 @@ import { membershipRepository } from '../features/membership/membership.reposito
 import { roleGrantService } from '../features/role-grant/role-grant.service'
 import { enrichRequestContext } from '../common/observability/requestContext'
 
-/** Header cho client không chạy trên subdomain (app mobile, dev). Subdomain vẫn thắng. */
-const ORG_HEADER = 'x-org-slug'
+/** Header client khai org đang thao tác — `_id` của org, định danh duy nhất của một nhóm. */
+const ORG_HEADER = 'x-org-id'
 
-function subdomainSlug(hostname: string): string | null {
-  const base = env.APP_BASE_DOMAIN
-  if (!base || !hostname.endsWith(`.${base}`)) return null
+const OBJECT_ID = /^[0-9a-fA-F]{24}$/
 
-  const sub = hostname.slice(0, -(base.length + 1))
-  return sub && sub !== 'www' ? sub : null
-}
-
-function headerSlug(req: Request): string | null {
+function headerOrgId(req: Request): string | null {
   const value = req.headers[ORG_HEADER]
   return typeof value === 'string' && value ? value : null
 }
@@ -40,16 +34,12 @@ function actorIdOf(req: Request): string | null {
   }
 }
 
-async function resolveBySlug(slug: string): Promise<OrgSummary> {
-  const org = await organizationRepository.findActiveBySlug(slug)
-  if (org) return org
-
-  // Slug cũ sau khi tổ chức đổi tên. Không tra bảng alias ở đây thì mọi URL đã phát ra ngoài
-  // chết ngay lúc đổi slug — và bảng alias trở thành dữ liệu ghi ra rồi không ai đọc.
-  const aliasTarget = await organizationRepository.findAliasTarget(slug)
-  const renamed = aliasTarget ? await organizationRepository.findActiveById(aliasTarget) : null
-  if (!renamed) throw new ForbiddenError('Organization không tồn tại hoặc đã bị khoá')
-  return renamed
+async function resolveById(id: string): Promise<OrgSummary> {
+  // Không phải ObjectId thì không tra: Mongoose ném CastError, tức 500 cho một header client
+  // gõ sai — trong khi câu trả lời đúng là cùng một 403 với org không tồn tại.
+  const org = OBJECT_ID.test(id) ? await organizationRepository.findActiveById(id) : null
+  if (!org) throw new ForbiddenError('Organization không tồn tại hoặc đã bị khoá')
+  return org
 }
 
 /**
@@ -61,34 +51,31 @@ async function resolveBySlug(slug: string): Promise<OrgSummary> {
  */
 async function resolveOrganization(
   req: Request,
-  actorId: string | null,
+  memberOrgIds: Types.ObjectId[],
 ): Promise<OrgSummary | null> {
-  const slug = subdomainSlug(req.hostname) ?? headerSlug(req)
-  if (slug) {
-    // Ghi vào ngữ cảnh log trước khi tra: slug KHÔNG tra ra org cũng là thông tin cần khi một
-    // nhóm báo "chúng tôi không vào được" — biết họ đã gửi slug gì mới lần được nguyên nhân.
-    enrichRequestContext({ orgSlug: slug })
-    return resolveBySlug(slug)
+  const orgId = headerOrgId(req)
+  if (orgId) {
+    // Ghi vào ngữ cảnh log trước khi tra: id KHÔNG tra ra org cũng là thông tin cần khi một
+    // nhóm báo "chúng tôi không vào được" — biết họ đã gửi id gì mới lần được nguyên nhân.
+    enrichRequestContext({ orgId })
+    return resolveById(orgId)
   }
-  if (!actorId) return null
+  if (memberOrgIds.length !== 1) return null
 
-  const memberships = await membershipRepository.listActiveByUser(actorId)
-  if (memberships.length !== 1) return null
-
-  return organizationRepository.findActiveById(memberships[0].organizationId)
+  return organizationRepository.findActiveById(memberOrgIds[0])
 }
 
 /**
  * Mở tenant scope cho phần còn lại của request.
  *
- * Khác bản v1 ở chỗ căn bản: org KHÔNG còn nằm trong token. Nó do request chỉ ra (subdomain /
- * header) và được đối chiếu với `memberships` NGAY LÚC ĐÓ — rời org là mất quyền ngay, không
- * phải chờ token hết hạn.
+ * Khác bản v1 ở chỗ căn bản: org KHÔNG còn nằm trong token. Nó do request chỉ ra (header) và
+ * được đối chiếu với `memberships` NGAY LÚC ĐÓ — rời org là mất quyền ngay, không phải chờ
+ * token hết hạn.
  */
 /**
  * Đường phiên đăng nhập: KHÔNG mang tổ chức.
  *
- * Client gắn `X-Org-Slug` vào MỌI request. Nếu org đang chọn bị khoá thì `resolveBySlug` ném
+ * Client gắn `X-Org-Id` vào MỌI request. Nếu org đang chọn bị khoá thì `resolveById` ném
  * 403 — kể cả trên `/auth/refresh`, tức là chính lối tự cứu phiên bị header org làm chết, rồi
  * app đăng xuất người dùng vì một lý do không liên quan gì tới phiên của họ.
  *
@@ -102,15 +89,32 @@ export const resolveTenant = catchAsync(async (req, _res, next) => {
   if (SESSION_PATH.test(req.path)) return runWithTenant(publicOnlyScope(), next)
 
   const actorId = actorIdOf(req)
-  const org = await resolveOrganization(req, actorId)
+
+  /*
+   * Nạp membership cho MỌI request đã đăng nhập, không chỉ nhánh không-header.
+   *
+   * Đây là thứ cho phép bỏ khái niệm "tổ chức đang thao tác": bảng tin đọc được tin của mọi
+   * nhóm mình ở trong cùng lúc, nên người thuộc hai nhóm không phải bấm chọn nhóm nào — và
+   * không còn cảnh chưa chọn thì không thấy tin nội bộ nào cả.
+   *
+   * Một lượt tra có index trên `userId`, trả về vài bản ghi; và nó THAY cho lượt tra cũ vốn
+   * chạy ở nhánh không-header, chứ không cộng thêm.
+   */
+  const memberOrgIds = actorId
+    ? (await membershipRepository.listActiveByUser(actorId)).map((m) => m.organizationId)
+    : []
+
+  const org = await resolveOrganization(req, memberOrgIds)
 
   // Không xác định được org KHÔNG còn nghĩa là không có scope: tin công khai (trục danh mục)
-  // đọc được mà không cần thuộc tổ chức nào — kể cả khách chưa đăng nhập.
-  if (!org) return runWithTenant(publicOnlyScope(), next)
+  // đọc được mà không cần thuộc tổ chức nào — kể cả khách chưa đăng nhập. Nhưng nhóm MÌNH ĐÃ
+  // VÀO thì vẫn đọc được, và đó là ca của người thuộc nhiều nhóm chưa gửi header.
+  if (!org) return runWithTenant(publicOnlyScope(memberOrgIds), next)
 
   const withOrg = (): TenantScope => ({
     ownOrgId: org._id,
     readableOrgIds: [org._id],
+    memberOrgIds,
     publicAxis: { mode: 'approved' },
   })
 
@@ -119,7 +123,7 @@ export const resolveTenant = catchAsync(async (req, _res, next) => {
    *
    * Bản trước cấp `withOrg()` ở đây với lý do "khách xem trang công khai của org qua subdomain".
    * Ý định đúng, cấp sai thứ: `withOrg()` mở luôn NHÁNH ORG của `tenantPlugin`, nên chỉ cần gửi
-   * `X-Org-Slug: <slug>` — mà slug nằm trong mọi link chia sẻ — là đọc được tin `org_internal`
+   * `X-Org-Id: <id>` — mà id nằm trong mọi link chia sẻ — là đọc được tin `org_internal`
    * của nhóm đó, không cần đăng nhập. Đo được: 4/50 tin trả về là tin nội bộ của nhóm.
    *
    * Điều đó mâu thuẫn thẳng với lời app hứa ở hồ sơ nhóm: "Đây là nội dung riêng của nhóm.
@@ -130,6 +134,9 @@ export const resolveTenant = catchAsync(async (req, _res, next) => {
    * `countCreatedSinceForOrg`, vốn tự khai `runUnscoped`.
    */
   if (!actorId) return runWithTenant(publicOnlyScope(), next)
+
+  // Từ đây trở xuống người gọi ĐÃ đăng nhập, nên mọi nhánh `publicOnlyScope` còn lại phải mang
+  // theo `memberOrgIds` — họ không quản trị org trong header, nhưng nhóm của chính họ thì vẫn đọc.
 
   const membership = await membershipRepository.findActive(actorId, org._id)
   if (membership) {
@@ -153,7 +160,7 @@ export const resolveTenant = catchAsync(async (req, _res, next) => {
    *
    * Bản trước có một nhánh riêng `if (req.method === 'GET') return runWithTenant(withOrg(), ...)`
    * — "mở scope ĐỌC của org cho GET, còn ghi thì không". Đó chính là lỗ hổng, chỉ khác ca khách
-   * ở chỗ có token: `readableOrgIds` mở nhánh org, nên `GET /listings` kèm `X-Org-Slug` trả về
+   * ở chỗ có token: `readableOrgIds` mở nhánh org, nên `GET /listings` kèm `X-Org-Id` trả về
    * tin nội bộ của một nhóm mình không thuộc.
    *
    * Bỏ nhánh đó KHÔNG làm route nào hỏng oan: mọi GET thật sự cần `ownOrgId` đều đã gác thêm
@@ -163,5 +170,5 @@ export const resolveTenant = catchAsync(async (req, _res, next) => {
    * Các route không cần org (gửi đơn tham gia, đăng tin trục công khai, xem hồ sơ nhóm) vẫn
    * chạy bình thường — chúng đọc những model không gắn `tenantPlugin`.
    */
-  runWithTenant(publicOnlyScope(), next)
+  runWithTenant(publicOnlyScope(memberOrgIds), next)
 })

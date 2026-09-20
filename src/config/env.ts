@@ -86,11 +86,6 @@ const envSchema = z.object({
    */
   SENTRY_DSN: z.string().url().optional(),
 
-  // Domain gốc để tách subdomain -> Organization.slug (vd 'app.com' => hungvuong.app.com).
-  // Bỏ trống ở dev/test: khi đó org hoạt động đến từ header `X-Org-Slug`, hoặc suy ra khi
-  // người dùng chỉ thuộc đúng một org.
-  APP_BASE_DOMAIN: z.string().optional(),
-
   /**
    * Client ID được PHÉP của Google, phân tách bằng dấu phẩy.
    *

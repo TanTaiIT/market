@@ -11,6 +11,7 @@ import {
   orgAuth,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 let app: Application
@@ -22,8 +23,8 @@ let known: TestUser
 /** Chưa có tài khoản lúc mời → chỉ còn link. */
 const STRANGER_EMAIL = 'chua-co-tai-khoan@invite.local'
 
-const SLUG = 'org-moi'
-const asAdmin = () => orgAuth(admin.token, SLUG)
+const ORG = 'org-moi'
+const asAdmin = () => orgAuth(admin.token, ORG)
 
 const invite = (body: Record<string, unknown>) =>
   request(app).post('/api/v1/invites').set(asAdmin()).send(body)
@@ -36,7 +37,7 @@ beforeAll(async () => {
   admin = await registerUser(app, 'admin@invite.local', 'Quản trị')
   await createOrg(app, master.token, {
     name: 'Nhóm Mời',
-    slug: SLUG,
+    key: ORG,
     ownerEmail: admin.email,
   })
 
@@ -76,7 +77,7 @@ describe('Mời người đã có tài khoản', () => {
   it('người được mời cũng nhận thông báo trong app', async () => {
     const res = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(known.token, SLUG))
+      .set(orgAuth(known.token, ORG))
       .expect(200)
 
     expect(res.body.data.map((n: { title: string }) => n.title)).toContain(
@@ -86,7 +87,7 @@ describe('Mời người đã có tài khoản', () => {
 
   /**
    * Đây là ca chứng minh hộp thư thuộc về NGƯỜI, không thuộc tổ chức: `known` chưa phải thành
-   * viên của org mời họ, và đọc mà không gửi `X-Org-Slug`. Bản trước trả thẳng mảng rỗng cho
+   * viên của org mời họ, và đọc mà không gửi `X-Org-Id`. Bản trước trả thẳng mảng rỗng cho
    * mọi request không có org scope, nên lời mời gửi đi rồi nằm im không ai thấy.
    */
   it('đọc được thông báo dù chưa thuộc tổ chức nào và không gửi header org', async () => {
@@ -115,7 +116,7 @@ describe('Mời người đã có tài khoản', () => {
       .set('Authorization', `Bearer ${known.token}`)
 
     expect(res.status).toBe(200)
-    expect(res.body.data.organizationSlug).toBe(SLUG)
+    expect(res.body.data.organizationId).toBe(orgIdOf(ORG))
 
     const roster = await request(app).get('/api/v1/memberships').set(asAdmin()).expect(200)
     expect(roster.body.data.map((m: { name: string }) => m.name)).toContain('Người đã có tài khoản')
@@ -196,12 +197,12 @@ describe('Thu hồi và kiểm soát', () => {
     const member = await registerUser(app, 'thanhvien@invite.local', 'Thành viên')
     const { addMember } = await import('../helpers/fixtures')
     const { Organization } = await import('../../src/features/organization/organization.model')
-    const org = await Organization.findOne({ slug: SLUG }).exec()
+    const org = await Organization.findById(orgIdOf(ORG)).exec()
     await addMember(member.id, org!._id.toString())
 
     const res = await request(app)
       .post('/api/v1/invites')
-      .set(orgAuth(member.token, SLUG))
+      .set(orgAuth(member.token, ORG))
       .send({ channel: 'email', value: 'ai-do@invite.local' })
 
     expect(res.status).toBe(403)

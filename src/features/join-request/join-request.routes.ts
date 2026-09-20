@@ -27,7 +27,7 @@ const router = Router()
 
 // ── Người gửi đơn ───────────────────────────────────────────────────────────
 // Cố tình KHÔNG đòi org scope: người gửi theo định nghĩa chưa thuộc org nào, org đến từ
-// `orgSlug` trong body — cái slug họ vừa xác nhận trên dropdown.
+// `code`/`orgId` trong body — nhóm họ vừa xác nhận trên màn tìm nhóm.
 router.post(
   '/',
   authenticate,

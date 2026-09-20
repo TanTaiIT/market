@@ -25,7 +25,7 @@ async function check() {
   // đúng cái trạng thái bất biến này cấm.
   const orgs = await runUnscoped('check: soi quản trị của mọi org', () =>
     Organization.find({ status: { $in: [TENANT_STATUS.ACTIVE, TENANT_STATUS.SUSPENDED] } })
-      .select('name slug status')
+      .select('name status')
       .lean()
       .exec(),
   )
@@ -40,7 +40,7 @@ async function check() {
   } else {
     console.log(`❌ ${orphaned.length}/${orgs.length} tổ chức KHÔNG còn quản trị dùng được:`)
     for (const org of orphaned) {
-      console.log(`   · ${org.name} (${org.slug}) — status=${org.status}, id=${org._id}`)
+      console.log(`   · ${org.name} — status=${org.status}, id=${org._id}`)
     }
     console.log('\nSửa: POST /organizations/<id>/admin { email } với tài khoản sẽ phụ trách.')
   }

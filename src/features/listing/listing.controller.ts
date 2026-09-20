@@ -93,7 +93,9 @@ export const listingController = {
 
   // GET /listings/:id
   getById: catchAsync(async (req, res) => {
-    const listing = await listingService.getByIdAndTrackView(req.params.id)
+    // `req.user` do `optionalAuth` gán: khách vẫn đọc tin công khai, còn thành viên mới mở
+    // được tin nội bộ — quyền xét theo NGƯỜI, không theo `X-Org-Id` (xem `getForViewer`).
+    const listing = await listingService.getByIdAndTrackView(req.params.id, req.user?.id ?? null)
     success(res, { message: 'Listing detail', data: listing })
   }),
 

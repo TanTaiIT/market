@@ -45,8 +45,8 @@ let seq = 0
 /** Người dùng mới mỗi lần gọi — ca xoá tài khoản không tái dùng được người của ca khác. */
 const someone = (name: string) => registerUser(app, `u${(seq += 1)}@inv.local`, name)
 
-const orgWith = (slug: string, admin: TestUser) =>
-  createOrg(app, master.token, { name: `Nhóm ${slug}`, slug, ownerEmail: admin.email })
+const orgWith = (key: string, admin: TestUser) =>
+  createOrg(app, master.token, { name: `Nhóm ${key}`, key, ownerEmail: admin.email })
 
 const grantAdmin = (orgId: string, email: string) =>
   request(app)
@@ -114,7 +114,7 @@ describe('Gỡ khỏi danh bạ — thân phận và quyền không tách rời'
 
     const res = await request(app)
       .delete(`/api/v1/memberships/${dave.id}`)
-      .set(orgAuth(master.token, org.slug))
+      .set(orgAuth(master.token, org.id))
       .expect(409)
     expect(res.body.message).toContain('quản trị duy nhất')
   }, 60_000)
@@ -127,7 +127,7 @@ describe('Gỡ khỏi danh bạ — thân phận và quyền không tách rời'
 
     await request(app)
       .delete(`/api/v1/memberships/${frank.id}`)
-      .set(orgAuth(master.token, org.slug))
+      .set(orgAuth(master.token, org.id))
       .expect(200)
   }, 60_000)
 })
@@ -165,7 +165,7 @@ describe('Phía sinh ra — org chưa có quản trị thì chưa hoạt động
     const created = await request(app)
       .post('/api/v1/organizations')
       .set(bearer(master))
-      .send({ name: 'Nhóm chưa có ai', slug: 'inv-g' })
+      .send({ name: 'Nhóm chưa có ai' })
       .expect(201)
     const orgId = created.body.data.id as string
 

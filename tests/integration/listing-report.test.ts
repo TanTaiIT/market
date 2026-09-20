@@ -23,7 +23,7 @@ let mongod: MongoMemoryReplSet
 let master: TestUser
 let seller: TestUser
 let categoryId = ''
-const SLUG = 'bao-cao'
+const ORG = 'bao-cao'
 const HCM = 'Hồ Chí Minh'
 
 beforeAll(async () => {
@@ -35,7 +35,7 @@ beforeAll(async () => {
   seller = await registerUser(app, 'seller@report.local', 'Người bán')
   await createOrg(app, master.token, {
     name: 'Nhóm báo cáo',
-    slug: SLUG,
+    key: ORG,
     ownerEmail: seller.email,
   })
 }, 120_000)
@@ -52,7 +52,7 @@ async function postPublic(title: string) {
   const res = await request(app)
     .post('/api/v1/listings')
     .set(bearer(seller))
-    .send({ ...listingPayload(title, categoryId), visibility: 'public', provinceCode: HCM })
+    .send({ ...listingPayload(title, categoryId), reach: 'marketplace', provinceCode: HCM })
     .expect(201)
   return res.body.data._id as string
 }
@@ -61,8 +61,8 @@ async function postPublic(title: string) {
 async function postInternal(title: string) {
   const res = await request(app)
     .post('/api/v1/listings')
-    .set(orgAuth(seller.token, SLUG))
-    .send({ ...listingPayload(title, categoryId), visibility: 'org_internal' })
+    .set(orgAuth(seller.token, ORG))
+    .send({ ...listingPayload(title, categoryId), reach: 'members' })
     .expect(201)
   return res.body.data._id as string
 }
@@ -93,8 +93,8 @@ describe('Báo cáo đăng tin — cổng', () => {
   }, 60_000)
 
   /**
-   * Bản CỦA NHÓM: cùng endpoint, kèm `X-Org-Slug`, đếm mọi tin MANG DẤU NHÓM — nội bộ lẫn công
-   * khai do thành viên đăng trong ngữ cảnh nhóm (khoá trục là `visibility`, không phải
+   * Bản CỦA NHÓM: cùng endpoint, kèm `X-Org-Id`, đếm mọi tin MANG DẤU NHÓM — nội bộ lẫn công
+   * khai do thành viên đăng trong ngữ cảnh nhóm (khoá trục là `reach`, không phải
    * `organizationId`). Tin công khai của người NGOÀI nhóm (`organizationId: null`) không tính:
    * nó làm bản toàn hệ thống nhích lên mà bản của nhóm đứng yên.
    */
@@ -110,7 +110,7 @@ describe('Báo cáo đăng tin — cổng', () => {
       .set(bearer(stranger))
       .send({
         ...listingPayload('Công khai của người ngoài', categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: HCM,
       })
       .expect(201)
@@ -119,7 +119,7 @@ describe('Báo cáo đăng tin — cổng', () => {
     const mine = await request(app)
       .get('/api/v1/listings/report')
       .query(window)
-      .set(orgAuth(seller.token, SLUG))
+      .set(orgAuth(seller.token, ORG))
       .expect(200)
     const all = await report(window).expect(200)
 
@@ -178,7 +178,7 @@ describe('Báo cáo đăng tin — chuỗi thời gian', () => {
       .set(bearer(other))
       .send({
         ...listingPayload('Tin người thứ hai', categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: HCM,
       })
       .expect(201)

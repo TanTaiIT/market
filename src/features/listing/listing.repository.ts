@@ -5,8 +5,7 @@ import { PaginationParams } from '../../common/utils/pagination'
 import {
   LISTING_STATUS,
   MODERATABLE_STATUSES,
-  POST_VISIBILITY,
-  PUBLIC_LISTING_STATUSES,
+  LISTING_REACH,
   REPORT_TIMEZONE,
   ListingStatus,
 } from '../../common/constants'
@@ -43,8 +42,11 @@ function matchValue(constraint: AttrQuery): Record<string, unknown> {
 }
 
 /**
- * Xây filter Mongo từ query đã validate. `organizationId` KHÔNG xuất hiện ở đây —
- * tenantPlugin chèn nó ở tầng dưới, repository cố tình không được phép tự quyết.
+ * Xây filter Mongo từ query đã validate.
+ *
+ * `organizationId` ở đây CHỈ đến từ `?orgId=` của người gọi và chỉ có tác dụng THU HẸP —
+ * quyền đọc vẫn do `tenantPlugin` `$and` lên trên ở tầng dưới, repository không tự quyết được
+ * mình đọc org nào. Xin một nhóm mình không đọc được thì ra rỗng, không ra dữ liệu.
  */
 export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDocument> {
   // Mặc định ACTIVE: thiếu dòng này thì tin draft/pending/rejected/hidden lọt ra API public.
@@ -52,9 +54,11 @@ export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDo
 
   if (params.category) filter.category = params.category
   if (params.seller) filter.seller = params.seller
-  // Chỉ THU HẸP. `tenantPlugin` vẫn `$and` scope đọc lên trên, nên xin `org_internal` của một
+  // Chỉ THU HẸP. `tenantPlugin` vẫn `$and` scope đọc lên trên, nên xin bậc `members` của một
   // nhóm mình không đọc được thì ra rỗng, không ra dữ liệu.
-  if (params.visibility) filter.visibility = params.visibility
+  if (params.reach?.length === 1) filter.reach = params.reach[0]
+  else if (params.reach?.length) filter.reach = { $in: params.reach }
+  if (params.orgId) filter.organizationId = new Types.ObjectId(params.orgId)
 
   /*
    * Lọc thuộc tính động qua bản phẳng `attrs`, KHÔNG qua `attributes`.
@@ -128,7 +132,7 @@ export const listingRepository = {
       Listing.countDocuments({
         seller: sellerId,
         category: categoryId,
-        visibility: POST_VISIBILITY.PUBLIC,
+        reach: LISTING_REACH.MARKETPLACE,
         status: { $in: PENDING_STATUSES },
       }).exec(),
     )
@@ -289,24 +293,19 @@ export const listingRepository = {
   },
 
   /**
-   * Chỉ trả tin ở trạng thái public — chặn xem tin chưa duyệt qua đường /:id.
+   * Cộng một lượt xem. CHỈ ghi — không đọc, không xét quyền.
    *
-   * Đọc và ghi tách làm hai bước: bộ đếm view phải tăng được cả khi lượt đọc đến từ một
-   * scope rộng hơn scope ghi (tin trục công khai). Chạy unscoped nhưng chỉ sau khi
-   * lượt đọc đã được scope cho phép.
+   * Người gác là `listingService.getForViewer`, chạy TRƯỚC hàm này: nó quyết ai được xem tin
+   * theo quan hệ (thành viên nhóm, người duyệt) chứ không theo tenant scope của request. Vì thế
+   * đây phải là `runUnscoped`: lượt ghi đến từ NGƯỜI ĐỌC, mà scope ghi của họ hẹp hơn hẳn tập
+   * tin họ được đọc (tin nội bộ của nhóm khác nhóm đang thao tác, tin trục công khai của org
+   * khác). Bản cũ `incrementView` vừa đọc theo scope vừa ghi — chính lượt đọc theo scope ấy là
+   * lý do thành viên mở tin nội bộ của nhóm mình nhận 404 khi `X-Org-Id` trỏ nhóm khác.
    */
-  async incrementView(id: string) {
-    const listing = await Listing.findOne({
-      _id: id,
-      status: { $in: PUBLIC_LISTING_STATUSES },
-    })
-    if (!listing) return null
-
-    await runUnscoped('view counter of an already-authorized listing', () =>
-      Listing.updateOne({ _id: listing._id }, { $inc: { viewCount: 1 } }).exec(),
+  bumpView(id: Types.ObjectId) {
+    return runUnscoped('view counter of an already-authorized listing', () =>
+      Listing.updateOne({ _id: id }, { $inc: { viewCount: 1 } }).exec(),
     )
-    listing.viewCount += 1
-    return listing
   },
 
   /**
@@ -409,9 +408,30 @@ export const listingRepository = {
    * người gọi đã nêu tên, và trả về một CON SỐ chứ không phải bản ghi nào. Không có đường nào
    * từ đây đọc ra nội dung tin của org khác.
    *
-   * Người gọi phải tự chắc org đó `isPublic` — `organizationService.publicProfile` là call site
-   * duy nhất, và nó lấy org qua `findPublicBySlug`.
+   * Người gọi phải tự chắc ai được xem — `organizationService.publicProfile` là call site duy
+   * nhất, và nó chặn nhóm riêng tư với người ngoài trước khi trả con số này ra.
    */
+  /**
+   * Hạ mọi tin `group_open` của một nhóm về `members` — gọi khi nhóm chuyển sang RIÊNG TƯ.
+   *
+   * `runUnscoped` là BẮT BUỘC, không phải cho tiện. `setVisibility` là thao tác của master, mà
+   * master có `ownOrgId: null`; nhánh GHI của `tenantPlugin` là
+   * `$or: [{organizationId: null}, {organizationId: ownOrgId}]`, nên một `updateMany` có scope
+   * sẽ khớp ĐÚNG 0 dòng, trả `modifiedCount: 0` và cascade lặng lẽ không xảy ra. Không lỗi,
+   * không log, chỉ là tin công khai nằm lại dưới một nhóm đã kín.
+   *
+   * Idempotent theo cấu tạo: bộ lọc chính là thứ nó xoá đi.
+   */
+  demoteGroupOpen(organizationId: Types.ObjectId): Promise<number> {
+    return runUnscoped('nhóm chuyển riêng tư: hạ tin group_open về members', async () => {
+      const res = await Listing.updateMany(
+        { organizationId, reach: LISTING_REACH.GROUP_OPEN },
+        { $set: { reach: LISTING_REACH.MEMBERS } },
+      ).exec()
+      return res.modifiedCount
+    })
+  },
+
   countCreatedSinceForOrg(organizationId: Types.ObjectId, since: Date): Promise<number> {
     return runUnscoped('đếm nhịp đăng tin của MỘT nhóm công khai cho hồ sơ công khai', () =>
       Listing.countDocuments({ organizationId, createdAt: { $gte: since } }).exec(),
@@ -587,7 +607,7 @@ export const listingRepository = {
       _id: { category: Types.ObjectId; province: string }
       count: number
     }>([
-      { $match: { status: { $in: PENDING_STATUSES }, visibility: POST_VISIBILITY.PUBLIC } },
+      { $match: { status: { $in: PENDING_STATUSES }, reach: LISTING_REACH.MARKETPLACE } },
       { $group: { _id: { category: '$category', province: '$provinceCode' }, count: { $sum: 1 } } },
     ])
   },
@@ -691,7 +711,15 @@ export const listingRepository = {
         { $match: { deletedAt: null, createdAt: { $gte: since } } },
         {
           $group: {
-            _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } },
+            /*
+             * `timezone` KHÔNG được thiếu: mặc định `$dateToString` cắt ngày theo UTC, nên
+             * mọi tin đăng trước 7h sáng giờ Việt Nam rơi vào cột HÔM QUA. Cùng múi giờ với
+             * `reportSeries` ngay trên — hai biểu đồ cùng một dữ liệu mà lệch cột là lỗi
+             * không ai truy ra được từ giao diện.
+             */
+            _id: {
+              $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: REPORT_TIMEZONE },
+            },
             approved: {
               $sum: { $cond: [{ $eq: ['$status', LISTING_STATUS.ACTIVE] }, 1, 0] },
             },
@@ -712,44 +740,6 @@ export const listingRepository = {
    * Gồm cả snapshot avatar người đăng. Tin xoá mềm cố ý RỚT khỏi kết quả (hook của model):
    * không có đường khôi phục tin, nên ảnh của nó là rác hợp lệ.
    */
-  // ── IMAGE MODERATION (webhook Cloudinary) ──────────────────────────────────
-  // Cùng lý do `runUnscoped` với cụm machine review: sự kiện đến từ Cloudinary, không có
-  // request người dùng nào phía sau, và ảnh bị từ chối phải được gỡ ở MỌI trục.
-
-  /** Mọi tin (kể cả pending/hidden) còn giữ URL khớp ảnh bị từ chối. */
-  findByImageRef(pattern: RegExp) {
-    return runUnscoped('image moderation: tìm tin đang giữ ảnh bị từ chối', () =>
-      Listing.find({ images: pattern }).exec(),
-    )
-  },
-
-  /**
-   * Rút ảnh bị từ chối khỏi một tin, kèm (tuỳ chọn) đổi trạng thái trong CÙNG một lệnh.
-   * `ifStatus` là chốt race như `applyMachineVerdict`: người duyệt tay đổi trạng thái trước
-   * thì lệnh có điều kiện match 0 document và trả `null` — caller rơi về nhánh chỉ-rút-ảnh.
-   */
-  scrubImageRef(
-    id: Types.ObjectId,
-    pattern: RegExp,
-    opts: { ifStatus?: ListingStatus; set?: Partial<IListing> } = {},
-  ) {
-    return runUnscoped('image moderation: rút ảnh bị từ chối khỏi tin', () =>
-      Listing.findOneAndUpdate(
-        { _id: id, ...(opts.ifStatus ? { status: opts.ifStatus } : {}) },
-        { $pull: { images: pattern }, ...(opts.set ? { $set: opts.set } : {}) },
-        { new: true },
-      ).exec(),
-    )
-  },
-
-  /** Xoá snapshot avatar người đăng khi chính ảnh avatar đó bị từ chối — FE rơi về chữ viết tắt. */
-  async clearPosterAvatarRef(pattern: RegExp): Promise<number> {
-    const res = await runUnscoped('image moderation: xoá snapshot avatar bị từ chối', () =>
-      Listing.updateMany({ posterAvatar: pattern }, { posterAvatar: '' }).exec(),
-    )
-    return res.modifiedCount
-  },
-
   async allImageRefs(): Promise<string[]> {
     const rows = await runUnscoped('image cleanup: gom URL ảnh của mọi tin', () =>
       Listing.find().select('images posterAvatar').lean().exec(),

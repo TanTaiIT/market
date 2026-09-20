@@ -25,7 +25,7 @@ let seller: TestUser
 let orgId = ''
 let categoryId = ''
 
-const SLUG = 'profile-org'
+const ORG = 'profile-org'
 const bearer = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` })
 
 beforeAll(async () => {
@@ -38,7 +38,7 @@ beforeAll(async () => {
   orgId = (
     await createOrg(app, master.token, {
       name: 'Trường Hồ Sơ',
-      slug: SLUG,
+      key: ORG,
       ownerEmail: owner.email,
       provinceCode: 'Hồ Chí Minh',
     })
@@ -163,7 +163,7 @@ describe('Công tắc SĐT quyết định `posterContact` của tin mới', () 
   it('bật công tắc thì tin mang số điện thoại', async () => {
     const res = await request(app)
       .post('/api/v1/listings')
-      .set(orgAuth(seller.token, SLUG))
+      .set(orgAuth(seller.token, ORG))
       .send(listingPayload('Bàn học cũ còn tốt', categoryId))
 
     expect(res.status).toBe(201)
@@ -179,7 +179,7 @@ describe('Công tắc SĐT quyết định `posterContact` của tin mới', () 
 
     const res = await request(app)
       .post('/api/v1/listings')
-      .set(orgAuth(seller.token, SLUG))
+      .set(orgAuth(seller.token, ORG))
       .send(listingPayload('Ghế gỗ hai cái', categoryId))
 
     expect(res.status).toBe(201)

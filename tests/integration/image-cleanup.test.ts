@@ -41,7 +41,7 @@ beforeAll(async () => {
   seller = await registerUser(app, 'seller@cleanup.local', 'Người bán')
   await createOrg(app, master.token, {
     name: 'Org dọn ảnh',
-    slug: 'don-anh',
+    key: 'don-anh',
     ownerEmail: seller.email,
   })
 

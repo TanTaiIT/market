@@ -1,8 +1,8 @@
 import {
-  POST_VISIBILITY,
+  LISTING_REACH,
   SYSTEM_ROLES,
   SCOPE_TYPES,
-  PostVisibility,
+  ListingReach,
   SystemRole,
   ScopeType,
 } from '../constants'
@@ -139,7 +139,7 @@ export function canModerateCategory(grants: Grant[], target: CategoryTarget): bo
  * kéo model của một feature vào đây là mở đường cho nó phụ thuộc ngược lên tầng trên.
  */
 export interface ListingTarget {
-  visibility: PostVisibility
+  reach: ListingReach
   organizationId: string | null
   unitId: string | null
   categoryId: string
@@ -148,12 +148,16 @@ export interface ListingTarget {
 }
 
 /**
- * Duyệt được ĐÚNG tin này không — TRỤC CỦA TIN chọn người có thẩm quyền, không phải vai của
+ * DUYỆT được đúng tin này không — TRỤC CỦA TIN chọn người có thẩm quyền, không phải vai của
  * người đang hỏi. Gộp hai nhánh vào một hàm để không có call-site nào chỉ kiểm một nửa: đó
  * đúng là cách `report.service` từng ẩn được tin trục danh mục bằng quyền của org.
+ *
+ * Chỉ trả lời câu "cho tin đi tiếp". Câu "rút tin xuống" rộng hơn — xem `canTakedownListing`.
  */
-export function canModerateListing(grants: Grant[], listing: ListingTarget): boolean {
-  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
+export function canApproveListing(grants: Grant[], listing: ListingTarget): boolean {
+  // CHỈ `marketplace` nằm trên bàn danh mục. `group_open` đọc được công khai nhưng vẫn do
+  // chính nhóm duyệt — gộp nó vào nhánh này là chuyển quyền duyệt của nhóm cho người lạ.
+  if (listing.reach === LISTING_REACH.MARKETPLACE) {
     return canModerateCategory(grants, {
       categoryId: listing.categoryId,
       // `''` không khớp tỉnh nào, nhưng grant toàn quốc (`provinceCodes` rỗng) vẫn phủ được —
@@ -169,18 +173,45 @@ export function canModerateListing(grants: Grant[], listing: ListingTarget): boo
 }
 
 /**
+ * GỠ/ẨN được đúng tin này không — cửa rộng hơn `canApproveListing` đúng một vế.
+ *
+ * Ai duyệt được thì đương nhiên gỡ được. NGOÀI RA, nhóm sở hữu tin gỡ được tin mang tên mình ở
+ * mọi trục — kể cả tin công khai, thứ mà họ không có lấy một lượt duyệt nào. Lý do: tin công
+ * khai vẫn đeo badge "đăng bởi nhóm X" trước cả sàn, nên nhóm phải từ chối cho mượn tên được.
+ * Trước đây họ NHÌN THẤY tin đó trong hàng đợi của mình (nhánh đọc rộng hơn nhánh ghi) rồi ăn
+ * 403 khi chạm vào — thấy mà không đụng được là dạng tệ nhất.
+ *
+ * Vế thêm chỉ có tác dụng với tin CÔNG KHAI mang org: với tin nội bộ nó trùng khít vế đầu.
+ *
+ * `canModerateOrg` chứ KHÔNG `canAdminOrg`, và điều đó tự loại staff nhóm con: `routeListing`
+ * đặt `unitId: null` cho nhánh công khai, mà `sameId(null, null)` là `false` — nên chỉ grant cấp
+ * ORG mới với tới. Đừng "sửa" `sameId` cho nhận `null`, nó sẽ nới chỗ này mà không ai để ý.
+ */
+export function canTakedownListing(grants: Grant[], listing: ListingTarget): boolean {
+  if (canApproveListing(grants, listing)) return true
+
+  return (
+    listing.organizationId !== null &&
+    canModerateOrg(grants, { orgId: listing.organizationId, unitId: listing.unitId })
+  )
+}
+
+/**
  * Đẩy tin lên đầu bảng.
  *
- * Theo TRỤC CỦA TIN như `canModerateListing` — tin công khai do người phụ trách danh mục quyết,
+ * Theo TRỤC CỦA TIN như `canApproveListing` — tin công khai do người phụ trách danh mục quyết,
  * tin của nhóm do quản trị nhóm quyết — nhưng HẸP HƠN ở vế org: `canModerateOrg` cho cả staff
  * nhóm con, còn đây chỉ `canAdminOrg`.
+ *
+ * KHÔNG nới theo `canTakedownListing`: gỡ là rút tin của mình xuống, còn đẩy là LẤY CHỖ của tin
+ * người khác trên một bảng không thuộc về nhóm. Hai chiều ngược nhau, không đối xứng được.
  *
  * Vì hai việc khác hạng: duyệt tin là nói "tin này hợp lệ", còn đẩy tin là LẤY CHỖ của tin
  * người khác trên bảng. Thứ hai là quyết định phân phối, thuộc người chịu trách nhiệm cả bề
  * mặt đó. Master phủ cả hai nhánh (kiểm bên trong từng hàm).
  */
 export function canBumpListing(grants: Grant[], listing: ListingTarget): boolean {
-  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
+  if (listing.reach === LISTING_REACH.MARKETPLACE) {
     return canModerateCategory(grants, {
       categoryId: listing.categoryId,
       provinceCode: listing.provinceCode ?? '',

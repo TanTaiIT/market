@@ -19,7 +19,6 @@ beforeAll(async () => {
   process.env.MONGO_URI = uri
   process.env.JWT_SECRET = 'test_secret'
   process.env.JWT_REFRESH_SECRET = 'test_refresh_secret'
-  delete process.env.APP_BASE_DOMAIN
 
   await mongoose.connect(uri)
 
@@ -52,10 +51,10 @@ beforeAll(async () => {
   const owner = await registerUser(app, 'owner@tpl-org.local', 'Tpl Owner')
   const org = await createOrg(app, masterToken, {
     name: 'Tpl Org',
-    slug: 'tpl-org',
+    key: 'tpl-org',
     ownerEmail: owner.email,
   })
-  orgHeaders = orgAuth(owner.token, org.slug)
+  orgHeaders = orgAuth(owner.token, org.id)
   await setTrustLevel(owner.id, 1)
 }, 120_000)
 
@@ -271,7 +270,7 @@ describe('GET /listings?attrs=', () => {
             model: 'Test model',
           }),
           title: `Máy hãng ${brand} bộ nhớ ${storage}`,
-          visibility: 'public',
+          reach: 'marketplace',
           provinceCode: 'Hồ Chí Minh',
           // Tin công khai bắt buộc có phường (khoá định tuyến tầng dưới), xem `resolveWardCode`.
           location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },

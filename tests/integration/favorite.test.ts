@@ -27,7 +27,7 @@ let member: TestUser
 let buyer: TestUser
 let categoryId = ''
 
-const SLUG = 'fav-org'
+const ORG = 'fav-org'
 
 /** Tin công khai, đã duyệt — ai cũng đọc được. */
 let publicListing = ''
@@ -36,11 +36,11 @@ let internalListing = ''
 
 const bearer = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` })
 
-async function createListing(headers: Record<string, string>, title: string, visibility: string) {
+async function createListing(headers: Record<string, string>, title: string, reach: string) {
   const res = await request(app)
     .post('/api/v1/listings')
     .set(headers)
-    .send({ ...listingPayload(title, categoryId), visibility })
+    .send({ ...listingPayload(title, categoryId), reach })
     .expect(201)
   return res.body.data._id as string
 }
@@ -67,7 +67,7 @@ beforeAll(async () => {
   owner = await registerUser(app, 'owner@fav.local', 'Owner')
   const org = await createOrg(app, master.token, {
     name: 'Tổ chức Favorite',
-    slug: SLUG,
+    key: ORG,
     ownerEmail: owner.email,
   })
 
@@ -76,17 +76,13 @@ beforeAll(async () => {
   buyer = await registerUser(app, 'buyer@fav.local', 'Người mua')
 
   publicListing = await createListing(
-    orgAuth(member.token, SLUG),
+    orgAuth(member.token, ORG),
     'Bàn phím cơ còn bảo hành',
-    'public',
+    'marketplace',
   )
   await publishListing(publicListing)
 
-  internalListing = await createListing(
-    orgAuth(member.token, SLUG),
-    'Tủ tài liệu nội bộ',
-    'org_internal',
-  )
+  internalListing = await createListing(orgAuth(member.token, ORG), 'Tủ tài liệu nội bộ', 'members')
 }, 120_000)
 
 afterAll(async () => {
@@ -152,7 +148,7 @@ describe('Favorite — phạm vi và lỗi', () => {
   it('thành viên của chính org đó thì lưu được tin nội bộ', async () => {
     const res = await request(app)
       .post(`/api/v1/favorites/${internalListing}`)
-      .set(orgAuth(member.token, SLUG))
+      .set(orgAuth(member.token, ORG))
 
     expect(res.status).toBe(201)
     expect((await savedIds(member.token)).body.data).toEqual([internalListing])
@@ -179,12 +175,12 @@ describe('Favorite — tin bị gỡ sau khi đã lưu', () => {
   let removed = ''
 
   beforeAll(async () => {
-    removed = await createListing(orgAuth(member.token, SLUG), 'Ghế công thái học', 'public')
+    removed = await createListing(orgAuth(member.token, ORG), 'Ghế công thái học', 'marketplace')
     await publishListing(removed)
     await request(app).post(`/api/v1/favorites/${removed}`).set(bearer(buyer)).expect(201)
     await request(app)
       .delete(`/api/v1/listings/${removed}`)
-      .set(orgAuth(member.token, SLUG))
+      .set(orgAuth(member.token, ORG))
       .expect(200)
   })
 

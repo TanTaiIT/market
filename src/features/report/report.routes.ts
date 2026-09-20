@@ -82,7 +82,7 @@ registry.registerPath({
   tags: ['Report'],
   summary: 'Hàng đợi báo cáo (quản trị)',
   description:
-    'Hợp hai trục theo quyền của người gọi: báo cáo trong org đang đứng (kèm `X-Org-Slug`, nếu ' +
+    'Hợp hai trục theo quyền của người gọi: báo cáo trong org đang đứng (kèm `X-Org-Id`, nếu ' +
     'duyệt được ở đó) + báo cáo về tin công khai trong ô mình phụ trách. Master thấy tất cả. ' +
     '`count` là số người cùng báo cáo một đối tượng, tính lúc đọc.',
   ...protectedRoute,

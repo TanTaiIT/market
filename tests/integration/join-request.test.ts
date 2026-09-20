@@ -14,6 +14,7 @@ import {
   orgAuth,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 let app: Application
@@ -23,9 +24,9 @@ let master: TestUser
 let owner: TestUser
 let orgId = ''
 let unitId = ''
-const SLUG = 'join-org'
+const ORG = 'join-org'
 
-const asOwner = () => orgAuth(owner.token, SLUG)
+const asOwner = () => orgAuth(owner.token, ORG)
 
 /** Mã nhóm của org test, nạp một lần trong `beforeAll` — `sendRequest` không async được. */
 let code = ''
@@ -47,7 +48,7 @@ beforeAll(async () => {
   orgId = (
     await createOrg(app, master.token, {
       name: 'Trường Join',
-      slug: SLUG,
+      key: ORG,
       ownerEmail: owner.email,
       orgType: 'school',
     })
@@ -59,7 +60,7 @@ beforeAll(async () => {
    */
   await Organization.updateOne({ _id: orgId }, { isPublic: false }).exec()
 
-  code = await joinCodeOf(SLUG)
+  code = await joinCodeOf(ORG)
 
   unitId = await createOrgUnit(orgId)
 }, 120_000)
@@ -134,7 +135,7 @@ describe('Gửi đơn tham gia', () => {
 describe('Duyệt đơn', () => {
   it('người ngoài KHÔNG đọc được hàng đợi của org', async () => {
     const stranger = await registerUser(app, 'stranger@example.com', 'Người lạ')
-    const res = await request(app).get('/api/v1/join-requests').set(orgAuth(stranger.token, SLUG))
+    const res = await request(app).get('/api/v1/join-requests').set(orgAuth(stranger.token, ORG))
     expect(res.status).toBe(403)
   })
 
@@ -162,16 +163,22 @@ describe('Duyệt đơn', () => {
     const { createCategory, listingPayload } = await import('../helpers/fixtures')
     const categoryId = await createCategory('Sách', 'sach')
 
-    // Người ngoài ĐỌC được trang công khai của org (đúng thiết kế), nhưng không ghi được:
-    // scope không mở cho non-GET nên `tenantPlugin` chặn ở tầng thấp nhất.
-    const readBefore = await request(app).get('/api/v1/listings').set(orgAuth(user.token, SLUG))
+    // Người ngoài ĐỌC được trang công khai của org (đúng thiết kế), nhưng tin họ đăng KHÔNG
+    // vào được org: header của một nhóm mình chưa thuộc không mở scope nào.
+    const readBefore = await request(app).get('/api/v1/listings').set(orgAuth(user.token, ORG))
     expect(readBefore.status).toBe(200)
 
+    /*
+     * Đo bằng `organizationId`, không bằng mã lỗi. Bản cũ khẳng định 400, nhưng con số đó chỉ
+     * là tác dụng phụ của mặc định cũ (`org_internal` + không có org = chặn). Mặc định nay đưa
+     * tin lên sàn, nên 201 là đúng — điều phải giữ là tin không mang tên org này.
+     */
     const writeBefore = await request(app)
       .post('/api/v1/listings')
-      .set(orgAuth(user.token, SLUG))
+      .set(orgAuth(user.token, ORG))
       .send(listingPayload('Tin của người chưa được duyệt', categoryId))
-    expect(writeBefore.status).toBe(400)
+      .expect(201)
+    expect(writeBefore.body.data.organizationId).toBeNull()
 
     await request(app)
       .patch(`/api/v1/join-requests/${created.body.data.id}/approve`)
@@ -181,7 +188,7 @@ describe('Duyệt đơn', () => {
 
     const writeAfter = await request(app)
       .post('/api/v1/listings')
-      .set(orgAuth(user.token, SLUG))
+      .set(orgAuth(user.token, ORG))
       .send(listingPayload('Tin sau khi được duyệt', categoryId))
     expect(writeAfter.status).toBe(201)
   })
@@ -256,18 +263,18 @@ describe('Trần số đơn đang chờ', () => {
      * vòng lặp sẽ chỉ tạo ra một loạt membership rồi trần không bao giờ chạm tới.
      */
     for (let i = 0; i < JOIN_REQUEST_LIMITS.MAX_PENDING_PER_USER; i += 1) {
-      const slug = `spam-org-${i}`
-      const orgOwner = await registerUser(app, `owner@${slug}.local`, 'Owner')
+      const key = `spam-org-${i}`
+      const orgOwner = await registerUser(app, `owner@${key}.local`, 'Owner')
       const spamOrg = await createOrg(app, master.token, {
-        name: `Org ${slug}`,
-        slug,
+        name: `Org ${key}`,
+        key,
         ownerEmail: orgOwner.email,
       })
       await Organization.updateOne({ _id: spamOrg.id }, { isPublic: false }).exec()
       await request(app)
         .post('/api/v1/join-requests')
         .set('Authorization', `Bearer ${user.token}`)
-        .send({ code: await joinCodeOf(slug), claimedName: 'Spam' })
+        .send({ code: await joinCodeOf(key), claimedName: 'Spam' })
         .expect(201)
     }
 
@@ -282,14 +289,14 @@ describe('Trần số đơn đang chờ', () => {
  * phần trên của file này chạy trên đúng org đó sau khi `beforeAll` hạ nó xuống riêng tư.
  */
 describe('Nhóm công khai — vào ngay', () => {
-  const PUBLIC_SLUG = 'join-open'
+  const PUBLIC_ORG = 'join-open'
   let publicOrgId = ''
 
   beforeAll(async () => {
     publicOrgId = (
       await createOrg(app, master.token, {
         name: 'Nhóm Mở',
-        slug: PUBLIC_SLUG,
+        key: PUBLIC_ORG,
         ownerEmail: owner.email,
       })
     ).id
@@ -299,7 +306,7 @@ describe('Nhóm công khai — vào ngay', () => {
     request(app)
       .post('/api/v1/join-requests')
       .set('Authorization', `Bearer ${user.token}`)
-      .send({ slug: PUBLIC_SLUG, claimedName: 'Người vào ngay', ...body })
+      .send({ orgId: orgIdOf(PUBLIC_ORG), claimedName: 'Người vào ngay', ...body })
 
   it('bấm gia nhập là thành viên ngay, đơn ghi lại ở trạng thái approved', async () => {
     const user = await registerUser(app, 'open1@example.com', 'Mở 1')
@@ -343,17 +350,17 @@ describe('Nhóm công khai — vào ngay', () => {
     // Rải đủ đơn chờ vào các nhóm RIÊNG TƯ cho tới đúng trần.
     const { JOIN_REQUEST_LIMITS } = await import('../../src/common/constants')
     for (let i = 0; i < JOIN_REQUEST_LIMITS.MAX_PENDING_PER_USER; i += 1) {
-      const slug = `join-priv-${i}`
+      const key = `join-priv-${i}`
       const org = await createOrg(app, master.token, {
         name: `Kín ${i}`,
-        slug,
+        key,
         ownerEmail: owner.email,
       })
       await Organization.updateOne({ _id: org.id }, { isPublic: false }).exec()
       await request(app)
         .post('/api/v1/join-requests')
         .set('Authorization', `Bearer ${user.token}`)
-        .send({ code: await joinCodeOf(slug), claimedName: 'Rải đơn' })
+        .send({ code: await joinCodeOf(key), claimedName: 'Rải đơn' })
         .expect(201)
     }
 
@@ -368,7 +375,7 @@ describe('Nhóm công khai — vào ngay', () => {
   it('đơn cũ từ lúc còn kín được duyệt lại, không sinh đơn thứ hai', async () => {
     const org = await createOrg(app, master.token, {
       name: 'Kín rồi mở',
-      slug: 'join-flip',
+      key: 'join-flip',
       ownerEmail: owner.email,
     })
     await Organization.updateOne({ _id: org.id }, { isPublic: false }).exec()
@@ -386,7 +393,7 @@ describe('Nhóm công khai — vào ngay', () => {
     const second = await request(app)
       .post('/api/v1/join-requests')
       .set('Authorization', `Bearer ${user.token}`)
-      .send({ slug: 'join-flip', claimedName: 'Vào luôn' })
+      .send({ orgId: orgIdOf('join-flip'), claimedName: 'Vào luôn' })
       .expect(201)
 
     expect(second.body.data.status).toBe('approved')

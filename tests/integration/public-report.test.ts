@@ -15,6 +15,7 @@ import {
   orgAuth,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 import { Report } from '../../src/features/report/report.model'
 import { runUnscoped } from '../../src/common/tenant/tenantContext'
@@ -50,7 +51,7 @@ let orgId = ''
 let publicListingId = ''
 let orgListingId = ''
 
-const SLUG = 'nhom-bao-cao-truc'
+const ORG = 'nhom-bao-cao-truc'
 const HCM = 'Hồ Chí Minh'
 const HN = 'Hà Nội'
 
@@ -86,7 +87,7 @@ beforeAll(async () => {
 
   const org = await createOrg(app, master.token, {
     name: 'Nhóm báo cáo',
-    slug: SLUG,
+    key: ORG,
     ownerEmail: orgAdmin.email,
   })
   orgId = org.id
@@ -112,7 +113,7 @@ beforeAll(async () => {
     .set(bearer(seller))
     .send({
       ...listingPayload('Tai nghe công khai', categoryId),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: HCM,
     })
     .expect(201)
@@ -121,8 +122,8 @@ beforeAll(async () => {
 
   const internal = await request(app)
     .post('/api/v1/listings')
-    .set(orgAuth(orgAdmin.token, SLUG))
-    .send({ ...listingPayload('Loa nội bộ nhóm', categoryId), orgSlug: SLUG })
+    .set(orgAuth(orgAdmin.token, ORG))
+    .send({ ...listingPayload('Loa nội bộ nhóm', categoryId), orgId: orgIdOf(ORG) })
     .expect(201)
   orgListingId = internal.body.data._id
 }, 120_000)
@@ -148,7 +149,7 @@ describe('Tin công khai — trục danh mục', () => {
   }, 60_000)
 
   it('quản trị org KHÔNG thấy nó trong hàng đợi của nhóm', async () => {
-    expect(await listIds(orgAuth(orgAdmin.token, SLUG))).not.toContain(reportId)
+    expect(await listIds(orgAuth(orgAdmin.token, ORG))).not.toContain(reportId)
   }, 60_000)
 
   it('người phụ trách ô (danh mục × HCM) thấy; người phụ trách Hà Nội thì không', async () => {
@@ -195,7 +196,7 @@ describe('Tin nội bộ — trục org', () => {
   let reportId = ''
 
   it('báo cáo mang org của TIN; quản trị org thấy, người phụ trách ô thì không', async () => {
-    const res = await report(orgAuth(member.token, SLUG), orgListingId).expect(201)
+    const res = await report(orgAuth(member.token, ORG), orgListingId).expect(201)
     reportId = res.body.data.id
 
     const row = await runUnscoped('test đọc báo cáo', () => Report.findById(reportId).lean().exec())
@@ -203,7 +204,7 @@ describe('Tin nội bộ — trục org', () => {
     // Toạ độ ô chỉ dành cho trục công khai — trục org không cần và không được mang.
     expect(row?.category).toBeNull()
 
-    expect(await listIds(orgAuth(orgAdmin.token, SLUG))).toContain(reportId)
+    expect(await listIds(orgAuth(orgAdmin.token, ORG))).toContain(reportId)
     expect(await listIds(bearer(hcmManager))).not.toContain(reportId)
   }, 60_000)
 
@@ -216,7 +217,7 @@ describe('Tin nội bộ — trục org', () => {
       .expect(200)
     expect(res.body.data.status).toBe('dismissed')
     // Không kẹt mở: `resolveAllForTarget` lọc org tường minh, không nhờ scope của master.
-    expect(await listIds(orgAuth(orgAdmin.token, SLUG))).not.toContain(reportId)
+    expect(await listIds(orgAuth(orgAdmin.token, ORG))).not.toContain(reportId)
   }, 60_000)
 })
 
@@ -256,7 +257,7 @@ describe('GET /moderation/listings/:id — mở tin bị tố ở bất kỳ tr�
 
     await request(app)
       .get(`/api/v1/moderation/listings/${publicListingId}`)
-      .set(orgAuth(orgAdmin.token, SLUG))
+      .set(orgAuth(orgAdmin.token, ORG))
       .expect(403)
     await request(app)
       .get(`/api/v1/moderation/listings/${publicListingId}`)

@@ -15,6 +15,7 @@ import {
   registerUser,
   setTrustLevel,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 let app: Application
@@ -33,7 +34,7 @@ let orgMember: TestUser
 let jobs = ''
 let phones = ''
 const HCM = 'Hồ Chí Minh'
-const SLUG = 'truong-cong-khai'
+const ORG = 'truong-cong-khai'
 
 const bearer = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` })
 
@@ -57,13 +58,13 @@ beforeAll(async () => {
 
   await createOrg(app, master.token, {
     name: 'Trường công khai',
-    slug: SLUG,
+    key: ORG,
     ownerEmail: orgOwner.email,
     provinceCode: HCM,
   })
   const { addMember } = await import('../helpers/fixtures')
   const { Organization } = await import('../../src/features/organization/organization.model')
-  const org = await Organization.findOne({ slug: SLUG }).lean().exec()
+  const org = await Organization.findById(orgIdOf(ORG)).lean().exec()
   await addMember(orgMember.id, org!._id.toString())
 
   await grantRole({
@@ -91,7 +92,7 @@ function postPublic(who: TestUser, title: string, categoryId: string, headers = 
   return request(app)
     .post('/api/v1/listings')
     .set({ ...bearer(who), ...headers })
-    .send({ ...listingPayload(title, categoryId), visibility: 'public', provinceCode: HCM })
+    .send({ ...listingPayload(title, categoryId), reach: 'marketplace', provinceCode: HCM })
 }
 
 const statusOf = async (id: string) => {
@@ -131,7 +132,7 @@ describe('Trục công khai — người phụ trách danh mục duyệt đượ
    */
   it('tin công khai của THÀNH VIÊN nhóm — vẫn duyệt được dù tin mang organizationId', async () => {
     const created = await postPublic(orgMember, 'Tuyển kế toán cho trường', jobs, {
-      'X-Org-Slug': SLUG,
+      'X-Org-Id': orgIdOf(ORG),
     }).expect(201)
     const id = created.body.data._id
     expect((await statusOf(id))?.organizationId).not.toBeNull()
@@ -145,7 +146,7 @@ describe('Trục công khai — người phụ trách danh mục duyệt đượ
     expect((await statusOf(id))?.status).toBe('active')
   }, 60_000)
 
-  it('master duyệt được, KHÔNG cần mượn slug nhóm nào', async () => {
+  it('master duyệt được, KHÔNG cần mượn id nhóm nào', async () => {
     const created = await postPublic(loneSeller, 'Tuyển bảo vệ ca đêm', jobs).expect(201)
 
     await request(app)
@@ -190,12 +191,12 @@ describe('Trục công khai — phạm vi KHÔNG được nới rộng', () => {
 
   it('quản trị nhóm KHÔNG ghim được tin công khai lên bảng chung — hai trục vẫn tách bạch', async () => {
     const created = await postPublic(orgMember, 'Tin công khai của thành viên', jobs, {
-      'X-Org-Slug': SLUG,
+      'X-Org-Id': orgIdOf(ORG),
     }).expect(201)
 
     await request(app)
       .patch(`/api/v1/moderation/listings/${created.body.data._id}`)
-      .set(orgAuth(orgOwner.token, SLUG))
+      .set(orgAuth(orgOwner.token, ORG))
       .send({ status: 'active' })
       .expect(403)
 
@@ -289,7 +290,7 @@ describe('Trục công khai — tầng phường', () => {
       .set(bearer(seller))
       .send({
         ...listingPayload(title, jobs),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: LAMDONG,
         location: { province: LAMDONG, ward },
       })
@@ -335,7 +336,7 @@ describe('Trục công khai — tầng phường', () => {
         price: 1_000_000,
         categoryId: jobs,
         images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: LAMDONG,
       })
       .expect(400)
@@ -444,14 +445,14 @@ describe('Đẩy tin lên đầu bảng', () => {
   it('tin nội bộ: quản trị nhóm đẩy được, staff nhóm thì không', async () => {
     const { addMember } = await import('../helpers/fixtures')
     const { Organization } = await import('../../src/features/organization/organization.model')
-    const org = await Organization.findOne({ slug: SLUG }).lean().exec()
+    const org = await Organization.findById(orgIdOf(ORG)).lean().exec()
     const orgId = org!._id.toString()
 
     const poster = await freshUser()
     await addMember(poster.id, orgId)
     const created = await request(app)
       .post('/api/v1/listings')
-      .set(orgAuth(poster.token, SLUG))
+      .set(orgAuth(poster.token, ORG))
       .send(listingPayload('Tin nội bộ của trường', jobs))
       .expect(201)
     const id = created.body.data._id as string

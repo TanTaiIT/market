@@ -13,6 +13,7 @@ import {
   createCategory,
   listingPayload,
   orgAuth,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -44,7 +45,7 @@ beforeAll(async () => {
   orgId = (
     await createOrg(app, master.token, {
       name: 'Trường Hùng Vương',
-      slug: 'hung-vuong',
+      key: 'hung-vuong',
       ownerEmail: staff.email,
     })
   ).id
@@ -55,20 +56,20 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-const SLUG = 'hung-vuong'
+const ORG = 'hung-vuong'
 const asMaster = () => ({ Authorization: `Bearer ${master.token}` })
 
 /**
  * Người ngoài đăng tin vào org — tin vào hàng đợi chờ duyệt, đúng đầu vào của bài test.
  *
- * `orgSlug` trong BODY chứ không phải header `X-Org-Slug`: header là đường của THÀNH VIÊN
+ * `orgId` trong BODY chứ không phải header `X-Org-Id`: header là đường của THÀNH VIÊN
  * (org đến từ scope, đã đối chiếu membership), còn người ngoài đi đường "đề xuất vào nhóm".
  */
 async function postToOrg(title: string): Promise<string> {
   const res = await request(app)
     .post('/api/v1/listings')
     .set({ Authorization: `Bearer ${outsider.token}` })
-    .send({ ...listingPayload(title, categoryId), orgSlug: SLUG })
+    .send({ ...listingPayload(title, categoryId), orgId: orgIdOf(ORG) })
     .expect(201)
   return res.body.data._id
 }
@@ -111,14 +112,14 @@ describe('Bất biến 1 — hệ thống chỉ có một master', () => {
     const denied = await request(app)
       .post('/api/v1/role-grants')
       .set({ Authorization: `Bearer ${staff.token}` })
-      .set('X-Org-Slug', SLUG)
+      .set('X-Org-Id', orgIdOf(ORG))
       .send({ userId: outsider.id, role: 'manager', scopeType: 'org', orgId: orgId })
     expect(denied.status).toBe(403)
 
     const deniedMaster = await request(app)
       .post('/api/v1/role-grants')
       .set({ Authorization: `Bearer ${staff.token}` })
-      .set('X-Org-Slug', SLUG)
+      .set('X-Org-Id', orgIdOf(ORG))
       .send({ userId: outsider.id, role: 'master', scopeType: 'system' })
     expect(deniedMaster.status).toBe(403)
   })
@@ -179,14 +180,14 @@ describe('Bất biến 2 — không ai xem được thông tin master', () => {
    * test phải đi qua đúng đường ghi đó chứ không tự dựng sẵn dòng audit rồi tự soi lại.
    *
    * Phải là tin TRONG ORG: audit chỉ ghi khi có org để xếp vào (`audit skipped` với trục công
-   * khai). Đó cũng đúng kịch bản nguy hiểm — master mượn `X-Org-Slug` vào duyệt hộ một trường.
+   * khai). Đó cũng đúng kịch bản nguy hiểm — master mượn `X-Org-Id` vào duyệt hộ một trường.
    */
   it('master duyệt tin trong org → audit ghi nhãn hệ thống, không ghi tên thật', async () => {
     const id = await postToOrg('Bán xe đạp cũ')
 
     await request(app)
       .patch(`/api/v1/moderation/listings/${id}`)
-      .set(orgAuth(master.token, SLUG))
+      .set(orgAuth(master.token, ORG))
       .send({ status: 'active' })
       .expect(200)
 
@@ -203,7 +204,7 @@ describe('Bất biến 2 — không ai xem được thông tin master', () => {
 
     await request(app)
       .patch(`/api/v1/moderation/listings/${id}`)
-      .set(orgAuth(staff.token, SLUG))
+      .set(orgAuth(staff.token, ORG))
       .send({ status: 'active' })
       .expect(200)
 

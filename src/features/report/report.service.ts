@@ -3,7 +3,7 @@ import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { reportRepository } from './report.repository'
 import { CreateReportInput, ReportQuery, ResolveReportInput } from './report.schema'
 import { IReport, IReportDocument } from './report.model'
-import { assertCanModerateListing, listingService } from '../listing/listing.service'
+import { assertCanActOnListing, listingService } from '../listing/listing.service'
 import { trustRepository } from '../trust/trust.repository'
 import type { TrustState } from '../trust/trust.policy'
 import { userRepository } from '../user/user.repository'
@@ -12,6 +12,7 @@ import {
   AUDIT_ACTION,
   LISTING_STATUS,
   MASTER_DISPLAY_NAME,
+  MODERATION_ACTION,
   REPORT_STATUS,
   REPORT_TARGET,
 } from '../../common/constants'
@@ -59,17 +60,19 @@ type ReportTarget = Pick<
  *
  * - tin nội bộ → `organizationId` của tin: quản trị org đó xử;
  * - tin công khai → `null` + toạ độ ô (`category`, `provinceCode`, `wardCode`): người phụ trách ô
- *   xử, master là fallback — đúng luật của hàng đợi duyệt (`assertCanModerateListing`).
+ *   xử, master là fallback — đúng luật của hàng đợi duyệt (`assertCanActOnListing`).
  *
  * Báo cáo về NGƯỜI không có trục tự nhiên: đóng dấu org người tố đang đứng (như trước), không
  * có org thì lên trục công khai và chỉ master xử (xem `assertCanResolve`).
  *
- * `getById` chạy trong scope của người tố nên tin họ không đọc được (tin nội bộ của org khác,
- * tin công khai chưa duyệt) là 404 ngay ở đây — không báo cáo được thứ mình không thấy.
+ * `getForViewer` xét theo QUAN HỆ của người tố: tin họ không đọc được (tin nội bộ của nhóm mình
+ * không thuộc về, tin công khai chưa duyệt) là 404 ngay ở đây — không báo cáo được thứ mình
+ * không thấy. Theo quan hệ chứ không theo scope của request, nên thành viên hai nhóm đang đứng
+ * ở nhóm A vẫn báo cáo được tin nội bộ của nhóm B mà họ cũng thuộc về.
  */
-async function targetOf(input: CreateReportInput): Promise<ReportTarget> {
+async function targetOf(input: CreateReportInput, reporterId: string): Promise<ReportTarget> {
   if (input.targetType === REPORT_TARGET.LISTING) {
-    const listing = await listingService.getById(input.targetId)
+    const listing = await listingService.getForViewer(input.targetId, reporterId)
     const isPublic = !listing.organizationId
     return {
       targetTitle: listing.title,
@@ -92,7 +95,7 @@ async function targetOf(input: CreateReportInput): Promise<ReportTarget> {
 }
 
 /**
- * Thẩm quyền đóng MỘT báo cáo, theo trục của nó — đối xứng với `assertCanModerateListing`.
+ * Thẩm quyền đóng MỘT báo cáo, theo trục của nó — đối xứng với `assertCanActOnListing`.
  *
  * - Trục org: duyệt được gì đó trong org đó (`canModerateAnyInOrg`). Không → 404, không phải 403:
  *   xác nhận "báo cáo này tồn tại" cho người ngoài org là máy dò hồ sơ của tổ chức khác.
@@ -110,7 +113,10 @@ async function assertCanResolve(report: IReportDocument, grants: Grant[]): Promi
 
   if (report.targetType === REPORT_TARGET.LISTING) {
     const listing = await listingService.getForModeration(report.targetId.toString())
-    assertCanModerateListing(listing, grants)
+    // Cửa GỠ: đóng một báo cáo là rút tin xuống, không phải cho tin đi tiếp. Điều này vá luôn
+    // một đường nửa vời — `targetOf` đóng dấu `organizationId` của tin công khai mang org lên
+    // báo cáo, nên nhóm MỞ được báo cáo rồi lại 403 khi định xử nó.
+    assertCanActOnListing(listing, grants, MODERATION_ACTION.TAKEDOWN)
     return
   }
 
@@ -124,7 +130,7 @@ export const reportService = {
     if (input.targetId === actor.id) throw new BadRequestError('Không tự báo cáo chính mình')
 
     const [target, reporter] = await Promise.all([
-      targetOf(input),
+      targetOf(input, actor.id),
       userRepository.findById(actor.id),
     ])
     if (!reporter) throw new NotFoundError('User not found')

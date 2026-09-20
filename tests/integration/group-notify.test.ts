@@ -13,6 +13,7 @@ import {
   registerUser,
   setTrustLevel,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -21,7 +22,7 @@ import {
  * Hai luật khó thấy sai nhất, và là lý do file này tồn tại:
  *
  * 1. **Người đọc thấy thông báo của MỌI nhóm họ tham gia**, không chỉ nhóm đang thao tác. Bản
- *    trước ràng theo `X-Org-Slug` của request, nên người thuộc hai nhóm chỉ đọc được một nửa
+ *    trước ràng theo `X-Org-Id` của request, nên người thuộc hai nhóm chỉ đọc được một nửa
  *    hộp thư — và người không gửi header đó (đa số, vì bộ chuyển tổ chức chỉ dành cho master)
  *    không đọc được nhánh phát chung nào cả.
  * 2. **Người đăng KHÔNG nhận thông báo về chính tin của mình.** Nhánh phát chung không có danh
@@ -43,7 +44,7 @@ let categoryId = ''
 const A = 'notify-a'
 const B = 'notify-b'
 
-/** Hộp thư KHÔNG gửi `X-Org-Slug` — đúng client của người thuộc nhiều nhóm. */
+/** Hộp thư KHÔNG gửi `X-Org-Id` — đúng client của người thuộc nhiều nhóm. */
 const inbox = (who: TestUser) =>
   request(app)
     .get('/api/v1/notifications')
@@ -51,11 +52,11 @@ const inbox = (who: TestUser) =>
 
 const titlesOf = (body: { data: { title: string }[] }) => body.data.map((n) => n.title)
 
-/** Đăng một tin nội bộ vào `slug`. Uy tín mặc định là bậc trần nên tin lên bảng NGAY. */
-async function postListing(who: TestUser, slug: string, title: string) {
+/** Đăng một tin nội bộ vào `org`. Uy tín mặc định là bậc trần nên tin lên bảng NGAY. */
+async function postListing(who: TestUser, org: string, title: string) {
   const res = await request(app)
     .post('/api/v1/listings')
-    .set(orgAuth(who.token, slug))
+    .set(orgAuth(who.token, org))
     .send({
       title,
       description: 'Hàng dùng kỹ, còn đầy đủ chức năng, ảnh chụp thật.',
@@ -79,12 +80,11 @@ beforeAll(async () => {
   const ownerA = await registerUser(app, 'owner@notify-a.local', 'Chủ nhóm A')
   const ownerB = await registerUser(app, 'owner@notify-b.local', 'Chủ nhóm B')
 
-  await createOrg(app, master.token, { name: 'Nhóm A', slug: A, ownerEmail: ownerA.email })
-  await createOrg(app, master.token, { name: 'Nhóm B', slug: B, ownerEmail: ownerB.email })
+  await createOrg(app, master.token, { name: 'Nhóm A', key: A, ownerEmail: ownerA.email })
+  await createOrg(app, master.token, { name: 'Nhóm B', key: B, ownerEmail: ownerB.email })
 
-  const orgA = (await import('../../src/features/organization/organization.model')).Organization
-  const idA = (await orgA.findOne({ slug: A }))!._id.toString()
-  const idB = (await orgA.findOne({ slug: B }))!._id.toString()
+  const idA = orgIdOf(A)
+  const idB = orgIdOf(B)
 
   alice = await registerUser(app, 'alice@notify.local', 'Alice')
   await addMember(alice.id, idA)
@@ -131,7 +131,7 @@ describe('Thành viên đăng tin → cả nhóm được báo', () => {
   })
 
   /*
-   * Luật (1) — chính lý do của cả thay đổi này. Alice ở cả hai nhóm và KHÔNG gửi `X-Org-Slug`,
+   * Luật (1) — chính lý do của cả thay đổi này. Alice ở cả hai nhóm và KHÔNG gửi `X-Org-Id`,
    * nên nếu hộp thư còn ràng theo org đang thao tác thì một trong hai dòng phải mất.
    */
   it('người ở HAI nhóm thấy thông báo của cả hai, không cần chọn nhóm đang thao tác', async () => {
@@ -154,8 +154,7 @@ describe('Thành viên đăng tin → cả nhóm được báo', () => {
    */
   it('người vừa vào nhóm KHÔNG nhận thông báo có trước lúc họ vào', async () => {
     const late = await registerUser(app, 'late@notify.local', 'Người vào sau')
-    const orgA = (await import('../../src/features/organization/organization.model')).Organization
-    await addMember(late.id, (await orgA.findOne({ slug: A }))!._id.toString())
+    await addMember(late.id, orgIdOf(A))
 
     const titles = titlesOf((await inbox(late).expect(200)).body)
     expect(titles).not.toContain('Bob vừa đăng một tin mới')
@@ -180,10 +179,10 @@ describe('Ngoài nhóm là không thấy gì', () => {
    *
    * `resolveTenant` mở scope đọc của một org cho người NGOÀI nhóm khi request là `GET` (xem
    * `tenant.middleware.ts` — chủ ý, để họ xem được trang công khai của nhóm). Cộng với việc
-   * `scope=managed` không đọc `memberships`, một người lạ chỉ cần gửi `X-Org-Slug` của nhóm là
+   * `scope=managed` không đọc `memberships`, một người lạ chỉ cần gửi `X-Org-Id` của nhóm là
    * đọc được toàn bộ dòng thông báo của nhóm đó.
    */
-  it('người ngoài nhóm gửi X-Org-Slug của nhóm cũng KHÔNG đọc được qua scope=managed', async () => {
+  it('người ngoài nhóm gửi X-Org-Id của nhóm cũng KHÔNG đọc được qua scope=managed', async () => {
     const stranger = await registerUser(app, 'stranger@notify.local', 'Người lạ')
 
     const res = await request(app)
@@ -207,7 +206,7 @@ describe('Ngoài nhóm là không thấy gì', () => {
   it('người ĐÃ RỜI nhóm thôi nhận thông báo của nhóm đó', async () => {
     const leaver = await registerUser(app, 'leaver@notify.local', 'Người rời nhóm')
     const { Organization } = await import('../../src/features/organization/organization.model')
-    const idA = (await Organization.findOne({ slug: A }))!._id.toString()
+    const idA = (await Organization.findById(orgIdOf(A)))!._id.toString()
     await addMember(leaver.id, idA)
 
     await postListing(bob, A, 'Tin đăng trước khi rời nhóm')
@@ -240,7 +239,7 @@ describe('Chỉ báo khi tin THẬT SỰ lên bảng', () => {
         description: 'Ghế gấp gọn, dùng vài lần, còn chắc chắn.',
         price: 180000,
         categoryId,
-        visibility: 'public',
+        reach: 'marketplace',
         images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
         location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
       })

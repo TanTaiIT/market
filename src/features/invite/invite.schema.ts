@@ -85,7 +85,7 @@ export const invitePreviewSchema = z
   .openapi('InvitePreview')
 
 export const acceptInviteResponseSchema = z
-  .object({ organizationSlug: z.string() })
+  .object({ organizationId: z.string() })
   .openapi('AcceptInviteResult')
 
 export type CreateInviteInput = z.infer<typeof createInviteSchema>

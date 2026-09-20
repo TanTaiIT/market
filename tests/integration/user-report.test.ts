@@ -70,7 +70,7 @@ describe('Báo cáo người dùng — cổng', () => {
     const member = await registerUser(app, 'tv@ureport.local', 'Thành viên')
     const org = await createOrg(app, master.token, {
       name: 'Nhóm báo cáo người',
-      slug: 'nhom-ureport',
+      key: 'nhom-ureport',
       ownerEmail: owner.email,
     })
     await addMember(member.id, org.id)
@@ -139,7 +139,7 @@ describe('Báo cáo người dùng — chuỗi thời gian', () => {
       .set(bearer(poster))
       .send({
         ...listingPayload('Tin của người mới', categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: HCM,
       })
       .expect(201)

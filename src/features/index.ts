@@ -17,7 +17,6 @@ import searchRoutes from './search/search.routes'
 import reviewRoutes from './review/review.routes'
 import notificationRoutes from './notification/notification.routes'
 import moderationRoutes from './moderation/moderation.routes'
-import moderationWebhookRoutes from './moderation/moderation.webhook.routes'
 import reportRoutes from './report/report.routes'
 import locationRoutes from './location/location.routes'
 import bannedPhraseRoutes from './banned-phrase/banned-phrase.routes'
@@ -39,7 +38,7 @@ router.use('/join-requests', joinRequestRoutes)
 router.use('/memberships', membershipRoutes)
 router.use('/invites', inviteRoutes)
 router.use('/role-grants', roleGrantRoutes)
-// Kênh người dùng <-> đội ngũ nền tảng. KHÔNG đọc `X-Org-Slug` — xem docblock của routes.
+// Kênh người dùng <-> đội ngũ nền tảng. KHÔNG đọc `X-Org-Id` — xem docblock của routes.
 router.use('/support', supportRoutes)
 router.use('/categories', categoryRoutes)
 router.use('/field-definitions', fieldDefinitionRoutes)
@@ -66,9 +65,6 @@ router.use('/metrics', metricsRoutes)
 
 // --- Bàn quản trị của một org (manager | staff, xét bằng role_grants) ---
 router.use('/moderation', moderationRoutes)
-
-// --- Webhook máy-gọi-máy (Cloudinary báo kết quả kiểm duyệt ảnh) — xác thực bằng chữ ký ---
-router.use('/webhooks', moderationWebhookRoutes)
 
 // --- Skeleton modules (trả 501 cho tới khi triển khai) ---
 router.use('/uploads', uploadRoutes)

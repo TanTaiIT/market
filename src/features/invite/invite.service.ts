@@ -197,7 +197,7 @@ export const inviteService = {
     invite.acceptedAt = new Date()
     await invite.save()
 
-    return { organizationSlug: org.slug }
+    return { organizationId: org._id.toString() }
   },
 
   /** Tra lời mời còn dùng được, hoặc ném đúng lý do vì sao không. */

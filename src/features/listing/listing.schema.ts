@@ -1,12 +1,11 @@
 import { z } from 'zod'
 import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 import { registry } from '../../config/openapi'
-import { organizationSlugSchema } from '../organization/organization.schema'
 import {
   LISTING_STATUS,
   REPORT_GRANULARITY,
   LISTING_CONDITION,
-  POST_VISIBILITY,
+  LISTING_REACH,
   VN_PROVINCE_NAMES,
   isWardOfProvince,
   PAGINATION,
@@ -76,20 +75,23 @@ export const createListingSchema = z
       .optional(),
 
     /**
-     * Đăng vào đâu. Mặc định `org_internal` — mặc định an toàn: tin ở lại trong tổ chức cho
-     * tới khi người đăng chủ động chọn ra trang công khai, và lúc đó nó đi qua manager danh mục.
+     * Bậc phủ sóng — xem `LISTING_REACH`. Bỏ trống thì service tính bằng `defaultReachFor`:
+     * nhóm công khai → `group_open`, nhóm kín → `members`, không nhóm → `marketplace`.
+     *
+     * Không đặt mặc định ở đây được: nó phụ thuộc `isPublic` của nhóm đích, thứ schema tĩnh
+     * không nhìn thấy.
      */
-    visibility: z.nativeEnum(POST_VISIBILITY).optional(),
+    reach: z.nativeEnum(LISTING_REACH).optional(),
     /**
-     * Tỉnh quyết định AI DUYỆT ở trục công khai, nên nó tách khỏi `location` (vốn tuỳ chọn và
-     * chỉ để hiển thị/lọc). Bỏ trống thì lấy `location.province`, rồi tới tỉnh của tổ chức.
+     * Tỉnh quyết định AI DUYỆT ở bậc `marketplace`, nên nó tách khỏi `location` (vốn tuỳ chọn
+     * và chỉ để hiển thị/lọc). Bỏ trống thì lấy `location.province`, rồi tới tỉnh của tổ chức.
      */
     provinceCode: z.enum(VN_PROVINCE_NAMES).optional(),
     /**
      * Chỉ dùng khi người đăng KHÔNG thuộc tổ chức đích (đường lùi "người ngoài đề xuất").
      * Thành viên không cần gửi: org của họ đến từ scope, và scope thì đã đối chiếu membership.
      */
-    orgSlug: organizationSlugSchema.optional(),
+    orgId: objectId.optional(),
   })
   .strict()
   .openapi('CreateListing')
@@ -159,7 +161,38 @@ export const quotaStatusSchema = z
   })
   .openapi('QuotaStatus')
 
-export const updateListingSchema = createListingSchema.partial().strict().openapi('UpdateListing')
+/**
+ * Sửa tin — LIỆT KÊ TƯỜNG MINH, không phải `createListingSchema.partial()`.
+ *
+ * Bản cũ là `.partial()` của schema tạo, nên `reach`, `provinceCode` và `orgId` cũng sửa
+ * được. Ba field đó là KHOÁ ĐỊNH TUYẾN: `routeListing` đọc chúng đúng một lần lúc tạo để chọn
+ * hàng đợi duyệt. Cho sửa sau là mở một đường leo thang có thật — `service.update` đổ thẳng
+ * `...rest` vào document, còn `touchesReviewedContent` chỉ soi tiêu đề/mô tả/giá/danh mục/ảnh
+ * nên `status` không hề bị đặt lại:
+ *
+ *   đăng bậc `members` → nhóm mình duyệt → PATCH `{"reach":"marketplace"}`
+ *   → tin nằm ACTIVE trên bảng tin chung, chưa từng qua manager danh mục.
+ *
+ * `provinceCode` cùng dạng: đổi nó là đổi luôn bàn duyệt của tin.
+ *
+ * Muốn đổi đích đến sau khi đăng thì phải là một route riêng chạy lại `routeListing` và xếp
+ * hàng lại — không phải một field trong bản vá này.
+ */
+export const updateListingSchema = createListingSchema
+  .pick({
+    title: true,
+    description: true,
+    price: true,
+    isNegotiable: true,
+    condition: true,
+    categoryId: true,
+    images: true,
+    location: true,
+    attributes: true,
+  })
+  .partial()
+  .strict()
+  .openapi('UpdateListing')
 
 export const listingReportQuerySchema = z.object({
   granularity: z.nativeEnum(REPORT_GRANULARITY).default(REPORT_GRANULARITY.DAY),
@@ -250,17 +283,34 @@ export const listingQuerySchema = z
     ward: z.string().max(100).optional().openapi({ example: 'Phường Bến Thành' }),
     condition: z.nativeEnum(LISTING_CONDITION).optional(),
     /**
-     * Chỉ tin nội bộ, hoặc chỉ tin công khai. Bỏ trống = cả hai, tuỳ scope đọc cho phép.
+     * Thu hẹp theo BẬC phủ sóng. LẶP LẠI được: `?reach=members&reach=group_open` là cách hồ sơ
+     * nhóm xin "mọi thứ trong nhóm này", còn bảng tin chung xin đúng `?reach=marketplace`.
      *
-     * Cần nó vì scope đọc của `tenantPlugin` là "nhánh org HOẶC nhánh công khai" — đúng cho bảng
-     * tin chính, nhưng mục "TIN TRONG NHÓM" ở hồ sơ nhóm thì hứng luôn cả trục công khai: một
-     * nhóm vừa tạo, chưa có tin nào, vẫn bày ra 6 tin `organizationId: null` không liên quan.
+     * Lặp khoá chứ không phải CSV: `qs` của Express đã dựng sẵn mảng, không phải tự viết parser,
+     * và OpenAPI diễn đạt thẳng được bằng `style: form, explode: true`.
      *
      * Đây là bộ lọc, KHÔNG phải cửa hậu: `tenantPlugin` vẫn `$and` scope của nó lên trên, nên
-     * tham số này chỉ thu hẹp kết quả chứ không mở thêm gì. Xin `org_internal` mà không có quyền
-     * đọc nhánh org thì ra rỗng.
+     * tham số này chỉ thu hẹp chứ không mở thêm gì. Xin `members` của một nhóm mình không ở
+     * trong thì ra rỗng.
      */
-    visibility: z.nativeEnum(POST_VISIBILITY).optional(),
+    reach: z
+      .preprocess(
+        (v) => (v === undefined ? undefined : Array.isArray(v) ? v : [v]),
+        z.array(z.nativeEnum(LISTING_REACH)).min(1).max(3),
+      )
+      .optional(),
+    /**
+     * Thu hẹp về tin của ĐÚNG một nhóm — đường của hồ sơ nhóm.
+     *
+     * Đây là thứ thay cho mẹo cũ "gửi `X-Org-Id` rồi ghim một giá trị visibility", và nó là
+     * thứ DUY NHẤT phục vụ được cả hai loại người xem trên cùng một truy vấn: thành viên ăn
+     * nhánh org nên thấy đủ tin của nhóm, người ngoài ăn nhánh công khai `AND organizationId`
+     * nên thấy đúng phần nhóm đã mở ra. Header thì không làm được vế thứ hai — người ngoài
+     * không có chỗ đứng nào trên trục org để mà thu hẹp.
+     *
+     * Chỉ THU HẸP, như `reach`: `tenantPlugin` vẫn `$and` scope lên trên.
+     */
+    orgId: objectId.optional(),
     minPrice: z.coerce.number().nonnegative().optional(),
     maxPrice: z.coerce.number().nonnegative().optional(),
     /**
@@ -334,7 +384,7 @@ export const listingResponseSchema = z
     _id: objectId,
     /** `null` = tin của trục danh mục, không thuộc tổ chức nào. */
     organizationId: objectId.nullable(),
-    visibility: z.nativeEnum(POST_VISIBILITY),
+    reach: z.nativeEnum(LISTING_REACH),
     provinceCode: z.string(),
     title: z.string(),
     slug: z.string(),

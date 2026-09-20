@@ -17,6 +17,7 @@ import {
   registerUser,
   setTrustLevel,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 let app: Application
@@ -31,11 +32,11 @@ let orgId = ''
 let jobsCategory = ''
 let booksCategory = ''
 
-const SLUG = 'two-axis-org'
+const ORG = 'two-axis-org'
 const HCM = 'Hồ Chí Minh'
 const HANOI = 'Hà Nội'
 
-const asMember = () => orgAuth(member.token, SLUG)
+const asMember = () => orgAuth(member.token, ORG)
 const bearer = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` })
 
 function post(headers: Record<string, string>, body: Record<string, unknown>) {
@@ -54,7 +55,7 @@ beforeAll(async () => {
   orgId = (
     await createOrg(app, master.token, {
       name: 'Trường Hai Trục',
-      slug: SLUG,
+      key: ORG,
       ownerEmail: owner.email,
       provinceCode: HCM,
     })
@@ -92,11 +93,11 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-describe('Định tuyến theo visibility, không theo org', () => {
+describe('Định tuyến theo bậc phủ sóng, không theo org', () => {
   it('tin nội bộ của thành viên nằm ở org, KHÔNG lộ ra trục công khai', async () => {
     const res = await post(asMember(), {
       ...listingPayload('Tin nội bộ của trường', jobsCategory),
-      visibility: 'org_internal',
+      reach: 'members',
     })
 
     expect(res.status).toBe(201)
@@ -112,7 +113,7 @@ describe('Định tuyến theo visibility, không theo org', () => {
   it('tin công khai của cùng thành viên đó lại rơi vào hàng đợi manager danh mục', async () => {
     const res = await post(asMember(), {
       ...listingPayload('Tin công khai từ trường', jobsCategory),
-      visibility: 'public',
+      reach: 'marketplace',
     })
     expect(res.status).toBe(201)
     // org vẫn giữ để hiển thị nguồn gốc, nhưng nó không quyết định ai duyệt.
@@ -131,7 +132,7 @@ describe('Định tuyến theo visibility, không theo org', () => {
   it('người không thuộc org nào vẫn đăng được tin công khai', async () => {
     const res = await post(bearer(outsider), {
       ...listingPayload('Tin của người không thuộc tổ chức nào', jobsCategory),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: HCM,
     })
 
@@ -142,15 +143,15 @@ describe('Định tuyến theo visibility, không theo org', () => {
   it('tin nội bộ mà không đứng trong org nào là vô nghĩa → 400', async () => {
     const res = await post(bearer(outsider), {
       ...listingPayload('Tin nội bộ không org', jobsCategory),
-      visibility: 'org_internal',
+      reach: 'members',
     })
     expect(res.status).toBe(400)
   })
 
   it('người ngoài KHÔNG gửi được tin vào org đang tắt nhận tin ngoài', async () => {
-    const res = await post(orgAuth(outsider.token, SLUG), {
+    const res = await post(orgAuth(outsider.token, ORG), {
       ...listingPayload('Tin người ngoài gửi vào trường', jobsCategory),
-      visibility: 'org_internal',
+      reach: 'members',
     })
     // Không phải thành viên nên scope org không mở -> plugin fail-closed chặn ở tầng dưới.
     expect(res.status).toBe(400)
@@ -161,7 +162,7 @@ describe('Manager danh mục chỉ thấy ô của mình', () => {
   it('không thấy tin ngoài TỈNH được cấp', async () => {
     await post(bearer(outsider), {
       ...listingPayload('Việc làm ở Hà Nội', jobsCategory),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: HANOI,
       location: { province: HANOI, ward: 'Phường Cửa Nam' },
     }).expect(201)
@@ -178,7 +179,7 @@ describe('Manager danh mục chỉ thấy ô của mình', () => {
   it('không thấy tin ngoài DANH MỤC được cấp', async () => {
     await post(bearer(outsider), {
       ...listingPayload('Sách giáo khoa lớp 10', booksCategory),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: HCM,
     }).expect(201)
 
@@ -201,8 +202,8 @@ describe('Manager danh mục chỉ thấy ô của mình', () => {
     // Org đích đi trong BODY: người ngoài không có scope org, đúng thiết kế.
     const sent = await post(bearer(outsider), {
       ...listingPayload('Tin người ngoài gửi vào trường', jobsCategory),
-      visibility: 'org_internal',
-      orgSlug: SLUG,
+      reach: 'members',
+      orgId: orgIdOf(ORG),
     })
     expect(sent.status).toBe(201)
     expect(sent.body.data.status).toBe('pending_unverified')
@@ -210,7 +211,7 @@ describe('Manager danh mục chỉ thấy ô của mình', () => {
     // Hàng đợi org phải thấy nó — nếu không thì tin nằm trong DB mà không ai duyệt được.
     const queue = await request(app)
       .get('/api/v1/moderation/listings?status=pending_unverified')
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .expect(200)
     expect(queue.body.data.map((l: { title: string }) => l.title)).toContain(
       'Tin người ngoài gửi vào trường',
@@ -303,12 +304,12 @@ describe('Duyệt tin — phạm vi theo trục', () => {
     const loner = await registerUser(app, 'loner@two-axis.local', 'Người một mình')
     await setTrustLevel(poster.id, 0)
     await setTrustLevel(loner.id, 0)
-    const asPoster = () => orgAuth(poster.token, SLUG)
+    const asPoster = () => orgAuth(poster.token, ORG)
 
     memberPublic = (
       await post(asPoster(), {
         ...listingPayload('Tin công khai cần manager danh mục duyệt', jobsCategory),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: HCM,
       }).expect(201)
     ).body.data._id
@@ -316,7 +317,7 @@ describe('Duyệt tin — phạm vi theo trục', () => {
     memberInternal = (
       await post(asPoster(), {
         ...listingPayload('Tin nội bộ của trường', jobsCategory),
-        visibility: 'org_internal',
+        reach: 'members',
       }).expect(201)
     ).body.data._id
 
@@ -325,7 +326,7 @@ describe('Duyệt tin — phạm vi theo trục', () => {
     outsiderPublic = (
       await post(bearer(loner), {
         ...listingPayload('Tin của người ngoài mọi tổ chức', jobsCategory),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: HCM,
       }).expect(201)
     ).body.data._id
@@ -335,7 +336,7 @@ describe('Duyệt tin — phạm vi theo trục', () => {
   it('quản lý org KHÔNG ghim được tin công khai của chính thành viên mình', async () => {
     const res = await request(app)
       .patch(`/api/v1/moderation/listings/${memberPublic}`)
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .send({ status: 'active' })
 
     expect(res.status).toBe(403)
@@ -344,8 +345,42 @@ describe('Duyệt tin — phạm vi theo trục', () => {
   it('quản lý org KHÔNG ẩn được tin của người ngoài tổ chức', async () => {
     const res = await request(app)
       .patch(`/api/v1/moderation/listings/${outsiderPublic}`)
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .send({ status: 'hidden' })
+
+    expect(res.status).toBe(403)
+  })
+
+  /**
+   * Vế còn lại của "một cửa duyệt, hai cửa gỡ" — cố ý nằm ngay dưới hai ca 403 ở trên, vì cả ba
+   * chỉ có nghĩa khi đọc cùng nhau: CÙNG một người, CÙNG một tin, duyệt thì không mà gỡ thì có.
+   *
+   * Lý do nhóm phải gỡ được: tin công khai vẫn đeo badge "đăng bởi nhóm X" trước cả sàn. Trước
+   * đây nó hiện trong hàng đợi của nhóm (nhánh đọc rộng hơn nhánh ghi) rồi 403 khi chạm vào.
+   */
+  it('quản lý org ẨN được tin công khai mang tên nhóm mình — cửa gỡ, không phải cửa duyệt', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/moderation/listings/${memberPublic}`)
+      .set(orgAuth(owner.token, ORG))
+      .send({ status: 'hidden' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.status).toBe('hidden')
+  })
+
+  it('và MỞ được màn chi tiết của chính tin đó', async () => {
+    // Chốt bằng cửa hẹp ở đây là 403 ngay bước nhìn, và quyền gỡ vừa mở thành vô dụng.
+    await request(app)
+      .get(`/api/v1/moderation/listings/${memberPublic}`)
+      .set(orgAuth(owner.token, ORG))
+      .expect(200)
+  })
+
+  it('nhưng vẫn KHÔNG từ chối được nó — `rejected` là phán quyết lên uy tín người bán', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/moderation/listings/${memberPublic}`)
+      .set(orgAuth(owner.token, ORG))
+      .send({ status: 'rejected', reason: 'Không phù hợp' })
 
     expect(res.status).toBe(403)
   })
@@ -353,7 +388,7 @@ describe('Duyệt tin — phạm vi theo trục', () => {
   it('quản lý org vẫn duyệt bình thường tin NỘI BỘ của org mình', async () => {
     const res = await request(app)
       .patch(`/api/v1/moderation/listings/${memberInternal}`)
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .send({ status: 'active' })
 
     expect(res.status).toBe(200)
@@ -368,7 +403,7 @@ describe('Duyệt tin — phạm vi theo trục', () => {
    * Bản trước bịt bằng cách TỪ CHỐI báo cáo tin trục danh mục (400 "sắp có"). Giờ `Report` là
    * dual-axis: báo cáo nhận vào nhưng đóng dấu TRỤC CỦA TIN (`organizationId: null`), nên nó không
    * rơi vào hàng đợi của org người tố — quản trị org không thấy, và có id trong tay cũng không
-   * đóng được: `assertCanResolve` → `assertCanModerateListing` chốt theo trục. Lớp TRONG
+   * đóng được: `assertCanResolve` → `assertCanActOnListing` chốt theo trục. Lớp TRONG
    * (`setModerationStatus` tự kiểm) khoá bằng `tests/unit/policy.test.ts`.
    */
   it('báo cáo tin trục danh mục KHÔNG mở đường cho quản trị org ẩn tin đó', async () => {
@@ -377,7 +412,7 @@ describe('Duyệt tin — phạm vi theo trục', () => {
 
     const res = await request(app)
       .post('/api/v1/reports')
-      .set(orgAuth(reporter.token, SLUG))
+      .set(orgAuth(reporter.token, ORG))
       .send({
         targetType: 'listing',
         targetId: outsiderPublic,
@@ -398,13 +433,13 @@ describe('Duyệt tin — phạm vi theo trục', () => {
     // Hàng đợi của org không có nó, và quản trị org không ẩn được tin qua nó.
     const queue = await request(app)
       .get('/api/v1/reports?status=open')
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .expect(200)
     expect((queue.body.data as { id: string }[]).map((r) => r.id)).not.toContain(reportId)
 
     await request(app)
       .patch(`/api/v1/reports/${reportId}`)
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .send({ action: 'hide_target' })
       .expect(403)
   })
@@ -420,7 +455,7 @@ describe('Duyệt tin — phạm vi theo trục', () => {
 
     const res = await request(app)
       .patch(`/api/v1/moderation/listings/${memberPublic}`)
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .send({ status: 'active' })
 
     expect(res.status).toBe(200)

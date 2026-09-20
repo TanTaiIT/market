@@ -8,7 +8,7 @@ import {
   UpdateListingInput,
 } from './listing.schema'
 import { IListing, IListingDocument } from './listing.model'
-import { RoutingResult, routeListing } from './listing.routing'
+import { RoutingResult, defaultReachFor, routeListing } from './listing.routing'
 import { reviewOf } from './listing.review'
 import { PostingFee, postingFee } from './listing.pricing'
 import { RECONCILE_LIMIT, listingExpiresAt, reconcileCutoff } from './listing.expiry.service'
@@ -40,21 +40,30 @@ import { categoryTemplateService } from '../category-template/category-template.
 import { organizationRepository } from '../organization/organization.repository'
 import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
+import { roleGrantService } from '../role-grant/role-grant.service'
 import { trustRepository } from '../trust/trust.repository'
 import { CLEAN_APPROVALS_PER_LEVEL, MAX_TRUST_LEVEL } from '../trust/trust.policy'
 import {
   Grant,
   canBumpListing,
   canModerateAnyInOrg,
-  canModerateListing,
+  canApproveListing,
+  canTakedownListing,
 } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from '../../common/errors'
 import {
+  ACTION_BY_DECISION,
   LISTING_STATUS,
-  ListingStatus,
+  MODERATION_ACTION,
   MODERATION_QUEUE,
-  POST_VISIBILITY,
+  ModerationAction,
+  ModerationDecision,
+  LISTING_REACH,
+  ListingReach,
+  PUBLICLY_READABLE_REACHES,
+  PUBLIC_LISTING_STATUSES,
   REPORT_TIMEZONE,
+  REPORT_GRANULARITY,
   isWardOfProvince,
   type RejectionSeverity,
 } from '../../common/constants'
@@ -91,20 +100,47 @@ import {
  * - `404` khi tin thuộc một org họ KHÔNG có chân nào cả. Đây là ranh giới tenant: xác nhận
  *   "id này có tồn tại" cho người ngoài org là một máy dò danh sách tin của tổ chức khác.
  */
-export function assertCanModerateListing(listing: IListingDocument, grants: Grant[]): void {
-  const orgId = listing.organizationId?.toString() ?? null
-  const allowed = canModerateListing(grants, {
-    visibility: listing.visibility,
-    organizationId: orgId,
+/**
+ * Hình chiếu của một tin lên bảng chính sách (`ListingTarget`) — MỘT bản cho cả ba chốt: thao
+ * tác duyệt/gỡ (`assertCanActOnListing`), đẩy (`assertCanBumpListing`) và đọc (`getForViewer`).
+ * Trước đây hai chốt đầu mỗi bên tự viết literal này; thêm chốt thứ ba là lúc ba bản sao bắt
+ * đầu lệch nhau.
+ */
+function targetOf(listing: IListingDocument) {
+  return {
+    reach: listing.reach,
+    organizationId: listing.organizationId?.toString() ?? null,
     unitId: listing.unitId?.toString() ?? null,
     categoryId: listing.category.toString(),
     provinceCode: listing.provinceCode,
     wardCode: listing.wardCode,
-  })
+  }
+}
+
+/**
+ * Chốt thẩm quyền cho MỘT thao tác của bàn duyệt.
+ *
+ * `action` quyết định dùng cửa nào: `APPROVE` đi theo đúng trục của tin, `TAKEDOWN` mở thêm cho
+ * nhóm sở hữu tin (xem `canTakedownListing`). Mọi call-site tra `ACTION_BY_DECISION` chứ không
+ * tự phán, nên lớp ngoài và lớp trong không thể nói hai điều khác nhau.
+ *
+ * Thứ tự nhánh lỗi giữ nguyên và KHÔNG được đảo: nhánh công khai phải đứng trước nhánh 404, vì
+ * một tin công khai `organizationId: null` sẽ rơi nhầm vào `!orgId → 404` nếu đảo.
+ */
+export function assertCanActOnListing(
+  listing: IListingDocument,
+  grants: Grant[],
+  action: ModerationAction,
+): void {
+  const orgId = listing.organizationId?.toString() ?? null
+  const allowed =
+    action === MODERATION_ACTION.TAKEDOWN
+      ? canTakedownListing(grants, targetOf(listing))
+      : canApproveListing(grants, targetOf(listing))
   if (allowed) return
 
-  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
-    throw new ForbiddenError('Tin công khai do người phụ trách danh mục duyệt, không phải tổ chức')
+  if (listing.reach === LISTING_REACH.MARKETPLACE) {
+    throw new ForbiddenError('Tin trên sàn do người phụ trách danh mục duyệt, không phải tổ chức')
   }
 
   // Tin nội bộ của một org mà người này không có quyền duyệt gì bên trong: với họ, tin này
@@ -117,7 +153,7 @@ export function assertCanModerateListing(listing: IListingDocument, grants: Gran
 }
 
 /**
- * Chốt thẩm quyền ĐẨY TIN. Cùng luật 403/404 với `assertCanModerateListing`: giấu sự tồn tại
+ * Chốt thẩm quyền ĐẨY TIN. Cùng luật 403/404 với `assertCanActOnListing`: giấu sự tồn tại
  * của tin chỉ khi người hỏi không có chân nào trong org của nó.
  *
  * Thông điệp 403 nói ra HẠNG còn thiếu, không nói "không có quyền": người bấm nút này thường
@@ -126,18 +162,10 @@ export function assertCanModerateListing(listing: IListingDocument, grants: Gran
  */
 export function assertCanBumpListing(listing: IListingDocument, grants: Grant[]): void {
   const orgId = listing.organizationId?.toString() ?? null
-  const allowed = canBumpListing(grants, {
-    visibility: listing.visibility,
-    organizationId: orgId,
-    unitId: listing.unitId?.toString() ?? null,
-    categoryId: listing.category.toString(),
-    provinceCode: listing.provinceCode,
-    wardCode: listing.wardCode,
-  })
-  if (allowed) return
+  if (canBumpListing(grants, targetOf(listing))) return
 
-  if (listing.visibility === POST_VISIBILITY.PUBLIC) {
-    throw new ForbiddenError('Tin công khai chỉ người phụ trách danh mục này đẩy được')
+  if (listing.reach === LISTING_REACH.MARKETPLACE) {
+    throw new ForbiddenError('Tin trên sàn chỉ người phụ trách danh mục này đẩy được')
   }
 
   if (!orgId || !canModerateAnyInOrg(grants, orgId)) {
@@ -178,6 +206,7 @@ function toListingDoc(
   author: ListingAuthor,
   poster: { name: string; contact: string; avatar: string },
   routed: RoutingResult,
+  reach: ListingReach,
   provinceCode: string | null,
   wardCode: string | null,
   validated: ValidatedForCategory,
@@ -207,7 +236,7 @@ function toListingDoc(
     // còn tệ hơn là không có nó.
     ...(validated.templateId && { templateRef: toTemplateRef(validated) }),
     // Bốn field dưới đây do thuật toán định tuyến quyết định, không do client gửi lên.
-    visibility: input.visibility ?? POST_VISIBILITY.ORG_INTERNAL,
+    reach,
     provinceCode,
     wardCode,
     organizationId: routed.organizationId ? new Types.ObjectId(routed.organizationId) : null,
@@ -224,7 +253,7 @@ function toListingDoc(
 async function resolveProvinceCode(
   input: CreateListingInput,
   targetOrgId: string | null,
-  visibility: string,
+  reach: ListingReach,
 ): Promise<string | null> {
   const picked = input.provinceCode ?? input.location?.province
   if (picked) return picked
@@ -236,9 +265,15 @@ async function resolveProvinceCode(
     if (org?.provinceCode) return org.provinceCode
   }
 
-  // Chỉ trục công khai mới bắt buộc: không có tỉnh thì không xác định được ai duyệt.
-  if (visibility === POST_VISIBILITY.PUBLIC) {
-    throw new BadRequestError('Thiếu tỉnh/thành: tin công khai cần tỉnh để xác định người duyệt')
+  /*
+   * Chỉ bậc `marketplace` mới bắt buộc: không có tỉnh thì không xác định được ai duyệt.
+   *
+   * `group_open` KHÔNG rơi vào đây dù nó cũng đọc được công khai — nó vẫn do chính nhóm duyệt,
+   * nên nó không cần ô định tuyến nào. Đổi điều kiện này thành "khác members" là bắt mọi nhóm
+   * công khai phải chọn tỉnh cho từng tin trong nhóm.
+   */
+  if (reach === LISTING_REACH.MARKETPLACE) {
+    throw new BadRequestError('Thiếu tỉnh/thành: tin lên sàn cần tỉnh để xác định người duyệt')
   }
   return null
 }
@@ -251,12 +286,13 @@ async function resolveProvinceCode(
 function resolveWardCode(
   input: CreateListingInput,
   provinceCode: string | null,
-  visibility: string,
+  reach: ListingReach,
 ): string | null {
   const ward = input.location?.ward?.trim() ?? ''
   if (!ward) {
-    if (visibility === POST_VISIBILITY.PUBLIC) {
-      throw new BadRequestError('Thiếu phường/xã: tin công khai cần phường để xác định người duyệt')
+    // Cùng chốt `MARKETPLACE` với `resolveProvinceCode`, cùng lý do.
+    if (reach === LISTING_REACH.MARKETPLACE) {
+      throw new BadRequestError('Thiếu phường/xã: tin lên sàn cần phường để xác định người duyệt')
     }
     return null
   }
@@ -274,14 +310,24 @@ interface TargetOrg {
   isMember: boolean
   unitId: string | null
   allowOutsiderPosts: boolean
+  /** Nhóm đích có công khai không — quyết định bậc mặc định và tính hợp lệ của `group_open`. */
+  isPublic: boolean
 }
+
+/**
+ * `!== false` chứ không `=== true`: nhóm tạo trước ngày có field `isPublic` không mang field đó,
+ * và cả hệ thống coi chúng là công khai (`PUBLIC = { isPublic: { $ne: false } }` bên repository).
+ * So `=== true` ở đây là bắt riêng nhóm cũ phải đăng tin kín trong khi chúng vẫn hiện ở mọi
+ * danh sách công khai — hai câu trả lời khác nhau cho cùng một nhóm.
+ */
+const isOrgPublic = (org: { isPublic?: boolean } | null): boolean => org?.isPublic !== false
 
 /**
  * Org đích của một tin, tư cách người đăng tại org đó, và org đó có nhận tin người ngoài không.
  *
- * **`orgSlug` gửi lên THẮNG org suy từ scope.** Đây là chốt dễ sai nhất cả file:
+ * **`orgId` gửi lên THẮNG org suy từ scope.** Đây là chốt dễ sai nhất cả file:
  * `resolveTenant` tự chọn org khi người dùng chỉ thuộc đúng một org, nên bản cũ (`if
- * (author.isMember || !input.orgSlug)`) khiến một thành viên org A gửi `orgSlug: "org-b"` bị
+ * (author.isMember || !input.orgId)`) khiến một thành viên org A gửi `orgId` của org B bị
  * nuốt mất lựa chọn — tin rơi vào org A, KHÔNG một tiếng động. Với nghiệp vụ "ai cũng đăng
  * được vào nhóm khác" thì đó lại đúng là ca phổ biến nhất.
  *
@@ -292,16 +338,22 @@ async function resolveTargetOrg(
   input: CreateListingInput,
   author: ListingAuthor,
 ): Promise<TargetOrg> {
-  if (!input.orgSlug) {
+  if (!input.orgId) {
+    // Nạp org của scope để biết `isPublic` — bậc mặc định phụ thuộc nó. Bản cũ không nạp gì ở
+    // nhánh này và hard-code `allowOutsiderPosts: false`, một bất đối xứng vốn đã mong manh.
+    const own = author.organizationId
+      ? await organizationRepository.findById(author.organizationId)
+      : null
     return {
       orgId: author.organizationId,
       isMember: author.isMember,
       unitId: author.unitId,
       allowOutsiderPosts: false,
+      isPublic: isOrgPublic(own),
     }
   }
 
-  const org = await organizationRepository.findActiveBySlug(input.orgSlug)
+  const org = await organizationRepository.findActiveById(input.orgId)
   if (!org) throw new NotFoundError('Tổ chức không tồn tại hoặc đã bị khoá')
 
   const [full, membership] = await Promise.all([
@@ -314,6 +366,7 @@ async function resolveTargetOrg(
     isMember: Boolean(membership),
     unitId: membership?.unitId?.toString() ?? null,
     allowOutsiderPosts: Boolean(full?.allowOutsiderPosts),
+    isPublic: isOrgPublic(full),
   }
 }
 
@@ -358,7 +411,7 @@ function quotaError(quota: QuotaVerdict): Error {
  * đứng ở org khác (hoặc không đứng ở org nào — ca của người thuộc nhiều nhóm).
  *
  * Đo trên dữ liệu thật, tài khoản 24 tin: 13 tin (`pending`/`hidden`) trả 404 ở CẢ `GET` lẫn
- * `PATCH`, và tin `active` nội bộ cũng 404 khi thiếu `X-Org-Slug`. Sau khi đã chốt `seller`
+ * `PATCH`, và tin `active` nội bộ cũng 404 khi thiếu `X-Org-Id`. Sau khi đã chốt `seller`
  * từ token — khoá hẹp hơn mọi tenant scope — thì lượt ghi phải chạy unscoped nốt, kẻo
  * predicate ghi của plugin lọc trắng và `findByIdAndUpdate` ghi RỖNG mà không báo gì.
  */
@@ -507,10 +560,11 @@ export const listingService = {
     const seller = await userRepository.findById(author.id)
     if (!seller) throw new NotFoundError('User not found')
 
-    const visibility = input.visibility ?? POST_VISIBILITY.ORG_INTERNAL
     const target = await resolveTargetOrg(input, author)
-    const provinceCode = await resolveProvinceCode(input, target.orgId, visibility)
-    const wardCode = resolveWardCode(input, provinceCode, visibility)
+    // Bậc mặc định phụ thuộc nhóm ĐÍCH, nên phải tính SAU khi đã biết nhóm nào.
+    const reach = input.reach ?? defaultReachFor({ orgId: target.orgId, isPublic: target.isPublic })
+    const provinceCode = await resolveProvinceCode(input, target.orgId, reach)
+    const wardCode = resolveWardCode(input, provinceCode, reach)
     const sellerId = new Types.ObjectId(author.id)
     const categoryId = new Types.ObjectId(input.categoryId)
 
@@ -534,12 +588,13 @@ export const listingService = {
     const contentFlagged = holds.length > 0
 
     const routed = routeListing({
-      visibility,
+      reach,
       orgId: target.orgId,
+      orgIsPublic: target.isPublic,
       isMember: target.isMember,
       allowOutsiderPosts: target.allowOutsiderPosts,
       hasCategoryModerator:
-        visibility === POST_VISIBILITY.PUBLIC
+        reach === LISTING_REACH.MARKETPLACE
           ? await hasCategoryModerator(input.categoryId, provinceCode!, wardCode)
           : false,
       unitId: author.unitId,
@@ -550,7 +605,7 @@ export const listingService = {
 
     const isOutsider = routed.queue === MODERATION_QUEUE.ORG_OUTSIDER
     const pendingCount =
-      visibility === POST_VISIBILITY.PUBLIC
+      reach === LISTING_REACH.MARKETPLACE
         ? await listingRepository.countPendingInCategory(sellerId, categoryId)
         : await listingRepository.countPendingInOrg(
             sellerId,
@@ -595,6 +650,7 @@ export const listingService = {
         avatar: seller.avatar,
       },
       routed,
+      reach,
       provinceCode,
       wardCode,
       validated,
@@ -625,7 +681,7 @@ export const listingService = {
      * vì lỗi đó nghĩa là "code ghi sai trục", không phải "yêu cầu sai".
      *
      * Khai `runUnscoped` là an toàn vì thẩm quyền đã chốt xong TRƯỚC dòng này, không phải bỏ
-     * qua: `resolveTargetOrg` tra tư cách thành viên với chính slug trong body, `routeListing`
+     * qua: `resolveTargetOrg` tra tư cách thành viên với chính id trong body, `routeListing`
      * chặn người ngoài khi nhóm tắt `allowOutsiderPosts` và chặn cả việc mượn tên nhóm cho tin
      * công khai. `doc` mang `organizationId` tường minh — cùng lối `moderation.service` ghi vết
      * duyệt dưới org SỞ HỮU tin thay vì org của người duyệt.
@@ -853,19 +909,58 @@ export const listingService = {
     return { items, meta: { page: pagination.page, limit: pagination.limit } }
   },
 
-  async getByIdAndTrackView(id: string) {
-    const listing = await listingRepository.incrementView(id)
-    if (!listing) throw new NotFoundError('Listing not found')
-    return listing
+  /**
+   * Đọc MỘT tin theo id cho một NGƯỜI XEM cụ thể — quyền xét theo QUAN HỆ, không theo tenant
+   * scope của request. Dùng chung cho màn chi tiết, mở chat và lưu tin.
+   *
+   * Vì sao không để `tenantPlugin` lọc như cũ: scope dựng từ `X-Org-Id` — "org đang thao tác"
+   * của app. Người thuộc HAI nhóm mở tin nội bộ của nhóm A trong lúc app đứng ở nhóm B (hoặc
+   * chưa đứng ở nhóm nào — fallback tự suy org chỉ chạy khi họ thuộc ĐÚNG MỘT nhóm) nhận 404 cho
+   * chính tin họ vừa thấy ở hồ sơ nhóm. Câu hỏi đúng không phải "request này chỉ ra nhóm nào"
+   * mà là "người này có chân trong nhóm sở hữu tin không" — cùng nguyên tắc `chat.service` đã
+   * chốt cho hội thoại: quyền đến từ quan hệ, không từ tenant.
+   *
+   * Luật, theo trục của tin — và mọi trục đều đòi tin ĐÃ PUBLIC (`PUBLIC_LISTING_STATUSES`),
+   * y như `incrementView` cũ; tin chờ duyệt đọc qua `getForModeration`:
+   * - `public`: ai cũng đọc, kể cả khách.
+   * - `org_internal`: phải đã đăng nhập VÀ là thành viên active của `organizationId`. Người có
+   *   quyền duyệt trong nhóm đó (manager được bổ nhiệm, master) cũng đọc được dù không phải
+   *   thành viên — bàn duyệt của họ vốn liệt kê tin này, giấu ở đây chỉ làm hai màn nói ngược.
+   *
+   * Mọi nhánh từ chối đều **404**, không 403: 403 là xác nhận id này tồn tại, đủ để người ngoài
+   * dò danh sách tin nội bộ của một tổ chức (convention §8). `runUnscoped` an toàn vì chốt nằm
+   * ngay dưới — cùng cách `getForModeration` và `assertOwnerUnscoped` làm.
+   */
+  async getForViewer(id: string, viewerId: string | null): Promise<IListingDocument> {
+    const listing = await runUnscoped('listing: đọc theo id, xét quyền theo quan hệ', () =>
+      listingRepository.findById(id).exec(),
+    )
+    if (!listing || !PUBLIC_LISTING_STATUSES.includes(listing.status)) {
+      throw new NotFoundError('Listing not found')
+    }
+    // Hai bậc công khai đọc được không cần quan hệ nào với nhóm — đây chính là chỗ "nhóm công
+    // khai mà tin vẫn kín" được gỡ.
+    if (PUBLICLY_READABLE_REACHES.includes(listing.reach)) return listing
+
+    if (viewerId && listing.organizationId) {
+      const member = await membershipRepository.findActive(viewerId, listing.organizationId)
+      if (member) return listing
+      // Chỉ tra grants khi KHÔNG phải thành viên: đây là nhánh hiếm, đừng trả giá cho nó ở
+      // mọi lượt mở tin.
+      const grants = await roleGrantService.grantsOf(viewerId)
+      if (canApproveListing(grants, targetOf(listing))) return listing
+    }
+    throw new NotFoundError('Listing not found')
   },
 
   /**
-   * Đọc tin mà KHÔNG tăng lượt xem — dành cho feature khác cần kiểm tra tin tồn tại (vd chat
-   * mở hội thoại). Dùng `getByIdAndTrackView` ở đó sẽ thổi phồng lượt xem mỗi lần bấm nhắn tin.
+   * Màn chi tiết: đọc qua `getForViewer` rồi cộng lượt xem. Cộng SAU khi qua chốt — bộ đếm không
+   * được động vì một lượt 404.
    */
-  async getById(id: string) {
-    const listing = await listingRepository.findById(id)
-    if (!listing) throw new NotFoundError('Listing not found')
+  async getByIdAndTrackView(id: string, viewerId: string | null) {
+    const listing = await this.getForViewer(id, viewerId)
+    await listingRepository.bumpView(listing._id)
+    listing.viewCount += 1
     return listing
   },
 
@@ -874,7 +969,7 @@ export const listingService = {
    * tenant scope (xem `setModerationStatus`). Người phụ trách danh mục không có org trong
    * scope, nên `getById` thường sẽ trả 404 ngay trước khi ai kịp xét quyền.
    *
-   * Không rò rỉ gì: caller BẮT BUỘC đưa tin này qua `assertCanModerateListing` trước khi làm
+   * Không rò rỉ gì: caller BẮT BUỘC đưa tin này qua `assertCanActOnListing` trước khi làm
    * bất cứ điều gì với nó.
    */
   async getForModeration(id: string) {
@@ -1041,7 +1136,7 @@ export const listingService = {
    *
    * Không dùng được `getByIdAndTrackView`: nó lọc `status ∈ PUBLIC_LISTING_STATUSES` ngay ở
    * repository (`incrementView`), nên tin `pending`/`hidden`/`rejected` của chính mình cũng
-   * trả 404 — kể cả khi `X-Org-Slug` đã đúng. Đó là đúng luật cho một endpoint CÔNG KHAI
+   * trả 404 — kể cả khi `X-Org-Id` đã đúng. Đó là đúng luật cho một endpoint CÔNG KHAI
    * (quy tắc 7 của AGENT), nên mở nó ra là sai chỗ; chính chủ cần một cửa riêng.
    *
    * Cũng KHÔNG tăng `viewCount`: chủ tin mở form sửa không phải một lượt xem.
@@ -1077,7 +1172,12 @@ export const listingService = {
   async setModerationStatus(
     id: string,
     next: {
-      status: ListingStatus
+      /**
+       * Chỉ ba quyết định, không phải mọi `ListingStatus`: `ACTION_BY_DECISION` chỉ định nghĩa
+       * hạng thao tác cho ba giá trị này, và siết kiểu ở đây là cách bảng tra không bao giờ bị
+       * tra hụt.
+       */
+      status: ModerationDecision
       reason?: string
       byUserId: string
       byName: string
@@ -1086,21 +1186,23 @@ export const listingService = {
     },
     grants: Grant[],
   ) {
-    // Đọc và ghi ĐỀU unscoped, người gác thật là `assertCanModerateListing` kẹp ở giữa.
+    // Đọc và ghi ĐỀU unscoped, người gác thật là `assertCanActOnListing` kẹp ở giữa.
     //
     // Tenant scope không diễn đạt nổi thẩm quyền của trục danh mục: nhánh GHI của `tenantPlugin`
     // chỉ cho đụng `organizationId: null` hoặc org trong scope, nên một người phụ trách danh mục
     // (không thuộc nhóm nào) không sửa được tin công khai MANG BADGE nhóm — dù chính họ là người
     // có thẩm quyền trên trục đó. Ép scope ở đây là ép sai chiều.
     //
-    // An toàn không mất: `assertCanModerateListing` phân xử theo ĐÚNG trục của tin và chạy TRƯỚC
+    // An toàn không mất: `assertCanActOnListing` phân xử theo ĐÚNG trục của tin và chạy TRƯỚC
     // mọi lượt ghi, không call-site nào đi vòng được (chính nó là bản vá cho lỗ cũ của
     // `report.service`).
     const listing = await runUnscoped('moderation: đọc tin để xét thẩm quyền theo trục', () =>
       listingRepository.findById(id).exec(),
     )
     if (!listing) throw new NotFoundError('Listing not found')
-    assertCanModerateListing(listing, grants)
+    // Suy hạng thao tác từ CHÍNH quyết định đang ghi — cùng bảng với lớp ngoài, nên không có
+    // khe nào để hai lớp phán khác nhau.
+    assertCanActOnListing(listing, grants, ACTION_BY_DECISION[next.status])
 
     const updated = await runUnscoped('moderation: ghi phán quyết đã qua chốt thẩm quyền', () =>
       listingRepository
@@ -1142,15 +1244,38 @@ export const listingService = {
       listingRepository.findById(id).exec(),
     )
     if (!listing) throw new NotFoundError('Listing not found')
-    assertCanModerateListing(listing, grants)
+    assertCanActOnListing(listing, grants, MODERATION_ACTION.TAKEDOWN)
 
     return runUnscoped('moderation: gỡ tin đã qua chốt thẩm quyền', () =>
       listingRepository.softDelete(id).exec(),
     )
   },
 
-  moderationStats(trendDays: number) {
-    return listingRepository.statsForModeration(trendDays)
+  /**
+   * Số liệu bàn duyệt, với `byDay` ĐÃ ĐIỀN ĐỦ CỘT — đúng `trendDays` cột, kết thúc hôm nay.
+   *
+   * Điền ở đây vì đây là phễu chung của cả ba bàn đọc nó (org, trục danh mục, hệ thống); để
+   * từng service tự điền là ba bản sao của cùng một phép lịch, và bản thứ ba sẽ quên.
+   *
+   * Mongo chỉ trả cột CÓ dữ liệu. Thiếu bước này thì nhóm đăng 3 tin rải rác trong 14 ngày ra
+   * biểu đồ 3 điểm cách đều — một hình dạng chưa từng xảy ra — còn nhóm chưa có tin nào ra
+   * mảng RỖNG, thứ đã làm `TrendChart` dựng path không có lệnh `M` và đỏ cả app ở tầng native.
+   *
+   * Cột ngoài khung bị bỏ: `statsForModeration` lùi trọn trendDays × 24h nên có thể chạm sang
+   * một ngày nữa chỉ được phủ một phần. Một cột nửa ngày đứng cạnh các cột đủ ngày là so sánh
+   * sai; khung đã hứa "14 ngày" thì trả đúng 14.
+   */
+  async moderationStats(trendDays: number) {
+    const stats = await listingRepository.statsForModeration(trendDays)
+
+    const now = new Date()
+    const from = new Date(now.getTime() - (trendDays - 1) * 24 * 60 * 60 * 1000)
+    const found = new Map(stats.byDay.map((row) => [row._id, row]))
+    const byDay = bucketsBetween(from, now, REPORT_GRANULARITY.DAY).map(
+      (day) => found.get(day) ?? { _id: day, approved: 0, pending: 0 },
+    )
+
+    return { ...stats, byDay }
   },
 
   /** Dữ liệu định giá cho hệ Xu — xem ghi chú dài ở `listingRepository.postingStats`. */

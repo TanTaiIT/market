@@ -5,10 +5,10 @@
 >
 > | Tài liệu này nói | v2 thực tế |
 > |---|---|
-> | `chainReadable`, đọc xuyên org trong chain | **Chain đã bị gỡ.** Thay bằng option `dualAxis` — trục org (`organizationId`) và trục danh mục (`visibility: public`) |
+> | `chainReadable`, đọc xuyên org trong chain | **Chain đã bị gỡ.** Thay bằng option `dualAxis` — trục org (`organizationId`) và trục danh mục (`reach: marketplace`) |
 > | `ORG_ROLES` (owner/moderator/member) trên `users` | **Tách đôi**: `memberships.role` = thân phận, `role_grants` = quyền hạn. `users` không còn `organizationId` lẫn `role` |
 > | Nhánh `/platform-admin/*` + JWT `type` | **Đã xoá.** `master` là một `role_grant` scope `system` trên User thường; JWT chỉ còn `sub` |
-> | Org lấy từ subdomain → `orgSlug` body → JWT | subdomain → header `X-Org-Slug` → (nếu chỉ thuộc 1 org) org đó, rồi **đối chiếu `memberships` ngay lúc đó** |
+> | Org lấy từ subdomain → `orgSlug` body → JWT | header `X-Org-Id` (`_id` của org) → (nếu chỉ thuộc 1 org) org đó, rồi **đối chiếu `memberships` ngay lúc đó** |
 >
 > Ba điều KHÔNG đổi và vẫn là luật: filter tenant nằm ở `tenantPlugin` chứ không ở repository ·
 > không có scope thì ném lỗi, không bao giờ query toàn DB · `runUnscoped('lý do', …)` là lối
@@ -78,8 +78,8 @@ reportSchema.index({ organizationId: 1, createdAt: -1 })
 **Mặc định là tắt.** Bật lên đổi hai thứ cùng lúc, nên phải nêu được lý do nghiệp vụ trong PR:
 
 - `organizationId` chuyển thành nullable (`null` = bản ghi của trục công khai, không thuộc org nào)
-- khoá định tuyến không còn là `organizationId` mà là **`visibility`** — `public` đi về người
-  phụ trách (danh mục × tỉnh), `org_internal` đi về chính tổ chức
+- khoá định tuyến không còn là `organizationId` mà là **`reach`** — `marketplace` đi về người
+  phụ trách (danh mục × tỉnh), `members`/`group_open` đi về chính tổ chức
 
 Đây là chỗ hay nhầm nhất: `organizationId` vẫn được ghi trên tin công khai của một thành viên,
 nhưng nó chỉ để **hiển thị nguồn gốc**, không quyết định ai duyệt. Xem
@@ -174,7 +174,7 @@ schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 })        // TTL: BẮT B
 | Loại | Prefix `organizationId`? | Ghi chú |
 |---|---|---|
 | Index thường | ✅ bắt buộc | Thiếu prefix thì org lớn nhất làm chậm mọi org còn lại |
-| Index của trục danh mục (`dualAxis`) | ❌ prefix là `visibility` | Bản ghi ở trục này có `organizationId: null` nên prefix org không lọc được gì. Đủ HAI họ index — xem `listing.model.ts` |
+| Index của trục danh mục (`dualAxis`) | ❌ prefix là `reach` | Bản ghi ở trục này có `organizationId: null` nên prefix org không lọc được gì. Đủ HAI họ index — xem `listing.model.ts` |
 | `2dsphere` | ✅ được | `$near` vẫn dùng được index |
 | TTL | ❌ không thể | Mongo từ chối compound TTL. Nó là tiến trình dọn nền, không nằm trên đường query |
 | **Text index** | ❌ **cấm dùng** | Text index có prefix bắt buộc equality trên prefix, mà scope đọc mặc định là `$in` nhiều org → vỡ. Full-text đi đường Atlas Search |
@@ -236,7 +236,7 @@ Hai câu hỏi khác nhau, cùng đi qua một `policy.ts`, nên không đẻ ra
 2. Token user bắt buộc mang `organizationId`.
 3. Bất kỳ luồng nào tìm `User` theo email đều phải kèm `organizationId` — `email` chỉ
    unique trong phạm vi `(organizationId, email)`.
-4. **Không** rút thông tin tenant từ body/query để phân quyền. `orgSlug` trong body login
+4. **Không** rút thông tin tenant từ body/query để phân quyền. `orgId` trong body đăng tin / đơn xin vào
    là ngoại lệ đã duyệt, và nó chỉ dùng để *resolve org*, không dùng để cấp quyền.
 5. Đổi `JWT_EXPIRES_IN` dài ra phải đi kèm lý do: suspend org dựa vào token ngắn + check
    status live, nới token là nới cả hai.

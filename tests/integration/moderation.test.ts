@@ -3,41 +3,42 @@ import request from 'supertest'
 import mongoose, { Types } from 'mongoose'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import type { Application } from 'express'
+import { orgIdOf } from '../helpers/fixtures'
 
 let app: Application
 let mongod: MongoMemoryReplSet
 
 let categoryId = ''
-const owner = { token: '', id: '', slug: '' }
-const member = { token: '', id: '', slug: '' }
-const otherOrg = { token: '', id: '', slug: '' }
+const owner = { token: '', id: '', key: '' }
+const member = { token: '', id: '', key: '' }
+const otherOrg = { token: '', id: '', key: '' }
 let listingId = ''
 
 let masterToken = ''
 const orgIds: Record<string, string> = {}
 
 /** Chủ org nhận grant `manager` scope org ngay khi master tạo org — đó là quyền vào bàn duyệt. */
-async function createOwner(slug: string) {
+async function createOwner(key: string) {
   const { registerUser, createOrg } = await import('../helpers/fixtures')
-  const user = await registerUser(app, `owner@${slug}.local`, `Owner ${slug}`)
+  const user = await registerUser(app, `owner@${key}.local`, `Owner ${key}`)
   const org = await createOrg(app, masterToken, {
-    name: `Org ${slug}`,
-    slug,
+    name: `Org ${key}`,
+    key,
     ownerEmail: user.email,
   })
-  orgIds[slug] = org.id
-  return { token: user.token, id: user.id, slug }
+  orgIds[key] = org.id
+  return { token: user.token, id: user.id, key }
 }
 
 /** Thành viên thường: có membership nhưng KHÔNG có grant nào — không vào được bàn duyệt. */
-async function joinOrg(slug: string, name: string, email: string) {
+async function joinOrg(key: string, name: string, email: string) {
   const { registerUser, addMember } = await import('../helpers/fixtures')
   const user = await registerUser(app, email, name)
-  await addMember(user.id, orgIds[slug])
-  return { token: user.token, id: user.id, slug }
+  await addMember(user.id, orgIds[key])
+  return { token: user.token, id: user.id, key }
 }
 
-async function createListing(who: { token: string; slug: string }, title: string) {
+async function createListing(who: { token: string; key: string }, title: string) {
   const res = await request(app)
     .post('/api/v1/listings')
     .set(as(who))
@@ -59,7 +60,6 @@ beforeAll(async () => {
   process.env.MONGO_URI = uri
   process.env.JWT_SECRET = 'test_secret'
   process.env.JWT_REFRESH_SECRET = 'test_refresh_secret'
-  delete process.env.APP_BASE_DOMAIN
 
   await mongoose.connect(uri)
   const { createApp } = await import('../../src/app')
@@ -94,8 +94,8 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-function as(who: { token: string; slug: string }) {
-  return { Authorization: `Bearer ${who.token}`, 'X-Org-Slug': who.slug }
+function as(who: { token: string; key: string }) {
+  return { Authorization: `Bearer ${who.token}`, 'X-Org-Id': orgIdOf(who.key) }
 }
 
 describe('Moderation — phân quyền', () => {
@@ -117,6 +117,37 @@ describe('Moderation — phân quyền', () => {
     expect(res.body.data.openReports).toBe(0)
     expect(Array.isArray(res.body.data.trend)).toBe(true)
     expect(res.body.data.categories[0].name).toBe('Đồ dùng')
+  })
+
+  /**
+   * Biểu đồ nhịp phải trả ĐỦ 14 cột, kể cả ngày không ai đăng gì.
+   *
+   * Đây là một lỗi ĐÃ XẢY RA, không phải phòng xa. Mongo chỉ `$group` ra cột CÓ dữ liệu, nên
+   * một nhóm mới lập trả `trend: []`; app dựng path SVG mở đầu bằng `L` thay vì `M` và
+   * RNSVGPathParser ném ở tầng native — đỏ cả màn hình, không phải trống một ô biểu đồ.
+   *
+   * Đếm cột, KHÔNG chỉ `Array.isArray`: ca đó vẫn xanh trên đúng cái bug này.
+   */
+  it('nhịp 14 ngày đủ cột, ngày trống vẫn có mặt với số 0', async () => {
+    const res = await request(app).get('/api/v1/moderation/overview').set(as(owner)).expect(200)
+    const trend = res.body.data.trend as { day: string; approved: number; pending: number }[]
+
+    expect(trend).toHaveLength(14)
+    // Đúng một tin được tạo trong suite này, và nó ở `pending` — 13 ngày còn lại phải là 0.
+    expect(trend.filter((d) => d.pending > 0)).toHaveLength(1)
+    expect(trend.every((d) => Number.isInteger(d.approved) && Number.isInteger(d.pending))).toBe(
+      true,
+    )
+
+    // Cột liên tiếp và tăng dần: nhãn trục x bên app đọc thẳng `day`, lệch một ngày là dán
+    // sai thứ trong tuần cho cả biểu đồ.
+    const days = trend.map((d) => d.day)
+    expect(days).toEqual([...days].sort())
+    expect(new Set(days).size).toBe(14)
+    // Cột cuối là HÔM NAY theo múi giờ thị trường — đối chiếu bằng chính helper BE dùng để
+    // cắt cột, chứ không viết lại phép tính lịch trong test rồi hai bên cùng sai một kiểu.
+    const { bucketLabel } = await import('../../src/common/report/timeBuckets')
+    expect(days[13]).toBe(bucketLabel(new Date(), 'day'))
   })
 })
 
@@ -307,10 +338,10 @@ async function raiseTo(userId: string, level: number) {
  */
 describe('Uy tín — hai đường hậu kiểm', () => {
   /** Người tố giác phải là thành viên CÙNG org thì mới đọc được tin nội bộ để mà báo cáo. */
-  const buyer = { token: '', id: '', slug: '' }
+  const buyer = { token: '', id: '', key: '' }
 
   beforeAll(async () => {
-    Object.assign(buyer, await joinOrg(owner.slug, 'Người mua', 'buyer@mod-trust.local'))
+    Object.assign(buyer, await joinOrg(owner.key, 'Người mua', 'buyer@mod-trust.local'))
   }, 60_000)
 
   it('gỡ tin đã đăng làm tụt bậc người đăng', async () => {
@@ -419,7 +450,7 @@ describe('Vết quyết định tự đăng', () => {
  */
 describe('Uy tín — thăng bậc qua API', () => {
   it('5 tin được người duyệt thông qua thì lên bậc 1', async () => {
-    const climber = await joinOrg(owner.slug, 'Người leo bậc', 'climber@mod-trust.local')
+    const climber = await joinOrg(owner.key, 'Người leo bậc', 'climber@mod-trust.local')
     // Rơi xuống đáy trước: từ khi mặc định là bậc trần, "leo bậc" chỉ còn nghĩa với người ĐÃ
     // tụt. Đây đúng là đường một người vi phạm phải đi để lấy lại quyền tự đăng.
     await raiseTo(climber.id, 0)
@@ -442,7 +473,7 @@ describe('Uy tín — thăng bậc qua API', () => {
    * họ rơi xuống — và phải để lại bản ghi, nếu không thì lần sau họ lại về trần như chưa có gì.
    */
   it('vi phạm đầu tiên của người chưa có hồ sơ: rơi khỏi trần và ĐƯỢC ghi lại', async () => {
-    const rookie = await joinOrg(owner.slug, 'Người mới', 'rookie@mod-trust.local')
+    const rookie = await joinOrg(owner.key, 'Người mới', 'rookie@mod-trust.local')
     await raiseTo(rookie.id, 0)
     await raiseTo(rookie.id, 2)
     // Xoá hồ sơ để dựng đúng ca "chưa từng bị chấm" — `raiseTo` ở trên chỉ để chắc chắn
@@ -463,7 +494,7 @@ describe('Uy tín — thăng bậc qua API', () => {
 
   /** Đáy thang thì không còn gì để trừ — và cũng không được đẻ ra một lượt ghi vô nghĩa. */
   it('từ chối người đã ở đáy KHÔNG ghi thêm gì', async () => {
-    const floored = await joinOrg(owner.slug, 'Người đã ở đáy', 'floored@mod-trust.local')
+    const floored = await joinOrg(owner.key, 'Người đã ở đáy', 'floored@mod-trust.local')
     await raiseTo(floored.id, 0)
 
     const { UserTrust } = await import('../../src/features/trust/trust.model')
@@ -507,10 +538,10 @@ describe('Nhật ký hoạt động mang theo hậu quả uy tín', () => {
  */
 describe('Sửa tin đang hiển thị thì phải duyệt lại', () => {
   /** Người sạch tiểu sử: `seller` đã dính vài lượt từ chối ở trên nên bị quota chặn. */
-  const seller = { token: '', id: '', slug: '' }
+  const seller = { token: '', id: '', key: '' }
 
   beforeAll(async () => {
-    Object.assign(seller, await joinOrg(owner.slug, 'Người bán sửa tin', 'editor@mod-trust.local'))
+    Object.assign(seller, await joinOrg(owner.key, 'Người bán sửa tin', 'editor@mod-trust.local'))
   }, 60_000)
   /** Tin đi đúng đường thật: vào hàng đợi, được người duyệt cho lên bảng. */
   async function liveListing(title: string) {
