@@ -254,3 +254,65 @@ describe('Nhóm con không mượn được qua org khác', () => {
     expect([400, 403]).toContain(res.status)
   })
 })
+
+/**
+ * DANH THIẾP NHÓM trên tin — và cái cửa nó phải đóng.
+ *
+ * Tin của nhóm công khai mang theo `org` để người NGOÀI biết nó đến từ đâu; đây chính là ca mà
+ * cách cũ (app tra tên từ `/organizations/mine`) câm, vì người ngoài không có nhóm đó trong
+ * danh sách của mình.
+ *
+ * Ca thứ hai mới là ca phải ghim: gạt nhóm sang riêng tư thì badge PHẢI biến mất. Nếu tên nhóm
+ * được snapshot vào tin lúc đăng, nó sẽ sống sót qua cú gạt đó và tiếp tục rò tên một nhóm đã
+ * xin được ẩn — đúng lớp lỗi mà cascade trong `setVisibility` sinh ra để chặn, chỉ là đi vòng
+ * qua một field khác.
+ */
+describe('Danh thiếp nhóm đi kèm tin', () => {
+  let openId = ''
+
+  beforeAll(async () => {
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(orgAuth(ownerB.token, ORG_B))
+      .send({ ...listingPayload('Tin mở của nhóm B', categoryId), reach: 'group_open' })
+      .expect(201)
+    openId = res.body.data._id
+    await publishListing(openId)
+  }, 60_000)
+
+  it('người NGOÀI đọc được tên nhóm ngay trên tin', async () => {
+    const res = await request(app)
+      .get(`/api/v1/listings/${openId}`)
+      .set(bearer(stranger))
+      .expect(200)
+
+    expect(res.body.data.org).toMatchObject({ id: orgIdOf(ORG_B), name: expect.any(String) })
+    // `organizationId` vẫn còn nguyên: nó là khoá phân quyền, `org` mới là thứ để vẽ.
+    expect(res.body.data.organizationId).toBe(orgIdOf(ORG_B))
+  }, 60_000)
+
+  it('danh sách cũng mang badge, và chỉ tốn một lượt tra cho cả trang', async () => {
+    const res = await request(app)
+      .get(`/api/v1/listings?orgId=${orgIdOf(ORG_B)}`)
+      .set(bearer(stranger))
+      .expect(200)
+
+    const row = res.body.data.find((l: { _id: string }) => l._id === openId)
+    expect(row.org.name).toBeTruthy()
+  }, 60_000)
+
+  it('nhóm chuyển sang RIÊNG TƯ → badge biến mất, kể cả với thành viên', async () => {
+    await request(app)
+      .patch(`/api/v1/organizations/${orgIdOf(ORG_B)}/visibility`)
+      .set(bearer(master))
+      .send({ isPublic: false })
+      .expect(200)
+
+    // `duo` là thành viên nhóm B nên vẫn ĐỌC được tin (cascade đã hạ nó về `members`) — đúng
+    // chỗ để đo: tin còn đó, chỉ cái tên nhóm là không được hiện nữa.
+    const res = await request(app).get(`/api/v1/listings/${openId}`).set(bearer(duo)).expect(200)
+
+    expect(res.body.data.org).toBeNull()
+    expect(res.body.data.organizationId).toBe(orgIdOf(ORG_B))
+  }, 60_000)
+})

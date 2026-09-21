@@ -50,6 +50,7 @@ export const organizationController = {
     const data = await organizationService.publicProfile(
       req.params.organizationId,
       req.user?.id ?? null,
+      typeof req.query.code === 'string' ? req.query.code : undefined,
     )
     success(res, { message: 'Hồ sơ nhóm', data })
   }),

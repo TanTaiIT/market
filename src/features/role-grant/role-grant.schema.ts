@@ -54,6 +54,36 @@ export const createRoleGrantSchema = z
   })
   .openapi('CreateRoleGrant')
 
+/**
+ * Sửa PHẠM VI của một grant trục danh mục — thay toàn bộ, không vá từng field.
+ *
+ * Không nhận `userId` lẫn `role`: đổi người hoặc đổi vai là một grant KHÁC, và đi qua
+ * cấp/thu hồi để hai chốt `canGrant` và `usableOrgAdmins` còn chạy. Ở đây chỉ đổi "phụ trách
+ * ô nào".
+ *
+ * Thay toàn bộ vì hạ từ tầng phường xuống tầng tỉnh bắt buộc phải xoá `wardCodes` — một PATCH
+ * bán phần khiến việc đó thành thao tác dễ quên nhất trong form, và kết quả là một grant tầng
+ * tỉnh còn dính danh sách phường vô nghĩa.
+ */
+export const updateRoleGrantSchema = z
+  .object({
+    scopeType: z.enum([SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]),
+    categoryId: objectId,
+    /** Rỗng = TOÀN QUỐC, và chỉ hợp lệ với `category_province`. */
+    provinceCodes: z.array(z.string().min(1).max(60)).max(40).default([]),
+    /** Chỉ có nghĩa với `category_ward`; hình dạng do model kiểm (`enforceScopeShape`). */
+    wardCodes: z.array(z.string().min(1).max(120)).max(200).default([]),
+  })
+  .strict()
+  .openapi('UpdateRoleGrant')
+
+/** Bộ lọc của bảng "ai phụ trách danh mục nào". Bỏ trống = liệt kê tất cả. */
+export const categoryAxisQuerySchema = z.object({
+  categoryId: objectId.optional(),
+  /** Tên tỉnh như BE lưu. Grant toàn quốc (`provinceCodes` rỗng) LUÔN khớp mọi tỉnh. */
+  province: z.string().min(1).max(60).optional(),
+})
+
 export const roleGrantResponseSchema = z
   .object({
     id: objectId,
@@ -70,7 +100,26 @@ export const roleGrantResponseSchema = z
   })
   .openapi('RoleGrant')
 
+/**
+ * Một dòng của bảng phụ trách: grant + danh tính người giữ + tên danh mục.
+ *
+ * Có `id` vì đó là thứ duy nhất `DELETE /role-grants/:id` nhận — thiếu nó thì bảng chỉ để
+ * nhìn, và việc cấp quyền vẫn là đường một chiều như trước.
+ */
+export const categoryAxisGrantSchema = roleGrantResponseSchema
+  .extend({
+    holderName: z.string(),
+    holderEmail: z.string(),
+    /** `false` = tài khoản đã khoá hoặc không còn — ô này trông như "đã có người" mà thực ra không. */
+    holderActive: z.boolean(),
+    categoryName: z.string(),
+  })
+  .openapi('CategoryAxisGrant')
+
 export type CreateRoleGrantInput = z.infer<typeof createRoleGrantSchema>
+export type UpdateGrantScopeInput = z.infer<typeof updateRoleGrantSchema>
 
 registry.register('CreateRoleGrant', createRoleGrantSchema)
+registry.register('UpdateRoleGrant', updateRoleGrantSchema)
 registry.register('RoleGrant', roleGrantResponseSchema)
+registry.register('CategoryAxisGrant', categoryAxisGrantSchema)

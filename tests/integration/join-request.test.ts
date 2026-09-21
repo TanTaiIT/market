@@ -114,6 +114,36 @@ describe('Gửi đơn tham gia', () => {
     clearOrganizationCache()
   })
 
+  /**
+   * Nhóm RIÊNG TƯ: vào bằng MÃ được, bằng ID thì không — và đó là chủ ý, không phải thiếu sót.
+   *
+   * Id nằm trong mọi đường link, nên cho gửi đơn bằng id là mở lại đúng bề mặt spam mà cái mã
+   * sinh ra để chặn. Mã thì phải được ai đó đưa cho.
+   *
+   * Ghim cả HAI vế trong một ca, vì chúng chỉ có nghĩa cạnh nhau: bỏ vế dưới thì lần sau có
+   * người đọc vế trên và "sửa" nó thành cho phép; bỏ vế trên thì không ai biết vì sao client
+   * phải gửi mã. Đây chính là chỗ app từng gửi id rồi hiện ra câu "Không tìm thấy nhóm công
+   * khai này" cho người vừa dán đúng mã của nhóm.
+   */
+  it('nhóm riêng tư: gửi bằng ID → 404, gửi bằng MÃ → đơn chờ duyệt', async () => {
+    const user = await registerUser(app, 'ma-khong-phai-id@example.com', 'Người cầm mã')
+
+    const byId = await request(app)
+      .post('/api/v1/join-requests')
+      .set({ Authorization: `Bearer ${user.token}` })
+      .send({ orgId, claimedName: 'Người cầm mã' })
+    expect(byId.status).toBe(404)
+
+    const byCode = await request(app)
+      .post('/api/v1/join-requests')
+      .set({ Authorization: `Bearer ${user.token}` })
+      .send({ code: await joinCodeOf(ORG), claimedName: 'Người cầm mã' })
+      .expect(201)
+
+    // `pending` chứ không `approved`: quản trị nhóm phải duyệt — đó là toàn bộ điểm của nhóm kín.
+    expect(byCode.body.data.status).toBe('pending')
+  })
+
   it('người gửi xem và rút được đơn của mình', async () => {
     const user = await registerUser(app, 'd@example.com', 'D')
     const created = await sendRequest(user).expect(201)

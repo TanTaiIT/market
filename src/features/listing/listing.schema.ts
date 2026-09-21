@@ -384,6 +384,23 @@ export const listingResponseSchema = z
     _id: objectId,
     /** `null` = tin của trục danh mục, không thuộc tổ chức nào. */
     organizationId: objectId.nullable(),
+    /**
+     * Danh thiếp nhóm để hiện trên tin — `null` khi tin không thuộc nhóm nào, HOẶC khi nhóm
+     * đó riêng tư / đang khoá / đã xoá.
+     *
+     * Vì thế `org: null` KHÔNG đồng nghĩa `organizationId: null`: một tin lên sàn mang tên một
+     * nhóm riêng tư vẫn có `organizationId` (để nhóm gỡ được nó — xem `canTakedownListing`)
+     * nhưng không có badge. Client đọc `org` để vẽ, đọc `organizationId` để phân quyền; lấy
+     * cái này suy ra cái kia là sai ở đúng những ca đáng quan tâm.
+     */
+    org: z
+      .object({
+        id: objectId,
+        name: z.string(),
+        avatarUrl: z.string().nullable(),
+      })
+      .nullable()
+      .optional(),
     reach: z.nativeEnum(LISTING_REACH),
     provinceCode: z.string(),
     title: z.string(),

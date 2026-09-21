@@ -131,6 +131,41 @@ describe('Hồ sơ nhóm công khai', () => {
     expect(fake.status).toBe(404)
   })
 })
+/**
+ * MÃ LÀ CHÌA KHOÁ của hồ sơ nhóm kín — và mã sai phải im lặng y như không có mã.
+ *
+ * Cầm mã đã là điều kiện vào nhóm kín, nên đọc được nhóm là ai TRƯỚC khi gửi đơn không nới
+ * thêm quyền nào; nó chỉ bỏ đi bước "xin vào một nơi mình chưa từng nhìn thấy".
+ *
+ * Vế thứ hai mới là vế phải ghim: mã SAI trả 404 giống hệt ca không gửi mã. Trả 401/403 hay
+ * một thông điệp khác là biến endpoint thành máy dò mã cho một id đã biết — thu hẹp không
+ * gian tìm kiếm từ "mọi nhóm" xuống "đúng nhóm này".
+ */
+it('mã ĐÚNG mở được hồ sơ nhóm riêng tư; mã SAI vẫn 404 y như không có mã', async () => {
+  const code = await joinCodeOf(SECRET)
+  const url = `/api/v1/organizations/profile/${orgIdOf(SECRET)}`
+
+  const ok = await request(app).get(`${url}?code=${code}`).expect(200)
+  expect(ok.body.data.id).toBe(orgIdOf(SECRET))
+  // Khách chưa đăng nhập: cửa mã không kéo theo tư cách thành viên nào.
+  expect(ok.body.data.joined).toBe(false)
+
+  // Mã của nhóm KHÁC cũng là mã sai ở đây — chìa khoá phải khớp đúng ổ.
+  const other = await joinCodeOf(OPEN)
+  expect((await request(app).get(`${url}?code=${other}`)).status).toBe(404)
+  expect((await request(app).get(`${url}?code=ZZZZZZ`)).status).toBe(404)
+  expect((await request(app).get(url)).status).toBe(404)
+})
+
+/** Chuẩn hoá y như ô nhập mã: người ta chép mã ra thành ` abc-123 `. */
+it('mã gõ kèm dấu gạch và chữ thường vẫn mở được', async () => {
+  const code = await joinCodeOf(SECRET)
+  const messy = `${code.slice(0, 3)}-${code.slice(3)}`.toLowerCase()
+
+  await request(app)
+    .get(`/api/v1/organizations/profile/${orgIdOf(SECRET)}?code=${encodeURIComponent(messy)}`)
+    .expect(200)
+})
 
 describe('Xin vào nhóm', () => {
   it('nhóm CÔNG KHAI: gửi bằng id, không cần mã', async () => {

@@ -6,6 +6,7 @@ import {
   organizationLookupQuerySchema,
   organizationAdminQuerySchema,
   organizationParamsSchema,
+  organizationProfileQuerySchema,
   organizationProfileSchema,
   organizationCardSchema,
   organizationSummarySchema,
@@ -60,9 +61,11 @@ router.get(
  */
 router.get(
   '/profile/:organizationId',
+  // `lookupLimiter` gánh luôn phần chống dò `?code=`: 20 lượt/phút trên một không gian mã 31^6
+  // (~887 triệu) thì brute-force không phải một con đường. Cùng trần với `/by-code`.
   lookupLimiter,
   optionalAuth,
-  validate({ params: organizationParamsSchema }),
+  validate({ params: organizationParamsSchema, query: organizationProfileQuerySchema }),
   organizationController.publicProfile,
 )
 
@@ -355,14 +358,16 @@ registry.registerPath({
   path: '/organizations/profile/{organizationId}',
   operationId: 'organizationPublicProfile',
   tags: ['Organization'],
-  summary: 'Hồ sơ nhóm công khai (không cần đăng nhập)',
+  summary: 'Hồ sơ nhóm (không cần đăng nhập)',
   description:
-    'Chỉ nhóm `isPublic`. Nhóm riêng tư trả 404 — không phân biệt được với id không tồn tại, ' +
-    'nên không quét ra được danh sách nhóm kín. Đăng nhập rồi thì có thêm cờ `joined`.',
-  request: { params: organizationParamsSchema },
+    'Mở cho: nhóm `isPublic`; thành viên của nhóm; hoặc người đưa đúng `?code=` của chính ' +
+    'nhóm đó. Mọi ca còn lại trả 404 — kể cả mã SAI, để endpoint không thành máy dò mã cho ' +
+    'một id đã biết. Cửa mã mở HỒ SƠ chứ không mở nội dung: tin của nhóm kín vẫn chỉ thành ' +
+    'viên đọc được. Đăng nhập rồi thì có thêm cờ `joined`.',
+  request: { params: organizationParamsSchema, query: organizationProfileQuerySchema },
   responses: {
     200: jsonResponse('Hồ sơ nhóm', envelope(organizationProfileSchema)),
-    404: errorResponse('Không tìm thấy nhóm công khai nào ở id này'),
+    404: errorResponse('Không tìm thấy nhóm ở id này, hoặc mã không đúng'),
     429: errorResponse('Tra cứu quá nhiều lần'),
   },
 })

@@ -184,6 +184,20 @@ export const joinCodeParamsSchema = z.object({
 export const organizationParamsSchema = z.object({ organizationId: objectId })
 
 /**
+ * `?code=` trên hồ sơ nhóm — CHÌA KHOÁ, không phải bộ lọc.
+ *
+ * Nhóm riêng tư vốn 404 với người ngoài. Đưa đúng mã của chính nhóm đó thì mở được hồ sơ:
+ * cầm mã đã là điều kiện vào nhóm kín, nên đọc được mô tả và số thành viên TRƯỚC khi gửi đơn
+ * không nới thêm quyền nào — nó chỉ bỏ đi cái bước "xin vào một nơi mình chưa từng thấy".
+ *
+ * Mã SAI vẫn 404, y hệt không gửi mã: phân biệt "sai mã" với "không có nhóm" là biến endpoint
+ * thành máy dò mã cho một id đã biết.
+ */
+export const organizationProfileQuerySchema = z.object({
+  code: z.string().min(4).max(16).optional(),
+})
+
+/**
  * Tạo org — chỉ master. `ownerEmail` chứ không phải `ownerId`: master thao tác theo email của
  * người chủ, và tài khoản đó phải tồn tại trước (đăng ký là việc của chính họ).
  */
@@ -275,6 +289,14 @@ export const setOrgVisibilitySchema = z
  */
 export const orgManagerSchema = z
   .object({
+    /**
+     * Id của GRANT, không phải của người — đầu vào duy nhất của `DELETE /role-grants/{id}`.
+     *
+     * Thiếu nó thì bảng người phụ trách chỉ để nhìn: master thấy ai đang quản nhóm nhưng không
+     * có đường nào gỡ, y hệt bệnh cũ của trục danh mục. Một người có thể giữ nhiều grant, nên
+     * `userId` KHÔNG thay thế được nó.
+     */
+    grantId: z.string(),
     userId: z.string(),
     /** `null` khi grant còn hiệu lực nhưng tài khoản đã bị xoá — xem `organizationService.managers`. */
     name: z.string().nullable(),

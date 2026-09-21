@@ -64,6 +64,7 @@ import {
   PUBLIC_LISTING_STATUSES,
   REPORT_TIMEZONE,
   REPORT_GRANULARITY,
+  TENANT_STATUS,
   isWardOfProvince,
   type RejectionSeverity,
 } from '../../common/constants'
@@ -531,6 +532,48 @@ function toOwnerListing(doc: IListingDocument) {
   return { ...doc.toJSON(), review: reviewOf(doc) }
 }
 
+/**
+ * Gắn danh thiếp nhóm vào tin — MỘT truy vấn cho cả trang, không phải một cho mỗi tin.
+ *
+ * Tra lúc ĐỌC chứ không snapshot vào tin như `posterName`. Hai lý do, và lý do thứ hai mới là
+ * lý do bắt buộc:
+ *
+ * 1. Tấm badge này DẪN tới hồ sơ nhóm. Một cái tên cũ trỏ sang một trang mang tên mới là chỉ
+ *    dẫn sai — khác hẳn `posterName`, vốn đúng nghĩa là ảnh chụp danh tính lúc đăng.
+ * 2. Nó gác theo `isPublic`, mà cờ đó ĐỔI ĐƯỢC. Snapshot chụp lúc nhóm còn công khai sẽ tiếp
+ *    tục rò tên nhóm sau khi master gạt nhóm sang riêng tư — đúng lớp lỗi mà cascade trong
+ *    `organizationService.setVisibility` sinh ra để chặn.
+ *
+ * NHÓM RIÊNG TƯ KHÔNG CÓ BADGE. `isPublic: false` nghĩa là nhóm không muốn bị tìm thấy; dán
+ * tên nó lên một tin cả sàn đọc được là phá đúng lời hứa đó, bằng một con đường không ai nghĩ
+ * tới khi gạt cái cờ kia. Người trong nhóm vẫn biết mình đang ở đâu — họ đọc tin đó từ bảng
+ * tin của chính nhóm.
+ *
+ * Nhóm đã xoá hoặc đang khoá cũng không có badge: `findByIds` bỏ bản ghi xoá mềm, còn hồ sơ
+ * của org đang khoá thì không mở được, nên dẫn người ta tới đó là dẫn vào ngõ cụt.
+ */
+async function withOrgBadge<T extends { organizationId: Types.ObjectId | null; toJSON(): unknown }>(
+  items: T[],
+) {
+  const ids = [...new Set(items.map((i) => i.organizationId?.toString()).filter(Boolean))]
+  if (ids.length === 0) return items.map((i) => i.toJSON())
+
+  const orgs = await organizationRepository.findByIds(ids.map((id) => new Types.ObjectId(id!)))
+  const badge = new Map(
+    orgs
+      .filter((o) => o.isPublic !== false && o.status === TENANT_STATUS.ACTIVE)
+      .map((o) => [
+        o._id.toString(),
+        { id: o._id.toString(), name: o.name, avatarUrl: o.avatarUrl },
+      ]),
+  )
+
+  return items.map((i) => ({
+    ...(i.toJSON() as Record<string, unknown>),
+    org: badge.get(i.organizationId?.toString() ?? '') ?? null,
+  }))
+}
+
 export const listingService = {
   /**
    * Đăng tin. Bốn chốt, theo đúng thứ tự này:
@@ -810,7 +853,7 @@ export const listingService = {
     const pagination = parsePagination(query)
     const { items, total } = await listingRepository.paginate(query, pagination)
     return {
-      items,
+      items: await withOrgBadge(items),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },
@@ -906,7 +949,10 @@ export const listingService = {
       },
       pagination,
     )
-    return { items, meta: { page: pagination.page, limit: pagination.limit } }
+    return {
+      items: await withOrgBadge(items),
+      meta: { page: pagination.page, limit: pagination.limit },
+    }
   },
 
   /**
@@ -961,7 +1007,10 @@ export const listingService = {
     const listing = await this.getForViewer(id, viewerId)
     await listingRepository.bumpView(listing._id)
     listing.viewCount += 1
-    return listing
+    // Qua cùng một cửa với danh sách: màn chi tiết và thẻ tin phải nói CÙNG một điều về nhóm,
+    // kể cả ở ca nhóm vừa bị gạt sang riêng tư.
+    const [withBadge] = await withOrgBadge([listing])
+    return withBadge
   },
 
   /**

@@ -137,6 +137,7 @@ export const organizationService = {
     return grants.map((grant) => {
       const user = byId.get(grant.userId.toString())
       return {
+        grantId: grant._id.toString(),
         userId: grant.userId.toString(),
         name: user?.name ?? null,
         email: user?.email ?? null,
@@ -347,12 +348,22 @@ export const organizationService = {
   },
 
   /**
-   * Hồ sơ nhóm công khai, đọc theo id — thứ người dùng xem TRƯỚC khi bấm xin vào.
+   * Hồ sơ nhóm, đọc theo id — thứ người dùng xem TRƯỚC khi bấm xin vào.
    *
-   * Nhóm riêng tư trả 404 chứ không 403: 403 xác nhận "có nhóm ở id này, chỉ là không cho
-   * xem", đủ để dò ra danh sách nhóm kín bằng cách quét id.
+   * BA cửa vào, và chỉ ba: nhóm công khai; thành viên của chính nhóm đó; hoặc người đưa đúng
+   * `code` của nhóm đó. Cửa thứ ba là chìa khoá chứ không phải ngoại lệ — cầm mã đã là điều
+   * kiện vào nhóm kín, nên bắt người ta gửi đơn vào một nơi chưa từng nhìn thấy là một bước
+   * thừa, không phải một lớp bảo vệ.
+   *
+   * MỌI ca hỏng đều trả 404, không bao giờ 403: 403 xác nhận "có nhóm ở id này, chỉ là không
+   * cho xem" — đủ để quét id ra danh sách nhóm kín, và với `code` sai thì đủ để biến endpoint
+   * thành máy dò mã cho một id đã biết. Chống brute-force là việc của `lookupLimiter` trên route.
+   *
+   * Cửa mã mở HỒ SƠ, không mở NỘI DUNG: tin của nhóm kín đều ở bậc `members`, và
+   * `listingPublicPredicate` vẫn cắt chúng khỏi người không phải thành viên. Người cầm mã đọc
+   * được nhóm là ai, không đọc được nhóm đang bán gì.
    */
-  async publicProfile(id: string, viewerId: string | null) {
+  async publicProfile(id: string, viewerId: string | null, code?: string) {
     const org = await organizationRepository.findAliveById(id)
     if (!org) throw new NotFoundError('Không tìm thấy nhóm này')
 
@@ -369,7 +380,8 @@ export const organizationService = {
      *
      * Vẫn 404 chứ không 403: 403 xác nhận "có nhóm ở id này", đủ để quét ra danh sách nhóm kín.
      */
-    if (org.isPublic === false && !membership) {
+    const holdsCode = Boolean(code) && normalizeJoinCode(code!) === org.joinCode
+    if (org.isPublic === false && !membership && !holdsCode) {
       throw new NotFoundError('Không tìm thấy nhóm này')
     }
 

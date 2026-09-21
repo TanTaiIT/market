@@ -475,3 +475,179 @@ describe('Đẩy tin lên đầu bảng', () => {
     await bump(groupAdmin, id).expect(200)
   }, 60_000)
 })
+
+/**
+ * AI PHỤ TRÁCH DANH MỤC NÀO — bảng master mở để biết gọi ai, và để thu hồi.
+ *
+ * Trước khi có route này, câu hỏi đó không trả lời được từ trong app: `/moderation/coverage`
+ * chỉ nói ô CÓ hay KHÔNG có người, `/role-grants/mine` chỉ trả quyền của chính người gọi. Hệ
+ * quả kèm theo là `DELETE /role-grants/:id` — vốn đã cho master thu hồi quyền của bất kỳ ai —
+ * nằm im không dùng được, vì không có đường nào lấy `id` của người khác.
+ */
+describe('Bảng phụ trách trục danh mục', () => {
+  const list = (who: TestUser, query = '') =>
+    request(app).get(`/api/v1/role-grants/category-axis${query}`).set(bearer(who))
+
+  it('CHỈ master đọc được — bảng này mang tên và email của cả hệ thống', async () => {
+    await list(master).expect(200)
+    // Chính người phụ trách danh mục cũng không đọc: họ không cần danh bạ của mọi ô khác.
+    await list(catManager).expect(403)
+    await list(orgOwner).expect(403)
+  }, 60_000)
+
+  it('trả đủ danh tính người giữ và `id` để thu hồi', async () => {
+    const rows = (await list(master).expect(200)).body.data
+    const mine = rows.find((r: { userId: string }) => r.userId === catManager.id)
+
+    expect(mine).toBeTruthy()
+    expect(mine.holderName).toBe('Phụ trách Việc làm HCM')
+    expect(mine.holderEmail).toContain('@')
+    expect(mine.holderActive).toBe(true)
+    expect(mine.categoryName).toBeTruthy()
+    // `id` là thứ DUY NHẤT `DELETE /role-grants/:id` nhận — thiếu nó thì bảng chỉ để nhìn.
+    expect(typeof mine.id).toBe('string')
+  }, 60_000)
+
+  it('lọc theo danh mục thu hẹp đúng, không nuốt mất ai', async () => {
+    const all = (await list(master).expect(200)).body.data
+    const onlyJobs = (await list(master, `?categoryId=${jobs}`).expect(200)).body.data
+
+    expect(onlyJobs.length).toBeGreaterThan(0)
+    expect(onlyJobs.length).toBeLessThan(all.length)
+    expect(onlyJobs.every((r: { categoryId: string }) => r.categoryId === jobs)).toBe(true)
+  }, 60_000)
+
+  /**
+   * Grant TOÀN QUỐC (`provinceCodes` rỗng) phải khớp MỌI tỉnh khi lọc theo tỉnh.
+   *
+   * Đây là ca dễ sai nhất: một `$in` suông trên `provinceCodes` sẽ trượt hẳn nó, và bảng đi
+   * tìm người phụ trách lại giấu đúng người phủ rộng nhất — master kết luận ô đó trống.
+   */
+  it('grant toàn quốc khớp mọi tỉnh khi lọc theo tỉnh', async () => {
+    const nationwide = await registerUser(app, 'toan-quoc@pub.local', 'Người phủ toàn quốc')
+    await grantRole({
+      userId: nationwide.id,
+      role: 'manager',
+      scopeType: 'category_province',
+      categoryId: jobs,
+      provinceCodes: [],
+    })
+
+    const rows = (await list(master, '?province=Hà Nội').expect(200)).body.data
+    expect(rows.some((r: { userId: string }) => r.userId === nationwide.id)).toBe(true)
+    // `catManager` chỉ phủ HCM nên KHÔNG được lọt vào kết quả của Hà Nội.
+    expect(rows.some((r: { userId: string }) => r.userId === catManager.id)).toBe(false)
+  }, 60_000)
+
+  it('master thu hồi được grant của người khác bằng `id` lấy từ bảng này', async () => {
+    const victim = await registerUser(app, 'sap-bi-go@pub.local', 'Người sắp bị gỡ')
+    await grantRole({
+      userId: victim.id,
+      role: 'manager',
+      scopeType: 'category_province',
+      categoryId: phones,
+      provinceCodes: [HCM],
+    })
+
+    const row = (await list(master).expect(200)).body.data.find(
+      (r: { userId: string }) => r.userId === victim.id,
+    )
+    expect(row).toBeTruthy()
+
+    await request(app).delete(`/api/v1/role-grants/${row.id}`).set(bearer(master)).expect(200)
+
+    const after = (await list(master).expect(200)).body.data
+    expect(after.some((r: { userId: string }) => r.userId === victim.id)).toBe(false)
+  }, 60_000)
+})
+
+/**
+ * SỬA PHẠM VI thay vì gỡ rồi cấp lại.
+ *
+ * Gỡ-rồi-cấp làm đứt vết kiểm toán (`grantedAt` nhảy về hôm nay) và để lại một khoảng ô đó
+ * không ai phụ trách. `PATCH` giữ nguyên `id` lẫn `grantedAt`.
+ *
+ * Ca cuối là chốt AN TOÀN, không phải chốt tiện dụng: cho phép biến một grant `org` thành
+ * `category_province` sẽ lấy đi quản trị cuối cùng của một nhóm mà KHÔNG chạm
+ * `usableOrgAdmins` — chốt đó nằm trong `revoke`, và một lượt sửa không đi qua đó.
+ */
+describe('Sửa phạm vi phụ trách', () => {
+  const patch = (who: TestUser, id: string, body: Record<string, unknown>) =>
+    request(app).patch(`/api/v1/role-grants/${id}`).set(bearer(who)).send(body)
+
+  const axisRow = async (userId: string) =>
+    (
+      await request(app).get('/api/v1/role-grants/category-axis').set(bearer(master)).expect(200)
+    ).body.data.find((r: { userId: string }) => r.userId === userId)
+
+  it('nâng từ tầng PHƯỜNG lên cả tỉnh — giữ nguyên id và grantedAt', async () => {
+    const who = await registerUser(app, 'nang-cap@pub.local', 'Người được nâng')
+    await grantRole({
+      userId: who.id,
+      role: 'manager',
+      scopeType: 'category_ward',
+      categoryId: jobs,
+      provinceCodes: [HCM],
+      wardCodes: ['Phường Bến Thành'],
+    })
+
+    const before = await axisRow(who.id)
+    expect(before.scopeType).toBe('category_ward')
+
+    await patch(master, before.id, {
+      scopeType: 'category_province',
+      categoryId: jobs,
+      provinceCodes: [HCM],
+      wardCodes: [],
+    }).expect(200)
+
+    const after = await axisRow(who.id)
+    expect(after.scopeType).toBe('category_province')
+    expect(after.wardCodes).toEqual([])
+    // Sửa, không phải cấp lại: hai mốc này phải đứng yên.
+    expect(after.id).toBe(before.id)
+    expect(after.grantedAt).toBe(before.grantedAt)
+  }, 60_000)
+
+  it('phạm vi sai hình dạng bị model chặn — 400, grant không nhúc nhích', async () => {
+    const row = await axisRow(catManager.id)
+
+    // `category_ward` đòi ĐÚNG một tỉnh và ít nhất một phường (`enforceScopeShape`).
+    await patch(master, row.id, {
+      scopeType: 'category_ward',
+      categoryId: jobs,
+      provinceCodes: [HCM],
+      wardCodes: [],
+    }).expect(400)
+
+    expect((await axisRow(catManager.id)).scopeType).toBe('category_province')
+  }, 60_000)
+
+  it('không phải master → 403', async () => {
+    const row = await axisRow(catManager.id)
+    await patch(catManager, row.id, {
+      scopeType: 'category_province',
+      categoryId: jobs,
+      provinceCodes: [HCM],
+      wardCodes: [],
+    }).expect(403)
+  }, 60_000)
+
+  /** Đổi TRỤC phải đi qua thu hồi + cấp lại, để chốt "org luôn còn một quản trị" còn chạy. */
+  it('grant trục ORG không sửa được bằng cửa này — 400', async () => {
+    const managers = (
+      await request(app)
+        .get(`/api/v1/organizations/${orgIdOf(ORG)}/managers`)
+        .set(bearer(master))
+        .expect(200)
+    ).body.data
+    expect(managers.length).toBeGreaterThan(0)
+
+    await patch(master, managers[0].grantId, {
+      scopeType: 'category_province',
+      categoryId: jobs,
+      provinceCodes: [HCM],
+      wardCodes: [],
+    }).expect(400)
+  }, 60_000)
+})
