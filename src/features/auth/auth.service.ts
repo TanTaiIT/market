@@ -5,6 +5,7 @@ import { AuthResult } from './auth.types'
 import { ConflictError, UnauthorizedError } from '../../common/errors'
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../common/utils/jwt'
 import { logger } from '../../config/logger'
+import { env } from '../../config/env'
 import { verifyGoogleIdToken } from './google.verify'
 
 function issueTokens(user: IUserDocument) {
@@ -34,6 +35,13 @@ export const authService = {
       email: input.email,
       phone: input.phone,
       password: input.password,
+      /*
+       * Cờ TẠM THỜI cho vòng kiểm duyệt — xem `SKIP_EMAIL_VERIFICATION` ở `config/env`.
+       *
+       * `undefined` khi tắt, không phải `null`: để `default` của model quyết định, y như trước
+       * khi có dòng này. Gỡ về sau = xoá đúng dòng này và cờ kia.
+       */
+      ...(env.SKIP_EMAIL_VERIFICATION ? { emailVerifiedAt: new Date() } : {}),
     })
     return { user, ...issueTokens(user) }
   },

@@ -50,7 +50,8 @@
     "migrate:listing-reach": "cross-env NODE_ENV=development tsx scripts/migrate-listing-reach.ts",
     "migrate:listing-reach:prod": "cross-env NODE_ENV=production tsx scripts/migrate-listing-reach.ts",
     "migrate:drop-org-slug": "cross-env NODE_ENV=development tsx scripts/migrate-drop-org-slug.ts",
-    "migrate:drop-org-slug:prod": "cross-env NODE_ENV=production tsx scripts/migrate-drop-org-slug.ts"
+    "migrate:drop-org-slug:prod": "cross-env NODE_ENV=production tsx scripts/migrate-drop-org-slug.ts",
+    "kyc:grandfather": "cross-env NODE_ENV=development tsx scripts/kyc-grandfather.ts"
   },
   "keywords": [
     "marketplace",

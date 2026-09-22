@@ -62,6 +62,8 @@ export interface IListing {
   description: string
   price: number
   isNegotiable: boolean
+  /** Người bán nhận giao tận nơi — LỜI HỨA CỦA HỌ, không phải dịch vụ của sàn. */
+  canDeliver: boolean
   condition: ListingCondition
   images: string[]
   category: Types.ObjectId
@@ -171,6 +173,13 @@ const listingSchema = new Schema<IListingDocument>(
     description: { type: String, required: true, maxlength: 5000 },
     price: { type: Number, required: true, min: 0 },
     isNegotiable: { type: Boolean, default: false },
+    /*
+     * `default: false` chứ không `true`: tin cũ (và tin của client chưa cập nhật) không được
+     * mặc nhiên hứa giao hàng thay người bán. Viên "Giao tận nơi" trên thẻ tin trước đây được
+     * SUY TỪ HASH CỦA ID (`placeholders.listingShips`) — nó nói dối người mua về mọi tin; field
+     * này là thứ thay nó, và mặc định im lặng là cách duy nhất không tiếp tục nói dối.
+     */
+    canDeliver: { type: Boolean, default: false },
 
     condition: {
       type: String,

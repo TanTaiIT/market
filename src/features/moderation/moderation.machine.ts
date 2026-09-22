@@ -14,6 +14,8 @@
  * nằm ở `countRecentRejections` — nó tự khoá cửa tự-đăng và bóp quota 7 ngày, đủ đau.
  */
 
+import { looksMashed } from './gibberish'
+
 export const MACHINE_REVIEW = {
   /** Mỗi lượt quét xử tối đa chừng này tin; phần dư chờ lượt sau. */
   BATCH_SIZE: 50,
@@ -57,6 +59,14 @@ export const DEFAULT_BANNED_PHRASES = [
 ] as const
 
 export const MACHINE_HOLDS = [
+  /**
+   * Tiêu đề/mô tả trông như gõ bừa ("gggggghhljflkajsdlf") — xem `gibberish.ts`.
+   *
+   * Là HOLD chứ không phải reject, và cố ý: heuristic thì có ngày đoán sai, mà cái giá của
+   * lần sai đó phải là một cái liếc mắt của người duyệt chứ không phải một tin thật bị đánh
+   * trượt. Nó cũng tự động tước fast-path lúc đăng, vì `fastPathFlagged` gọi cùng hàm này.
+   */
+  'gibberish',
   'price_over_cap',
   'price_outlier',
   'duplicate_title',
@@ -106,6 +116,13 @@ export function reviewByMachine(signals: MachineSignals): MachineVerdict {
   }
 
   const holds: MachineHold[] = []
+  // Soi CẢ tiêu đề lẫn mô tả trong một chuỗi: người gõ bừa hiếm khi chỉ bừa một ô, và dấu
+  // xuống dòng giữ cho token cuối tiêu đề không dính vào token đầu mô tả.
+  if (
+    looksMashed(`${signals.title}
+${signals.description}`)
+  )
+    holds.push('gibberish')
   if (signals.categoryRequiresReview) holds.push('category_manual_review')
   if (signals.hasRecentRejection) holds.push('recent_rejection')
   if (signals.hasDuplicateTitle) holds.push('duplicate_title')

@@ -53,6 +53,8 @@ export const createListingSchema = z
     description: z.string().min(10).max(5000),
     price: z.number().nonnegative(),
     isNegotiable: z.boolean().optional(),
+    /** Người bán nhận giao tận nơi. Bỏ trống = không — xem `default` ở model. */
+    canDeliver: z.boolean().optional(),
     condition: z.nativeEnum(LISTING_CONDITION).optional(),
     categoryId: objectId,
     // Cùng một luật với ảnh nhóm — trước đây đường này lỏng hơn, và đó là lỗ hổng thật: ảnh
@@ -184,6 +186,7 @@ export const updateListingSchema = createListingSchema
     description: true,
     price: true,
     isNegotiable: true,
+    canDeliver: true,
     condition: true,
     categoryId: true,
     images: true,
@@ -408,6 +411,7 @@ export const listingResponseSchema = z
     description: z.string(),
     price: z.number(),
     isNegotiable: z.boolean(),
+    canDeliver: z.boolean(),
     condition: z.nativeEnum(LISTING_CONDITION),
     images: z.array(z.string().url()),
     category: objectId,

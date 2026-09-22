@@ -641,6 +641,9 @@
           "isNegotiable": {
             "type": "boolean"
           },
+          "canDeliver": {
+            "type": "boolean"
+          },
           "condition": {
             "type": "string",
             "enum": [
@@ -1113,6 +1116,9 @@
           "isNegotiable": {
             "type": "boolean"
           },
+          "canDeliver": {
+            "type": "boolean"
+          },
           "condition": {
             "type": "string",
             "enum": [
@@ -1272,6 +1278,9 @@
             "type": "number"
           },
           "isNegotiable": {
+            "type": "boolean"
+          },
+          "canDeliver": {
             "type": "boolean"
           },
           "condition": {
@@ -1441,6 +1450,7 @@
           "description",
           "price",
           "isNegotiable",
+          "canDeliver",
           "condition",
           "images",
           "category",
@@ -4067,6 +4077,192 @@
           "users",
           "listings",
           "moderation"
+        ]
+      },
+      "SubmitKyc": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "subjectType": {
+                "type": "string",
+                "enum": [
+                  "individual"
+                ]
+              },
+              "fullName": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 100
+              },
+              "birthDate": {
+                "type": "string",
+                "nullable": true
+              },
+              "idNumber": {
+                "type": "string",
+                "pattern": "^\\d{9,12}$"
+              }
+            },
+            "required": [
+              "subjectType",
+              "fullName",
+              "birthDate",
+              "idNumber"
+            ]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "subjectType": {
+                "type": "string",
+                "enum": [
+                  "company"
+                ]
+              },
+              "companyName": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 200
+              },
+              "companyAddress": {
+                "type": "string",
+                "minLength": 5,
+                "maxLength": 300
+              },
+              "companyTaxCode": {
+                "type": "string",
+                "pattern": "^\\d{10}(-\\d{3})?$"
+              },
+              "fullName": {
+                "type": "string",
+                "minLength": 2,
+                "maxLength": 100
+              },
+              "birthDate": {
+                "type": "string",
+                "nullable": true
+              },
+              "idNumber": {
+                "type": "string",
+                "pattern": "^\\d{9,12}$"
+              }
+            },
+            "required": [
+              "subjectType",
+              "companyName",
+              "companyAddress",
+              "companyTaxCode",
+              "fullName",
+              "birthDate",
+              "idNumber"
+            ]
+          }
+        ]
+      },
+      "RejectKyc": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "KycProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "userId": {
+            "type": "string",
+            "pattern": "^[0-9a-fA-F]{24}$"
+          },
+          "subjectType": {
+            "type": "string",
+            "enum": [
+              "individual",
+              "company"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "birthDate": {
+            "type": "string"
+          },
+          "companyName": {
+            "type": "string"
+          },
+          "companyAddress": {
+            "type": "string"
+          },
+          "companyTaxCode": {
+            "type": "string"
+          },
+          "rejectReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "reviewedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "subjectType",
+          "status",
+          "fullName",
+          "birthDate",
+          "rejectReason",
+          "reviewedAt",
+          "createdAt"
+        ]
+      },
+      "KycDetail": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/KycProfile"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "idNumber": {
+                "type": "string"
+              },
+              "accountName": {
+                "type": "string"
+              },
+              "accountEmail": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "idNumber",
+              "accountName",
+              "accountEmail"
+            ]
+          }
         ]
       },
       "MySupportThread": {
@@ -15516,6 +15712,465 @@
           },
           "403": {
             "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc/me": {
+      "post": {
+        "operationId": "submitKyc",
+        "tags": [
+          "Kyc"
+        ],
+        "summary": "Nộp hồ sơ định danh người bán",
+        "description": "Yêu cầu tuân thủ của Bộ Công Thương. Cá nhân: họ tên, ngày sinh, số định danh. Công ty: thêm tên, địa chỉ trụ sở và mã số doanh nghiệp, còn ba trường cá nhân là của NGƯỜI ĐẠI DIỆN THEO PHÁP LUẬT. Nộp lại sau khi bị từ chối sẽ SỬA chính hồ sơ cũ; hồ sơ đã duyệt thì khoá (409) — đổi số định danh sau khi duyệt là đi vòng qua chính bước duyệt.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitKyc"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Đã nộp hồ sơ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/KycProfile"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Thông tin không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Hồ sơ đã được duyệt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "operationId": "myKyc",
+        "tags": [
+          "Kyc"
+        ],
+        "summary": "Hồ sơ định danh của tôi",
+        "description": "`data: null` = chưa nộp — một trạng thái hợp lệ, không phải 404.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hồ sơ của tôi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "allOf": [
+                        {
+                          "$ref": "#/components/schemas/KycProfile"
+                        },
+                        {
+                          "nullable": true
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc": {
+      "get": {
+        "operationId": "listKyc",
+        "tags": [
+          "Kyc"
+        ],
+        "summary": "Bàn duyệt hồ sơ định danh (master)",
+        "description": "Mặc định xếp CŨ TRƯỚC — hàng chờ xử theo thứ tự đến.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "rejected"
+              ]
+            },
+            "required": false,
+            "name": "status",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true
+            },
+            "required": false,
+            "name": "page",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "exclusiveMinimum": true,
+              "maximum": 100
+            },
+            "required": false,
+            "name": "limit",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Hồ sơ định danh",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/KycProfile"
+                      }
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc/{id}": {
+      "get": {
+        "operationId": "kycDetail",
+        "tags": [
+          "Kyc"
+        ],
+        "summary": "Chi tiết hồ sơ, kèm số định danh (master)",
+        "description": "Đường DUY NHẤT trả về `idNumber`. Mọi DTO khác cố ý không mang nó — số định danh chỉ ra khỏi DB khi người duyệt mở đúng một hồ sơ để đối chiếu.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chi tiết hồ sơ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/KycDetail"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy hồ sơ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc/{id}/approve": {
+      "patch": {
+        "operationId": "approveKyc",
+        "tags": [
+          "Kyc"
+        ],
+        "summary": "Duyệt hồ sơ định danh (master)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Duyệt hồ sơ định danh (master)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/KycProfile"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy hồ sơ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/kyc/{id}/reject": {
+      "patch": {
+        "operationId": "rejectKyc",
+        "tags": [
+          "Kyc"
+        ],
+        "summary": "Từ chối hồ sơ định danh (master)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectKyc"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Từ chối hồ sơ định danh (master)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/KycProfile"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy hồ sơ",
             "content": {
               "application/json": {
                 "schema": {

@@ -23,10 +23,33 @@ import bannedPhraseRoutes from './banned-phrase/banned-phrase.routes'
 import listingProductRoutes from './listing-product/listing-product.routes'
 import walletRoutes from './wallet/wallet.routes'
 import metricsRoutes from './metrics/metrics.routes'
+// Lớp phủ tuân thủ — xem khối `kycGate` bên dưới. Hai import này đi cùng nhau và cùng bị gỡ.
+import kycRoutes from './kyc/kyc.routes'
+import { kycGate } from './kyc/kyc.middleware'
+import { optionalAuth } from '../middlewares/auth.middleware'
+import { env } from '../config/env'
 import supportRoutes from './support/support.routes'
 import socialFeedbackRoutes from './social-feedback/social-feedback.routes'
 
 const router = Router()
+
+/*
+ * LỚP PHỦ TUÂN THỦ — Bộ Công Thương đòi tài khoản phải qua duyệt mới dùng được.
+ *
+ * Cả khối này là TOÀN BỘ chỗ nó chạm vào hệ thống. Ba điều phải đúng cùng lúc:
+ *
+ * 1. ĐỨNG TRƯỚC mọi route nghiệp vụ — Express khớp theo thứ tự; đặt ở cuối file thì cổng không
+ *    bao giờ chạy cho `/listings`. (`/auth` và `/kyc` nằm trong allowlist của chính nó.)
+ * 2. KÈM `optionalAuth` — `authenticate` chạy BÊN TRONG từng feature router, nên ở tầng này
+ *    `req.user` chưa tồn tại và cổng sẽ cho qua tất. Đây là bản `optionalAuth`: token hỏng thì
+ *    coi như khách, không ném.
+ * 3. CHỈ MOUNT KHI CỜ BẬT. Tắt cờ thì không một middleware nào được cắm vào — không phải "cắm
+ *    rồi trả về sớm". Đó là khác biệt giữa "không ảnh hưởng" và "gần như không ảnh hưởng".
+ *
+ * Gỡ về sau = xoá khối này, hai `import` ở trên, và thư mục `features/kyc`.
+ */
+if (env.KYC_REQUIRED) router.use(optionalAuth, kycGate)
+router.use('/kyc', kycRoutes)
 
 // --- Core modules ---
 router.use('/auth', authRoutes)

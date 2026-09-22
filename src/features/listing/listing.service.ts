@@ -219,6 +219,7 @@ function toListingDoc(
     description: input.description,
     price: input.price,
     isNegotiable: input.isNegotiable ?? false,
+    canDeliver: input.canDeliver ?? false,
     condition: input.condition,
     images: input.images,
     category: new Types.ObjectId(input.categoryId),

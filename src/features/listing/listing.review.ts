@@ -52,6 +52,10 @@ const HOLD_TEXT: Record<MachineHold, { message: string; hint?: string }> = {
   category_manual_review: {
     message: 'Danh mục này luôn qua người duyệt, không phụ thuộc uy tín.',
   },
+  gibberish: {
+    message: 'Tiêu đề hoặc mô tả trông như gõ ngẫu nhiên, nên tin cần người duyệt xem qua.',
+    hint: 'Viết rõ tên món đồ và vài dòng mô tả thật — tin sẽ lên bảng nhanh hơn nhiều.',
+  },
 }
 
 /** Lý do chờ KHÔNG đến từ máy quét — về uy tín, tư cách, hay cấu hình danh mục. */
