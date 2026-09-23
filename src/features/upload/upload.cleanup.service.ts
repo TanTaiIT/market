@@ -72,29 +72,61 @@ interface CleanupResult {
   scanned: number
   orphans: number
   deleted: number
+  /** public_id của những asset bị coi là mồ côi — để script kiểm tra in ra soi bằng mắt. */
+  orphanIds: string[]
 }
 
 export const uploadCleanupService = {
-  async sweep(cfg: CleanupConfig | null = cleanupConfigFromEnv()): Promise<CleanupResult> {
+  /**
+   * @param dryRun Tính ra danh sách mồ côi rồi DỪNG, không gọi lệnh xoá nào. `scripts/
+   * check-cloudinary.ts` chạy ở chế độ này để xem job SẼ xoá gì trước khi cho nó xoá thật.
+   */
+  async sweep(
+    cfg: CleanupConfig | null = cleanupConfigFromEnv(),
+    { dryRun = false }: { dryRun?: boolean } = {},
+  ): Promise<CleanupResult> {
     if (!cfg) {
       logger.info('image cleanup: bỏ qua — thiếu CLOUDINARY_* trong env')
-      return { scanned: 0, orphans: 0, deleted: 0 }
+      return { scanned: 0, orphans: 0, deleted: 0, orphanIds: [] }
     }
 
     const stale = await searchStale(cfg)
-    if (stale.length === 0) return { scanned: 0, orphans: 0, deleted: 0 }
+    if (stale.length === 0) return { scanned: 0, orphans: 0, deleted: 0, orphanIds: [] }
 
     const referenced = await referencedPublicIds(cfg.cloudName)
+
+    /*
+     * CHỐT AN TOÀN — không có nó thì một lỗi ở phía DB là mất sạch ảnh.
+     *
+     * `orphans` = `stale` trừ đi `referenced`. Nên nếu `referenced` rỗng vì bất kỳ lý do gì —
+     * query hỏng, `MONGO_URI` trỏ nhầm sang một DB trống, `CLOUDINARY_CLOUD_NAME` lệch với
+     * cloud trong URL đã lưu nên `publicIdOf` trả `null` hết — thì MỌI asset trong folder biến
+     * thành mồ côi và job xoá sạch kho ảnh đang dùng. Không có đường khôi phục.
+     *
+     * "Kho ảnh còn hàng mà DB không tham chiếu lấy một tấm" gần như luôn là hỏng cấu hình chứ
+     * không phải sự thật. Ca thật duy nhất — hệ thống mới tinh, có người upload rồi bỏ ngang mà
+     * chưa ai đăng nổi một tin — chỉ khiến vài tấm rác ở lại thêm một thời gian. Đổi lấy việc
+     * không bao giờ xoá nhầm toàn bộ kho, đó là cái giá rẻ.
+     */
+    if (referenced.size === 0) {
+      logger.error('image cleanup: DỪNG — kho có ảnh nhưng DB không tham chiếu tấm nào', {
+        scanned: stale.length,
+      })
+      return { scanned: stale.length, orphans: 0, deleted: 0, orphanIds: [] }
+    }
+
     const orphans = stale.filter((id) => !referenced.has(id))
 
     let deleted = 0
-    for (let i = 0; i < orphans.length; i += CLEANUP.DELETE_BATCH) {
-      deleted += await deleteBatch(cfg, orphans.slice(i, i + CLEANUP.DELETE_BATCH))
+    if (!dryRun) {
+      for (let i = 0; i < orphans.length; i += CLEANUP.DELETE_BATCH) {
+        deleted += await deleteBatch(cfg, orphans.slice(i, i + CLEANUP.DELETE_BATCH))
+      }
     }
 
     const result = { scanned: stale.length, orphans: orphans.length, deleted }
-    logger.info('image cleanup sweep', { ...result })
-    return result
+    logger.info(dryRun ? 'image cleanup sweep (dry-run)' : 'image cleanup sweep', { ...result })
+    return { ...result, orphanIds: orphans }
   },
 }
 
@@ -125,17 +157,28 @@ async function searchStale(cfg: CleanupConfig): Promise<string[]> {
   return ids
 }
 
-/** Mọi public_id đang có chủ trong DB — nguồn nào giữ URL ảnh thì phải có mặt ở đây. */
-async function referencedPublicIds(cloudName: string): Promise<Set<string>> {
+/**
+ * Mọi URL ảnh đang được DB giữ, còn NGUYÊN chuỗi — chưa qua `publicIdOf`.
+ *
+ * Tách khỏi `referencedPublicIds` để `scripts/check-cloudinary.ts` soi được đúng tập URL mà job
+ * nhìn thấy: chốt an toàn quan trọng nhất của cả tính năng là "URL của cloud này có parse được
+ * không", mà sau khi parse hỏng thì bằng chứng đã mất — `publicIdOf` trả `null` và URL bị bỏ
+ * lặng lẽ khỏi tập "còn chủ".
+ */
+export async function allStoredImageUrls(): Promise<string[]> {
   const [listingUrls, avatarUrls, orgUrls, chatUrls] = await Promise.all([
     listingRepository.allImageRefs(),
     userRepository.allAvatars(),
     organizationRepository.allImageUrls(),
     chatRepository.allConversationAvatars(),
   ])
+  return [...listingUrls, ...avatarUrls, ...orgUrls, ...chatUrls]
+}
 
+/** Mọi public_id đang có chủ trong DB — nguồn nào giữ URL ảnh thì phải có mặt ở đây. */
+async function referencedPublicIds(cloudName: string): Promise<Set<string>> {
   const referenced = new Set<string>()
-  for (const url of [...listingUrls, ...avatarUrls, ...orgUrls, ...chatUrls]) {
+  for (const url of await allStoredImageUrls()) {
     const id = publicIdOf(url, cloudName)
     if (id) referenced.add(id)
   }
@@ -154,9 +197,10 @@ async function deleteBatch(cfg: CleanupConfig, publicIds: string[]): Promise<num
 }
 
 /** Admin API = Basic auth `api_key:api_secret` — chính vì header này mà job phải sống ở BE. */
-async function cloudinaryCall<T>(
+export async function cloudinaryCall<T>(
   cfg: CleanupConfig,
-  method: 'POST' | 'DELETE',
+  // `GET` chỉ để script kiểm tra đọc cấu hình preset và đếm asset — job không dùng tới nó.
+  method: 'GET' | 'POST' | 'DELETE',
   path: string,
   jsonBody?: unknown,
 ): Promise<T> {

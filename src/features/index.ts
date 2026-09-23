@@ -89,8 +89,10 @@ router.use('/metrics', metricsRoutes)
 // --- Bàn quản trị của một org (manager | staff, xét bằng role_grants) ---
 router.use('/moderation', moderationRoutes)
 
-// --- Skeleton modules (trả 501 cho tới khi triển khai) ---
+// --- Ký cho app upload ảnh thẳng lên Cloudinary (server không nhận file) ---
 router.use('/uploads', uploadRoutes)
+
+// --- Skeleton modules (trả 501 cho tới khi triển khai) ---
 router.use('/search', searchRoutes)
 router.use('/reviews', reviewRoutes)
 

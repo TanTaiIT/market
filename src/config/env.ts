@@ -152,6 +152,14 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
   CLOUDINARY_UPLOAD_FOLDER: z.string().default('ghim'),
+  /**
+   * Preset mà app gửi kèm mỗi lượt upload. Từ khi preset chuyển sang **Signed**, tên nó là một
+   * tham số ĐƯỢC KÝ — app không được tự chọn nữa, nếu không chữ ký và request lệch nhau.
+   *
+   * Tên `ghim_unsigned` giữ nguyên vì đó là tên thật đang có trên Console; đổi tên ở đó thì đổi
+   * cả biến này. (Tên giờ sai nghĩa, nhưng đổi tên preset là một lượt downtime upload.)
+   */
+  CLOUDINARY_UPLOAD_PRESET: z.string().default('ghim_unsigned'),
   IMAGE_CLEANUP_EVERY: z.string().default('24 hours'),
 
   /*

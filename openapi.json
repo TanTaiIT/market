@@ -4625,6 +4625,37 @@
         ],
         "additionalProperties": false
       },
+      "UploadSignature": {
+        "type": "object",
+        "properties": {
+          "cloudName": {
+            "type": "string"
+          },
+          "apiKey": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer"
+          },
+          "signature": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "uploadPreset": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "cloudName",
+          "apiKey",
+          "timestamp",
+          "signature",
+          "folder",
+          "uploadPreset"
+        ]
+      },
       "BannedPhrase": {
         "type": "object",
         "properties": {
@@ -13051,6 +13082,82 @@
           },
           "404": {
             "description": "Không tìm thấy hội thoại, hoặc bạn không thuộc hội thoại này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/uploads/signature": {
+      "post": {
+        "operationId": "uploadSignature",
+        "tags": [
+          "Upload"
+        ],
+        "summary": "Chữ ký cho một lượt upload ảnh lên Cloudinary",
+        "description": "Preset Cloudinary chạy ở chế độ **Signed**, nên app phải gửi kèm `api_key`, `timestamp` và `signature`. Chữ ký được tính từ `api_secret` — thứ chỉ tồn tại ở server. Gọi một lần cho MỖI ảnh: `timestamp` nằm trong chữ ký nên không dùng lại được lâu.\n\nGửi lên Cloudinary đúng các trường: `file`, `api_key`, `timestamp`, `signature`, `folder`, `upload_preset` — thừa hoặc thiếu một trường được ký đều làm chữ ký sai.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Chữ ký upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/UploadSignature"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Chưa đăng nhập",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều lượt xin chữ ký",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Server chưa cấu hình CLOUDINARY_*",
             "content": {
               "application/json": {
                 "schema": {
