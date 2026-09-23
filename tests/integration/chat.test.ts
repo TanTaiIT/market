@@ -160,6 +160,26 @@ describe('Chat — mở hội thoại', () => {
     conversationId = res.body.data.id
   })
 
+  /*
+   * Ghim thẳng BẤT BIẾN thay vì ghim triệu chứng.
+   *
+   * `unread` ở test trên tính bằng `lastReadAt < lastMessageAt`, nên nó chỉ đúng khi hai mốc
+   * BẰNG nhau. Trước đây chúng là hai lần `new Date()` riêng: máy nhanh thì rơi cùng mili-giây
+   * và test xanh, CI chậm hơn thì thỉnh thoảng lệch 1ms và hội thoại vừa mở đã sáng đèn chưa
+   * đọc. Test này so thẳng hai con số, nên nó không có cửa nào để nhấp nháy.
+   */
+  it('mốc mở hội thoại và mốc đã-đọc của người mở là MỘT', async () => {
+    const doc = await mongoose.connection
+      .collection('conversations')
+      .findOne({ _id: new Types.ObjectId(conversationId) })
+    expect(doc).not.toBeNull()
+
+    const participants = doc!.participants as Array<{ user: Types.ObjectId; lastReadAt: Date }>
+    const opener = participants.find((p) => p.user.toString() === buyer.id)
+
+    expect(opener?.lastReadAt.getTime()).toBe((doc!.lastMessageAt as Date).getTime())
+  })
+
   it('tin KHÔNG có ảnh thì `listingImage` rỗng, không phải thiếu field', async () => {
     // Client phân biệt "chưa có ảnh" (vẽ dải màu) với "field không tồn tại" (lỗi hợp đồng) —
     // nên chuỗi rỗng phải luôn có mặt.

@@ -112,29 +112,44 @@ describe('GET /categories/:id/template', () => {
   it('?version= ghim đúng bản đó — form sửa tin dựng lại bộ field lúc tạo tin', async () => {
     const { CategoryTemplate } =
       await import('../../src/features/category-template/category-template.model')
-    // v2 bỏ `repairHistory` và thêm `ram` — đủ khác để phân biệt hai bản.
-    const v2 = await CategoryTemplate.create({
+    /*
+     * Dựng bản CŨ, không dựng bản mới.
+     *
+     * `seedCatalog` ship Điện thoại ở **version 2** và không ship version 1 — v1 chỉ còn sống
+     * trong những DB đã deploy từ trước, đúng như ghi chú ở `TEMPLATES`. Trên một DB trắng như
+     * test này thì chỉ có v2, nên muốn có hai bản để ghim, thứ phải tự dựng là bản THIẾU: v1.
+     *
+     * Bản trước dựng v2 và ăn E11000 ngay tại dòng `create` — nó được viết từ thời seed còn
+     * dừng ở v1, và gãy im lặng khi template Điện thoại được nâng bản.
+     */
+    const v1 = await CategoryTemplate.create({
       categoryId: phoneCategoryId,
-      version: 2,
+      version: 1,
       status: 'published',
       fieldKeys: [
         { key: 'brand', order: 10, required: true },
-        { key: 'ram', order: 20, required: true },
+        { key: 'storage', order: 20, required: true },
       ],
     })
 
-    // `finally` chứ không dọn ở cuối thân test: v2 là bản MỚI NHẤT khi nó còn tồn tại, nên để
-    // sót lại là mọi test đăng tin phía sau bị xét bằng một template khác hẳn.
+    // `finally`: để sót v1 thì test sau vẫn chạy đúng (v2 vẫn là bản mới nhất), nhưng một bản
+    // thừa nằm lại trong DB là thứ test sau phải đoán.
     try {
       const latest = await getTemplate(phoneCategoryId).expect(200)
       expect(latest.body.data.version).toBe(2)
+      // `ram` chỉ có ở v2 — đủ để chắc đang đọc bản mới chứ không phải bản vừa dựng.
       expect(latest.body.data.fields.map((f: { key: string }) => f.key)).toContain('ram')
 
       const pinned = await getTemplate(phoneCategoryId).query({ version: 1 }).expect(200)
       expect(pinned.body.data.version).toBe(1)
-      expect(pinned.body.data.fields.map((f: { key: string }) => f.key)).toContain('repairHistory')
+      // So TRỌN bộ field, không `toContain`: ghim version mà trả nhầm bản thì danh sách khác hẳn,
+      // còn `toContain` vẫn xanh nếu hai bản tình cờ chung một field.
+      expect(pinned.body.data.fields.map((f: { key: string }) => f.key)).toEqual([
+        'brand',
+        'storage',
+      ])
     } finally {
-      await CategoryTemplate.deleteOne({ _id: v2._id })
+      await CategoryTemplate.deleteOne({ _id: v1._id })
     }
   })
 
@@ -219,7 +234,9 @@ describe('POST /listings — attributes đi qua template', () => {
           model: 'iPhone 12',
           storage: '128',
           repairHistory: 'screen',
-          color: 'xanh',
+          // `blue`, không phải 'xanh': v2 đổi `color` từ ô gõ tay sang danh sách màu chuẩn, nên
+          // giá trị tự do giờ bị `validateAttributes` từ chối thẳng bằng 400.
+          color: 'blue',
         }),
       )
       .expect(201)

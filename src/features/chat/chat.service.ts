@@ -72,6 +72,20 @@ export const chatService = {
     if (!buyer) throw new NotFoundError('User not found')
     if (!seller) throw new NotFoundError('Người bán không còn tài khoản trong trường này')
 
+    /*
+     * MỘT mốc thời gian cho cả `lastReadAt` của người mở lẫn `lastMessageAt` của hội thoại.
+     *
+     * Trước đây là hai lần gọi `new Date()` riêng, cách nhau vài dòng. Vì `toConversationDto`
+     * tính `unread` bằng `lastReadAt < lastMessageAt`, hai giá trị bằng nhau cho `false` —
+     * nhưng chỉ cần đồng hồ nhảy 1ms giữa hai dòng đó là thành `true`, và hội thoại vừa mở,
+     * chưa có lấy một tin nhắn, đã sáng đèn "chưa đọc".
+     *
+     * Hỏng theo kiểu không tái hiện được: máy dev nhanh thì hai lời gọi rơi cùng một mili-giây
+     * và test xanh, máy CI chậm hơn thì thỉnh thoảng đỏ. Một mốc dùng chung bỏ hẳn cái xác suất
+     * đó — không phải nới assertion cho test bớt khó tính.
+     */
+    const now = new Date()
+
     const conversation = await chatRepository.create({
       // Chụp lại nhóm của tin để còn biết hội thoại này đến từ bảng tin nào; `null` với tin
       // công khai. Chỉ để đọc — không call-site nào được dùng nó làm điều kiện truy cập.
@@ -88,7 +102,8 @@ export const chatService = {
           user: buyer._id,
           name: buyer.name,
           avatar: buyer.avatar,
-          lastReadAt: new Date(),
+          // Người mở coi như đã đọc tới đúng mốc khai sinh của hội thoại — xem `now` ở trên.
+          lastReadAt: now,
           hidden: false,
           clearedAt: null,
         },
@@ -102,7 +117,7 @@ export const chatService = {
         },
       ],
       lastMessage: '',
-      lastMessageAt: new Date(),
+      lastMessageAt: now,
       lastSenderId: null,
     })
 
