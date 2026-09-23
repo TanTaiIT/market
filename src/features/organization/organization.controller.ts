@@ -44,10 +44,14 @@ export const organizationController = {
     success(res, { message: 'Tổ chức của tôi', data })
   }),
 
-  // GET /organizations/profile/:slug  (công khai)
+  // GET /organizations/profile/:organizationId  (công khai)
   publicProfile: catchAsync(async (req, res) => {
     // `req.user` có thể vắng: route công khai, khách chưa đăng nhập vẫn xem được hồ sơ.
-    const data = await organizationService.publicProfile(req.params.slug, req.user?.id ?? null)
+    const data = await organizationService.publicProfile(
+      req.params.organizationId,
+      req.user?.id ?? null,
+      typeof req.query.code === 'string' ? req.query.code : undefined,
+    )
     success(res, { message: 'Hồ sơ nhóm', data })
   }),
 
@@ -55,15 +59,6 @@ export const organizationController = {
   lookup: catchAsync(async (req, res) => {
     const data = await organizationService.discover(String(req.query.q ?? ''))
     success(res, { message: 'Organization lookup', data })
-  }),
-
-  // GET /organizations/slug-availability?slug=
-  slugAvailability: catchAsync(async (req, res) => {
-    const data = await organizationService.checkSlugAvailability(String(req.query.slug), {
-      district: req.query.district ? String(req.query.district) : null,
-      provinceCode: req.query.provinceCode ? String(req.query.provinceCode) : null,
-    })
-    success(res, { message: 'Slug availability', data })
   }),
 
   // GET /organizations  (master)
@@ -91,11 +86,5 @@ export const organizationController = {
       req.body.isPublic,
     )
     success(res, { message: 'Đã đổi chế độ hiển thị', data: toOrganizationDto(org) })
-  }),
-
-  // PATCH /organizations/:organizationId/slug  (master)
-  changeSlug: catchAsync(async (req, res) => {
-    const org = await organizationService.changeSlug(req.params.organizationId, req.body.slug)
-    success(res, { message: 'Đã đổi slug', data: toOrganizationDto(org) })
   }),
 }

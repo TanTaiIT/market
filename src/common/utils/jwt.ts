@@ -5,7 +5,7 @@ import { env } from '../../config/env'
  * Payload chỉ còn `sub`.
  *
  * Bỏ `organizationId`: tài khoản là toàn cục, và org hoạt động do TỪNG REQUEST chỉ ra
- * (subdomain / header `X-Org-Slug`), rồi được đối chiếu với `memberships` ở thời điểm đó.
+ * (header `X-Org-Id`), rồi được đối chiếu với `memberships` ở thời điểm đó.
  * Nhét org vào token nghĩa là quyền truy cập org đóng băng theo hạn token — rời org xong vẫn
  * vào được cho tới khi token hết hạn.
  *

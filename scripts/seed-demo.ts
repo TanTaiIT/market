@@ -30,7 +30,7 @@ import {
   MEMBERSHIP_ROLES,
   ORG_CAPABILITY_PRESETS,
   ORG_TYPES,
-  POST_VISIBILITY,
+  LISTING_REACH,
   SCOPE_TYPES,
   SYSTEM_ROLES,
   VnProvinceName,
@@ -47,7 +47,7 @@ import {
  * thì mọi kết luận rút ra từ nó đều sai theo.
  *
  * KHÔNG xoá sạch database (việc đó là của `reset:keep-master`). Nó chỉ dọn ĐÚNG những gì
- * chính nó tạo ra — nhận diện bằng khoá tự nhiên (`SEED_EMAILS`, `GROUPS[].slug`) — nên chạy
+ * chính nó tạo ra — nhận diện bằng khoá tự nhiên (`SEED_EMAILS`, `GROUPS[].name`) — nên chạy
  * lại nhiều lần vẫn ra cùng một trạng thái mà không đụng tới dữ liệu ai khác đang dùng.
  *
  * Chạy: npm run reset:keep-master && npm run seed:demo
@@ -100,7 +100,6 @@ const SEED_EMAILS = PEOPLE.map((p) => `${p.key}@gmail.com`)
 
 interface GroupSeed {
   name: string
-  slug: string
   orgType: (typeof ORG_TYPES)[keyof typeof ORG_TYPES]
   provinceCode: VnProvinceName
   description: string
@@ -119,7 +118,6 @@ interface GroupSeed {
 const GROUPS: GroupSeed[] = [
   {
     name: 'Trường THPT Hùng Vương',
-    slug: 'thpt-hung-vuong',
     orgType: ORG_TYPES.SCHOOL,
     provinceCode: 'Hồ Chí Minh',
     description: 'Chợ đồ cũ nội bộ của học sinh và cựu học sinh trường THPT Hùng Vương.',
@@ -128,7 +126,6 @@ const GROUPS: GroupSeed[] = [
   },
   {
     name: 'Trường THPT Cao Thắng',
-    slug: 'thpt-cao-thang',
     orgType: ORG_TYPES.SCHOOL,
     provinceCode: 'Hồ Chí Minh',
     description: 'Nơi học sinh Cao Thắng trao đổi sách vở, đồ dùng học tập và xe đạp.',
@@ -137,7 +134,6 @@ const GROUPS: GroupSeed[] = [
   },
   {
     name: 'Đại học Bách Khoa',
-    slug: 'dai-hoc-bach-khoa',
     orgType: ORG_TYPES.SCHOOL,
     provinceCode: 'Hồ Chí Minh',
     description: 'Sinh viên Bách Khoa mua bán laptop, linh kiện và giáo trình.',
@@ -146,7 +142,6 @@ const GROUPS: GroupSeed[] = [
   },
   {
     name: 'Công ty AhaSoft',
-    slug: 'cong-ty-ahasoft',
     orgType: ORG_TYPES.COMPANY,
     provinceCode: 'Hà Nội',
     description: 'Sàn nội bộ của nhân viên AhaSoft — thanh lý thiết bị và đồ dùng cá nhân.',
@@ -155,7 +150,6 @@ const GROUPS: GroupSeed[] = [
   },
   {
     name: 'Chung cư Vinhomes Grand Park',
-    slug: 'vinhomes-grand-park',
     orgType: ORG_TYPES.COMMUNITY,
     provinceCode: 'Hồ Chí Minh',
     description: 'Cư dân Vinhomes Grand Park mua bán, cho tặng đồ trong khu.',
@@ -164,7 +158,6 @@ const GROUPS: GroupSeed[] = [
   },
   {
     name: 'Hội Nhiếp ảnh Sài Gòn',
-    slug: 'nhiep-anh-sai-gon',
     orgType: ORG_TYPES.COMMUNITY,
     provinceCode: 'Hồ Chí Minh',
     description: 'Sang nhượng máy ảnh, ống kính và phụ kiện giữa anh em nhiếp ảnh.',
@@ -173,7 +166,6 @@ const GROUPS: GroupSeed[] = [
   },
   {
     name: 'CLB Xe cổ Hà Nội',
-    slug: 'clb-xe-co-ha-noi',
     orgType: ORG_TYPES.COMMUNITY,
     provinceCode: 'Hà Nội',
     description: 'Nơi trao đổi xe máy cổ, phụ tùng và đồ chơi xe của anh em thủ đô.',
@@ -182,7 +174,6 @@ const GROUPS: GroupSeed[] = [
   },
   {
     name: 'Chợ đồ cũ Đà Nẵng',
-    slug: 'cho-do-cu-da-nang',
     orgType: ORG_TYPES.GENERIC,
     provinceCode: 'Đà Nẵng',
     description: 'Chợ đồ cũ mở cho tất cả người dân Đà Nẵng — không cần là thành viên.',
@@ -191,7 +182,6 @@ const GROUPS: GroupSeed[] = [
   },
   {
     name: 'Hội Mẹ và Bé Cần Thơ',
-    slug: 'me-va-be-can-tho',
     orgType: ORG_TYPES.COMMUNITY,
     provinceCode: 'Cần Thơ',
     description: 'Các mẹ Cần Thơ pass lại đồ sơ sinh, xe đẩy, nôi cũi còn tốt.',
@@ -200,7 +190,6 @@ const GROUPS: GroupSeed[] = [
   },
   {
     name: 'Cộng đồng Sách cũ Huế',
-    slug: 'sach-cu-hue',
     orgType: ORG_TYPES.COMMUNITY,
     provinceCode: 'Huế',
     description: 'Trao đổi và ký gửi sách cũ, truyện tranh, giáo trình tại Huế.',
@@ -779,7 +768,7 @@ async function seedDemo() {
       .setOptions({ withDeleted: true })
       .select('_id')
     const previousOrgs = await Organization.find({
-      slug: { $in: GROUPS.map((g) => g.slug) },
+      name: { $in: GROUPS.map((g) => g.name) },
     }).select('_id')
     const removed = await wipePreviousRun(
       previousUsers.map((u) => u._id),
@@ -822,14 +811,13 @@ async function seedDemo() {
     // ── 3. 10 nhóm + nhóm con + thành viên + quyền ──
     /*
      * `Organization.create` chứ không `insertMany`: hook `pre('validate')` của model mới là
-     * chỗ sinh `slugNormalized` (khoá chống mạo danh) và `nameTokens` (khoá tra của ô tìm
-     * nhóm). Ghi thẳng thì hai field đó rỗng và nhóm không tìm ra được bằng tên.
+     * chỗ sinh `nameTokens` (khoá tra của ô tìm nhóm). Ghi thẳng thì field đó rỗng và nhóm
+     * không tìm ra được bằng tên.
      */
     const orgs = await Organization.create(
       GROUPS.map((group, i) => ({
         joinCode: generateJoinCode(),
         name: group.name,
-        slug: group.slug,
         orgType: group.orgType,
         capabilities: ORG_CAPABILITY_PRESETS[group.orgType],
         provinceCode: group.provinceCode,
@@ -852,7 +840,7 @@ async function seedDemo() {
         group.units.map((name) => ({ organizationId: orgs[i]._id, name })),
       )
       unitsByOrg.set(
-        group.slug,
+        group.name,
         created.map((u) => u._id),
       )
     }
@@ -878,7 +866,7 @@ async function seedDemo() {
     const grants: Record<string, unknown>[] = []
     for (const [orgIndex, group] of GROUPS.entries()) {
       const org = orgs[orgIndex]
-      const units = unitsByOrg.get(group.slug) ?? []
+      const units = unitsByOrg.get(group.name) ?? []
       const roster = rosterOf(orgIndex)
 
       for (const [seat, personIndex] of roster.entries()) {
@@ -996,7 +984,7 @@ async function seedDemo() {
 
         listings.push({
           organizationId: org?._id ?? null,
-          visibility: inOrg ? POST_VISIBILITY.ORG_INTERNAL : POST_VISIBILITY.PUBLIC,
+          reach: inOrg ? LISTING_REACH.GROUP_OPEN : LISTING_REACH.MARKETPLACE,
           // Snapshot định tuyến hàng đợi duyệt — BẮT BUỘC với tin công khai, và chỉ có nghĩa
           // ở đó: tin nội bộ do nhóm duyệt nên không có ô (danh mục × tỉnh × phường) nào.
           provinceCode: inOrg ? null : province,

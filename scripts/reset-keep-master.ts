@@ -14,9 +14,9 @@ import '../src/features'
  *
  * Vì sao không dùng `npm run seed`: nó vừa xoá vừa dựng lại một thế giới mẫu (trường, người
  * dùng, tin), mà việc cần ở đây là một database TRỐNG để đổ bộ dữ liệu mới vào. Và bản `seed`
- * hiện tại xoá theo DANH SÁCH MODEL VIẾT TAY — nó bỏ sót 11 collection (`Conversation`,
+ * hiện tại xoá theo DANH SÁCH MODEL VIẾT TAY — nó bỏ sót 10 collection (`Conversation`,
  * `Message`, `Favorite`, `Invite`, `Report`, `Wallet`, `XuTransaction`, `BannedPhrase`,
- * `ListingProduct`, `AuditLog`, `OrgSlugAlias`), nên "xoá sạch" của nó để lại rác trỏ vào
+ * `ListingProduct`, `AuditLog`), nên "xoá sạch" của nó để lại rác trỏ vào
  * những id không còn tồn tại.
  *
  * Ở đây liệt kê collection TỪ CHÍNH DATABASE (`listCollections`), không từ code. Danh sách

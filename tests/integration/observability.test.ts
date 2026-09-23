@@ -107,13 +107,13 @@ describe('Ngữ cảnh chẩn đoán', () => {
       const seenLater = new Promise<string | undefined>((resolve) => {
         setTimeout(() => resolve(currentRequestContext()?.userId), 5)
       })
-      enrichRequestContext({ userId: 'user-42', orgSlug: 'truong-a' })
+      enrichRequestContext({ userId: 'user-42', orgId: 'truong-a' })
 
       expect(await seenLater).toBe('user-42')
       expect(currentRequestContext()).toEqual({
         requestId: 'test-req-id',
         userId: 'user-42',
-        orgSlug: 'truong-a',
+        orgId: 'truong-a',
       })
     })
   })

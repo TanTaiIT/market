@@ -22,9 +22,9 @@ let mongod: MongoMemoryReplSet
 let member: TestUser
 let solo: TestUser
 let categoryId = ''
-const SLUG = 'scope-org'
+const ORG = 'scope-org'
 
-const asMember = () => orgAuth(member.token, SLUG)
+const asMember = () => orgAuth(member.token, ORG)
 const bearer = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` })
 
 beforeAll(async () => {
@@ -36,7 +36,7 @@ beforeAll(async () => {
   const owner = await registerUser(app, 'owner@scope.local', 'Owner')
   const org = await createOrg(app, master.token, {
     name: 'Scope Org',
-    slug: SLUG,
+    key: ORG,
     ownerEmail: owner.email,
     provinceCode: 'Hồ Chí Minh',
   })
@@ -94,7 +94,7 @@ describe('GET /listings/mine bám theo người đăng, không theo trục', () 
       .set(bearer(solo))
       .send({
         ...listingPayload('Tin trục danh mục chờ duyệt', categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: 'Hồ Chí Minh',
       })
       .expect(201)

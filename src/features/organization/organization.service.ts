@@ -26,12 +26,7 @@ import {
   TenantStatus,
 } from '../../common/constants'
 import { ConflictError, NotFoundError } from '../../common/errors'
-import {
-  isReservedSlug,
-  orgNameTokens,
-  suggestOrgSlugs,
-  toOrgSlug,
-} from '../../common/utils/orgSlug'
+import { orgNameTokens } from '../../common/utils/orgName'
 import { generateJoinCode, normalizeJoinCode } from '../../common/utils/joinCode'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { notificationService } from '../notification/notification.service'
@@ -59,8 +54,8 @@ async function withUniqueJoinCode<T>(write: (joinCode: string) => Promise<T>): P
       return await write(generateJoinCode())
     } catch (err) {
       const duplicate = err as { code?: number; keyPattern?: Record<string, unknown> }
-      // CHỈ thử lại khi chính mã nhóm đụng. Slug cũng có unique index: nuốt nhầm nó thì 5 lượt
-      // sau đều đụng lại y hệt, rồi báo "không sinh được mã nhóm" cho một lỗi trùng slug.
+      // CHỈ thử lại khi chính mã nhóm đụng: một lỗi 11000 của index khác sẽ đụng lại y hệt ở cả
+      // 5 lượt, rồi bị báo thành "không sinh được mã nhóm" — sai nguyên nhân.
       if (duplicate.code !== DUPLICATE_KEY || !duplicate.keyPattern?.joinCode) throw err
     }
   }
@@ -73,18 +68,6 @@ const LOOKUP_LIMIT = 10
 /** Mốc 7 ngày cho `postsThisWeek` — tính lúc gọi, không phải hằng số dựng sẵn lúc nạp module. */
 const WEEK_AGO = () => new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
-/** Lý do slug bị từ chối — client hiển thị thông điệp tương ứng, không tự đoán theo chuỗi. */
-export const SLUG_REJECTION = {
-  INVALID: 'invalid',
-  RESERVED: 'reserved',
-  TAKEN: 'taken',
-} as const
-
-export interface SlugHints {
-  district?: string | null
-  provinceCode?: string | null
-}
-
 export const organizationService = {
   /**
    * Tạo org — CHỈ master (quyết định Q2). Không có luồng tự phục vụ.
@@ -94,23 +77,6 @@ export const organizationService = {
    * cái thứ ba thì chủ org không duyệt được gì trong chính org của mình.
    */
   async createByMaster(actorId: string, input: CreateOrganizationInput) {
-    const slug = toOrgSlug(input.slug ?? input.name)
-    const availability = await this.checkSlugAvailability(slug, {
-      district: input.district,
-      provinceCode: input.provinceCode,
-    })
-    if (!availability.available) {
-      // Gợi ý đi kèm lỗi chứ không bắt gọi thêm một vòng: người đang đứng ở form cần biết ngay
-      // dùng được cái gì, không phải chỉ biết mình vừa sai.
-      throw new ConflictError(
-        `Slug "${slug}" không dùng được: ${availability.reason}`,
-        (availability.suggestions ?? []).map((suggestion) => ({
-          path: 'slug',
-          message: suggestion,
-        })),
-      )
-    }
-
     const orgId = new Types.ObjectId()
     const orgType = input.orgType ?? ORG_TYPES.GENERIC
 
@@ -119,7 +85,6 @@ export const organizationService = {
         _id: orgId,
         joinCode,
         name: input.name,
-        slug,
         orgType,
         // Preset chọn một lần lúc tạo; từ đây trở đi code đọc `capabilities`, không đọc `orgType`
         // — nếu không thì "tổng quát hoá" chỉ là thêm một cột.
@@ -133,7 +98,7 @@ export const organizationService = {
       }),
     )
 
-    logger.info('organization created', { actorId, orgId: orgId.toString(), slug })
+    logger.info('organization created', { actorId, orgId: orgId.toString() })
     return org
   },
 
@@ -172,6 +137,7 @@ export const organizationService = {
     return grants.map((grant) => {
       const user = byId.get(grant.userId.toString())
       return {
+        grantId: grant._id.toString(),
         userId: grant.userId.toString(),
         name: user?.name ?? null,
         email: user?.email ?? null,
@@ -274,7 +240,7 @@ export const organizationService = {
 
   /**
    * Xoay mã nhóm. Mã cũ chết ngay lập tức — đó là toàn bộ lý do tính năng này tồn tại: mã lọt
-   * ra ngoài thì phải có đường cắt, mà cắt bằng cách đổi slug là làm hỏng mọi link đã phát.
+   * ra ngoài thì phải có đường cắt, mà `_id` của org (định danh trong mọi link) thì không đổi được.
    */
   async rotateJoinCode() {
     const orgId = requireOwnOrgId('organization.rotateJoinCode')
@@ -298,18 +264,12 @@ export const organizationService = {
     return { org, memberCount }
   },
 
-  async getById(id: string) {
-    const org = await organizationRepository.findById(id)
-    if (!org) throw new NotFoundError('Organization not found')
-    return org
-  },
-
   /**
    * Các tổ chức mà người này đang là thành viên.
    *
    * Client cần nó để dựng bộ chuyển tổ chức: từ v2, org hoạt động do client chỉ ra qua header
-   * `X-Org-Slug`, nên nếu không có danh sách này thì người thuộc nhiều org không có cách nào
-   * biết mình được phép gửi những slug nào. Trả kèm `role`/`unitId` vì màn hình cần phân biệt
+   * `X-Org-Id`, nên nếu không có danh sách này thì người thuộc nhiều org không có cách nào
+   * biết mình được phép gửi những id nào. Trả kèm `role`/`unitId` vì màn hình cần phân biệt
    * chủ tổ chức với thành viên thường mà không phải gọi thêm một vòng.
    */
   async listMine(userId: string) {
@@ -332,26 +292,16 @@ export const organizationService = {
   },
 
   /**
-   * Dropdown chọn org. KHÔNG bao giờ tự lấy kết quả đầu tiên khi có nhiều kết quả — rủi ro lớn
-   * nhất không phải "không tìm thấy" mà là "tìm thấy nhầm mà không ai biết", tin lặng lẽ chạy
-   * vào hàng đợi org khác (§6.2). Vì vậy hàm này chỉ trả danh sách, việc chọn là của người dùng.
-   */
-  async lookup(query: string, limit = LOOKUP_LIMIT) {
-    const orgs = await organizationRepository.search(query, limit)
-    return orgs.map(toOrganizationLookupDto)
-  },
-
-  /**
    * Bảng tổ chức TOÀN hệ thống — chỉ master gọi được.
    *
    * Tồn tại vì `listMine` luôn rỗng với master: quyền của họ là grant `master/system`, không
    * phải membership, nên họ cố ý không thuộc org nào. Mà bộ chuyển tổ chức của client lại đọc
-   * `listMine` để biết được phép gửi `X-Org-Slug` nào — kết quả là master không chọn được org
+   * `listMine` để biết được phép gửi `X-Org-Id` nào — kết quả là master không chọn được org
    * nào và mọi màn org-scoped trả 403 dù họ có thừa quyền vào (`canModerateAnyInOrg` cho master
-   * đi thẳng). Đây là nguồn lấp chỗ đó: chọn một dòng ở đây = chọn org đang thao tác.
+   * đi thẳng). Đây là nguồn lấp chỗ đó.
    *
-   * KHÔNG gộp vào `lookup`: `lookup` là route công khai và cố tình không trả `id`, xem
-   * `toOrganizationLookupDto`.
+   * KHÔNG gộp vào `lookup`: route đó công khai và chỉ trả nhóm `isPublic` đang hoạt động —
+   * không phải bảng master cần, nơi org đang khoá mới là thứ họ phải xử lý.
    */
   async listAll(query: OrganizationAdminQuery) {
     const pagination = parsePagination(query)
@@ -398,13 +348,23 @@ export const organizationService = {
   },
 
   /**
-   * Hồ sơ nhóm công khai, đọc theo slug — thứ người dùng xem TRƯỚC khi bấm xin vào.
+   * Hồ sơ nhóm, đọc theo id — thứ người dùng xem TRƯỚC khi bấm xin vào.
    *
-   * Nhóm riêng tư trả 404 chứ không 403: 403 xác nhận "có nhóm ở slug này, chỉ là không cho
-   * xem", đủ để dò ra danh sách nhóm kín bằng cách quét slug.
+   * BA cửa vào, và chỉ ba: nhóm công khai; thành viên của chính nhóm đó; hoặc người đưa đúng
+   * `code` của nhóm đó. Cửa thứ ba là chìa khoá chứ không phải ngoại lệ — cầm mã đã là điều
+   * kiện vào nhóm kín, nên bắt người ta gửi đơn vào một nơi chưa từng nhìn thấy là một bước
+   * thừa, không phải một lớp bảo vệ.
+   *
+   * MỌI ca hỏng đều trả 404, không bao giờ 403: 403 xác nhận "có nhóm ở id này, chỉ là không
+   * cho xem" — đủ để quét id ra danh sách nhóm kín, và với `code` sai thì đủ để biến endpoint
+   * thành máy dò mã cho một id đã biết. Chống brute-force là việc của `lookupLimiter` trên route.
+   *
+   * Cửa mã mở HỒ SƠ, không mở NỘI DUNG: tin của nhóm kín đều ở bậc `members`, và
+   * `listingPublicPredicate` vẫn cắt chúng khỏi người không phải thành viên. Người cầm mã đọc
+   * được nhóm là ai, không đọc được nhóm đang bán gì.
    */
-  async publicProfile(slug: string, viewerId: string | null) {
-    const org = await organizationRepository.findAliveBySlug(slug)
+  async publicProfile(id: string, viewerId: string | null, code?: string) {
+    const org = await organizationRepository.findAliveById(id)
     if (!org) throw new NotFoundError('Không tìm thấy nhóm này')
 
     const [memberCount, postsThisWeek, membership] = await Promise.all([
@@ -418,9 +378,10 @@ export const organizationService = {
      * nhóm cũng nhận 404 trên nhóm họ đang quản — nên chốt phải nằm ở đây, chỗ biết được
      * người đang xem là ai.
      *
-     * Vẫn 404 chứ không 403: 403 xác nhận "có nhóm ở slug này", đủ để quét ra danh sách nhóm kín.
+     * Vẫn 404 chứ không 403: 403 xác nhận "có nhóm ở id này", đủ để quét ra danh sách nhóm kín.
      */
-    if (org.isPublic === false && !membership) {
+    const holdsCode = Boolean(code) && normalizeJoinCode(code!) === org.joinCode
+    if (org.isPublic === false && !membership && !holdsCode) {
       throw new NotFoundError('Không tìm thấy nhóm này')
     }
 
@@ -432,61 +393,6 @@ export const organizationService = {
   },
 
   /**
-   * Kiểm tra lúc TẠO org: chỉ trả available/không + gợi ý, KHÔNG trả tên org đang giữ slug đó.
-   * Đây là API công khai, trả tên là biến nó thành công cụ liệt kê danh sách khách hàng (§6.4).
-   */
-  async checkSlugAvailability(rawSlug: string, hints: SlugHints = {}) {
-    const slug = toOrgSlug(rawSlug)
-
-    if (!slug) return { slug, available: false, reason: SLUG_REJECTION.INVALID }
-    if (isReservedSlug(slug)) {
-      return { slug, available: false, reason: SLUG_REJECTION.RESERVED }
-    }
-    if (await organizationRepository.existsBySlugNormalized(slug)) {
-      return {
-        slug,
-        available: false,
-        reason: SLUG_REJECTION.TAKEN,
-        suggestions: await this.availableSuggestions(slug, hints),
-      }
-    }
-    return { slug, available: true }
-  },
-
-  async availableSuggestions(slug: string, hints: SlugHints) {
-    const candidates = suggestOrgSlugs(slug, hints)
-    const free: string[] = []
-    for (const candidate of candidates) {
-      if (isReservedSlug(candidate)) continue
-      if (!(await organizationRepository.existsBySlugNormalized(candidate))) free.push(candidate)
-    }
-    return free
-  },
-
-  /**
-   * Đổi slug: slug cũ trở thành alias để URL đã phát ra ngoài redirect 301 thay vì chết.
-   * `orgId` mới là khoá ngoại ở mọi nơi, slug chỉ là lookup key — nên đổi slug không đụng một
-   * bản ghi nghiệp vụ nào.
-   */
-  async changeSlug(organizationId: string, rawSlug: string) {
-    const org = await this.getById(organizationId)
-    const slug = toOrgSlug(rawSlug)
-    if (slug === org.slug) return org
-
-    const availability = await this.checkSlugAvailability(slug)
-    if (!availability.available) {
-      throw new ConflictError(`Slug "${slug}" không dùng được: ${availability.reason}`)
-    }
-
-    const previousSlug = org.slug
-    const updated = await organizationRepository.updateById(organizationId, { slug })
-    if (!updated) throw new NotFoundError('Organization not found')
-
-    await organizationRepository.createAlias(previousSlug, updated._id)
-    return updated
-  },
-
-  /**
    * Công khai ↔ riêng tư — quyền MASTER, xem `setOrgVisibilitySchema`.
    *
    * Chuyển sang riêng tư có hiệu lực NGAY và có hậu quả thật: nhóm rơi khỏi tìm kiếm, hồ sơ
@@ -494,6 +400,22 @@ export const organizationService = {
    * còn lại là mã tham gia.
    */
   async setVisibility(organizationId: string, isPublic: boolean) {
+    /*
+     * HẠ BẬC TRƯỚC, gạt cờ SAU. Thứ tự này là chốt an toàn, không phải thói quen.
+     *
+     * Bậc `group_open` chỉ hợp lệ dưới một nhóm công khai, và luật đó phải đúng ở CẢ HAI mép:
+     * mép tạo nằm ở `routeListing`, mép này là mép còn lại.
+     *
+     * Đứt gánh giữa chừng theo thứ tự này để lại "nhóm còn công khai, vài tin đã kín" — thiếu
+     * lộ, chạy lại là xong, người dùng chỉ thấy hụt vài tin. Thứ tự ngược lại để lại "nhóm đã
+     * kín, tin vẫn đọc công khai" — đúng thứ luật này sinh ra để cấm. Bất biến cần nhớ: KHÔNG
+     * BAO GIỜ để một tin `group_open` nằm dưới một nhóm riêng tư, kể cả trong chốc lát.
+     *
+     * Cân nhắc và bỏ qua transaction: `withTransaction` có sẵn (test chạy replica set) nhưng
+     * riêng thứ tự đã cho ca hỏng an toàn, và nó rẻ hơn.
+     */
+    if (!isPublic) await listingRepository.demoteGroupOpen(new Types.ObjectId(organizationId))
+
     const org = await organizationRepository.updateById(organizationId, { isPublic })
     if (!org) throw new NotFoundError('Organization not found')
     return org

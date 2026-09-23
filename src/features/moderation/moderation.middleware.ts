@@ -81,7 +81,7 @@ export const requireCategoryModerator = catchAsync(async (req, _res, next) => {
  * `pending` vĩnh viễn.
  *
  * Ở đây chỉ chốt "người này có quyền duyệt Ở ĐÂU ĐÓ không" — đủ để chặn người dùng thường.
- * Thẩm quyền trên ĐÚNG tin đang xét do `assertCanModerateListing` phán, vì chỉ nó mới biết tin
+ * Thẩm quyền trên ĐÚNG tin đang xét do `assertCanActOnListing` phán, vì chỉ nó mới biết tin
  * thuộc trục nào.
  */
 export const requireAnyModerator = catchAsync(async (req, _res, next) => {

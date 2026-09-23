@@ -6,7 +6,7 @@ import {
   organizationLookupQuerySchema,
   organizationAdminQuerySchema,
   organizationParamsSchema,
-  orgSlugParamsSchema,
+  organizationProfileQuerySchema,
   organizationProfileSchema,
   organizationCardSchema,
   organizationSummarySchema,
@@ -18,9 +18,6 @@ import {
   setOrgStatusSchema,
   setOrgVisibilitySchema,
   updateOrganizationSchema,
-  changeOrgSlugSchema,
-  slugAvailabilityQuerySchema,
-  slugAvailabilitySchema,
 } from './organization.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { lookupLimiter } from '../../middlewares/rateLimiter.middleware'
@@ -42,7 +39,7 @@ import {
 
 const router = Router()
 
-// Hai route CÔNG KHAI, cố tình không đòi đăng nhập: người dùng phải chọn được org TRƯỚC khi
+// Các route CÔNG KHAI, cố tình không đòi đăng nhập: người dùng phải chọn được org TRƯỚC khi
 // có bất kỳ quan hệ nào với nó (gửi request tham gia, hoặc gửi tin từ ngoài vào).
 // Chốt duy nhất ở đây là rate limit — xem `lookupLimiter`.
 router.get(
@@ -52,17 +49,8 @@ router.get(
   organizationController.lookup,
 )
 
-router.get(
-  '/slug-availability',
-  lookupLimiter,
-  validate({ query: slugAvailabilityQuerySchema }),
-  organizationController.slugAvailability,
-)
-
-// Người cầm mã xem thẻ nhóm trước khi bấm xin vào. Công khai như `lookup`, và dùng chung
-// rate-limit với nó: dò mã bừa cũng là một kiểu quét.
 /*
- * Hồ sơ nhóm CÔNG KHAI, mở theo slug. Không đòi đăng nhập — người ta phải đọc được nhóm
+ * Hồ sơ nhóm CÔNG KHAI, mở theo id. Không đòi đăng nhập — người ta phải đọc được nhóm
  * trước khi quyết định có xin vào hay không, và bắt đăng nhập để xem là một cánh cửa nữa
  * trước cánh cửa xin vào.
  *
@@ -72,13 +60,17 @@ router.get(
  * và cờ đó vĩnh viễn là `false`.
  */
 router.get(
-  '/profile/:slug',
+  '/profile/:organizationId',
+  // `lookupLimiter` gánh luôn phần chống dò `?code=`: 20 lượt/phút trên một không gian mã 31^6
+  // (~887 triệu) thì brute-force không phải một con đường. Cùng trần với `/by-code`.
   lookupLimiter,
   optionalAuth,
-  validate({ params: orgSlugParamsSchema }),
+  validate({ params: organizationParamsSchema, query: organizationProfileQuerySchema }),
   organizationController.publicProfile,
 )
 
+// Người cầm mã xem thẻ nhóm trước khi bấm xin vào. Công khai như `lookup`, và dùng chung
+// rate-limit với nó: dò mã bừa cũng là một kiểu quét.
 router.get(
   '/by-code/:code',
   lookupLimiter,
@@ -166,13 +158,6 @@ router.patch(
   validate({ params: organizationParamsSchema, body: setOrgVisibilitySchema }),
   organizationController.setVisibility,
 )
-router.patch(
-  '/:organizationId/slug',
-  authenticate,
-  requireMaster,
-  validate({ params: organizationParamsSchema, body: changeOrgSlugSchema }),
-  organizationController.changeSlug,
-)
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
 const protectedRoute = { security: [{ [bearerAuth.name]: [] }] }
@@ -187,7 +172,7 @@ registry.registerPath({
   summary: 'Các tổ chức tôi đang là thành viên',
   description:
     'Nguồn của bộ chuyển tổ chức phía client: org hoạt động do client chỉ ra bằng header ' +
-    '`X-Org-Slug`, nên client phải biết mình được phép gửi những slug nào.',
+    '`X-Org-Id`, nên client phải biết mình được phép gửi những id nào.',
   ...protectedRoute,
   responses: {
     200: jsonResponse('Danh sách tổ chức', envelope(z.array(myOrganizationSchema))),
@@ -202,9 +187,8 @@ registry.registerPath({
   tags: ['Organization'],
   summary: 'Sửa hồ sơ tổ chức đang hoạt động (admin của chính tổ chức đó)',
   description:
-    'Tổ chức lấy từ header `X-Org-Slug` / subdomain, không nhận id trên đường dẫn. Ảnh phải là ' +
-    'đường dẫn `res.cloudinary.com` do client upload thẳng lên; gửi `null` để gỡ ảnh, bỏ trống ' +
-    'để giữ nguyên. Đổi `slug` vẫn là việc của master.',
+    'Tổ chức lấy từ header `X-Org-Id`, không nhận id trên đường dẫn. Ảnh phải là đường dẫn ' +
+    '`res.cloudinary.com` do client upload thẳng lên; gửi `null` để gỡ ảnh, bỏ trống để giữ nguyên.',
   ...protectedRoute,
   request: { body: { content: { 'application/json': { schema: updateOrganizationSchema } } } },
   responses: {
@@ -222,8 +206,8 @@ registry.registerPath({
   tags: ['Organization'],
   summary: 'Xoay mã nhóm (admin của chính tổ chức đó)',
   description:
-    'Mã cũ chết ngay lập tức. Đây là đường cắt khi mã lọt ra ngoài — đổi slug thì làm hỏng mọi ' +
-    'link đã phát, còn mã thì sinh ra để đổi được.',
+    'Mã cũ chết ngay lập tức. Đây là đường cắt khi mã lọt ra ngoài — id của nhóm nằm trong mọi ' +
+    'link đã phát và không đổi được, còn mã thì sinh ra để đổi được.',
   ...protectedRoute,
   responses: {
     200: jsonResponse('Mã mới', orgResponse),
@@ -239,8 +223,8 @@ registry.registerPath({
   tags: ['Organization'],
   summary: 'Xem thẻ nhóm bằng mã (công khai)',
   description:
-    'Đủ để người cầm mã nhận ra đúng nhóm trước khi bấm xin vào. Không trả `id`, `slug` hay ' +
-    'chính cái mã — endpoint công khai nên chỉ đưa thứ cần để nhận diện.',
+    'Đủ để người cầm mã nhận ra đúng nhóm trước khi bấm xin vào. Không trả `id` hay chính cái ' +
+    'mã — endpoint công khai nên chỉ đưa thứ cần để nhận diện.',
   request: { params: joinCodeParamsSchema },
   responses: {
     200: jsonResponse('Thẻ nhóm', envelope(organizationCardSchema)),
@@ -286,7 +270,7 @@ registry.registerPath({
     201: jsonResponse('Đã tạo tổ chức', orgResponse),
     403: notMaster,
     404: errorResponse('Không tìm thấy tài khoản của người chủ'),
-    409: errorResponse('Slug đã tồn tại hoặc bị cấm'),
+    409: errorResponse('Không sinh được mã nhóm, thử lại'),
   },
 })
 
@@ -356,7 +340,7 @@ registry.registerPath({
   summary: 'Công khai ↔ riêng tư (master)',
   description:
     'Riêng tư = rơi khỏi tìm kiếm, hồ sơ trả 404 cho người ngoài, và chỉ xin vào được bằng ' +
-    'MÃ chứ không bằng slug. Có hiệu lực ngay; mọi link đã phát ra ngoài chết theo.',
+    'MÃ chứ không bằng id. Có hiệu lực ngay; mọi link đã phát ra ngoài chết theo.',
   ...protectedRoute,
   request: {
     params: organizationParamsSchema,
@@ -370,36 +354,20 @@ registry.registerPath({
 })
 
 registry.registerPath({
-  method: 'patch',
-  path: '/organizations/{organizationId}/slug',
-  operationId: 'changeOrganizationSlug',
-  tags: ['Organization'],
-  summary: 'Đổi slug, slug cũ tự thành alias redirect 301',
-  ...protectedRoute,
-  request: {
-    params: organizationParamsSchema,
-    body: { content: { 'application/json': { schema: changeOrgSlugSchema } } },
-  },
-  responses: {
-    200: jsonResponse('Đã đổi slug', orgResponse),
-    403: notMaster,
-    409: errorResponse('Slug mới đã tồn tại hoặc bị cấm'),
-  },
-})
-
-registry.registerPath({
   method: 'get',
-  path: '/organizations/profile/{slug}',
+  path: '/organizations/profile/{organizationId}',
   operationId: 'organizationPublicProfile',
   tags: ['Organization'],
-  summary: 'Hồ sơ nhóm công khai (không cần đăng nhập)',
+  summary: 'Hồ sơ nhóm (không cần đăng nhập)',
   description:
-    'Chỉ nhóm `isPublic`. Nhóm riêng tư trả 404 — không phân biệt được với slug không tồn ' +
-    'tại, nên không quét ra được danh sách nhóm kín. Đăng nhập rồi thì có thêm cờ `joined`.',
-  request: { params: orgSlugParamsSchema },
+    'Mở cho: nhóm `isPublic`; thành viên của nhóm; hoặc người đưa đúng `?code=` của chính ' +
+    'nhóm đó. Mọi ca còn lại trả 404 — kể cả mã SAI, để endpoint không thành máy dò mã cho ' +
+    'một id đã biết. Cửa mã mở HỒ SƠ chứ không mở nội dung: tin của nhóm kín vẫn chỉ thành ' +
+    'viên đọc được. Đăng nhập rồi thì có thêm cờ `joined`.',
+  request: { params: organizationParamsSchema, query: organizationProfileQuerySchema },
   responses: {
     200: jsonResponse('Hồ sơ nhóm', envelope(organizationProfileSchema)),
-    404: errorResponse('Không tìm thấy nhóm công khai nào ở slug này'),
+    404: errorResponse('Không tìm thấy nhóm ở id này, hoặc mã không đúng'),
     429: errorResponse('Tra cứu quá nhiều lần'),
   },
 })
@@ -409,7 +377,7 @@ registry.registerPath({
   path: '/organizations/lookup',
   operationId: 'organizationLookup',
   tags: ['Organization'],
-  summary: 'Tìm nhóm công khai theo tên hoặc slug',
+  summary: 'Tìm nhóm công khai theo tên',
   description:
     'CHỈ nhóm `isPublic` — nhóm riêng tư không lộ ra ở đây kể cả khi gõ đúng tên, cách vào ' +
     'duy nhất vẫn là mã. Bỏ trống `q` để lấy danh sách gợi ý. Trả DANH SÁCH để người dùng tự ' +
@@ -417,22 +385,6 @@ registry.registerPath({
   request: { query: organizationLookupQuerySchema },
   responses: {
     200: jsonResponse('Danh sách tổ chức khớp', envelope(z.array(organizationLookupSchema))),
-    429: errorResponse('Tra cứu quá nhiều lần'),
-  },
-})
-
-registry.registerPath({
-  method: 'get',
-  path: '/organizations/slug-availability',
-  operationId: 'organizationSlugAvailability',
-  tags: ['Organization'],
-  summary: 'Kiểm tra slug còn dùng được không (kèm gợi ý hậu tố)',
-  description:
-    'Chỉ trả available + gợi ý. KHÔNG trả tên tổ chức đang giữ slug đó — trả tên là biến ' +
-    'endpoint công khai này thành công cụ liệt kê khách hàng.',
-  request: { query: slugAvailabilityQuerySchema },
-  responses: {
-    200: jsonResponse('Kết quả kiểm tra', envelope(slugAvailabilitySchema)),
     429: errorResponse('Tra cứu quá nhiều lần'),
   },
 })

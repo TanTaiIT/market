@@ -4,8 +4,8 @@ import type { ManagedAudience } from './notification.repository'
 import { CreateNotificationInput, NotificationQuery } from './notification.schema'
 import { toNotificationDto } from './notification.types'
 import { canModerateOrg } from '../../common/authz/policy'
-import { POST_VISIBILITY, SCOPE_TYPES } from '../../common/constants'
-import type { PostVisibility } from '../../common/constants'
+import { LISTING_REACH, SCOPE_TYPES } from '../../common/constants'
+import type { ListingReach } from '../../common/constants'
 import type { Grant } from '../../common/authz/policy'
 import type { OrgActor } from '../../common/utils/actor'
 import { membershipRepository } from '../membership/membership.repository'
@@ -70,7 +70,7 @@ async function managedAudience(viewer: Viewer): Promise<ManagedAudience | null> 
    * `managedFilter` trả về `{ organizationId, userId: null, unitId: null }` — tức TOÀN BỘ thông
    * báo phát chung của tổ chức. Cộng với việc `resolveTenant` cố ý mở scope đọc của một org cho
    * người NGOÀI nhóm khi request là `GET` (để họ xem được trang công khai của nhóm), một người
-   * lạ chỉ cần gửi `X-Org-Slug` của nhóm rồi thêm `?scope=managed` là đọc được cả dòng thông
+   * lạ chỉ cần gửi `X-Org-Id` của nhóm rồi thêm `?scope=managed` là đọc được cả dòng thông
    * báo nội bộ: thông báo của quản trị, và từ nay cả "ai vừa đăng tin gì".
    *
    * Route `GET /notifications` cố tình KHÔNG có `requireOrgModerator` — nó phục vụ cả
@@ -105,7 +105,10 @@ export const notificationService = {
     }
 
     if (unitId) {
-      const unit = await orgUnitRepository.findById(unitId)
+      const unit = await orgUnitRepository.findInOrg(
+        unitId,
+        new Types.ObjectId(actor.organizationId),
+      )
       if (!unit) throw new BadRequestError('Nhóm con không tồn tại trong tổ chức này')
     }
 
@@ -204,22 +207,27 @@ export const notificationService = {
    * Gọi lúc tin THÀNH `active`, không phải lúc tạo: tin `pending` chưa ai xem được, báo sớm là
    * mời cả nhóm bấm vào một trang 404.
    *
-   * Chốt là `visibility`, KHÔNG phải `organizationId` — và đây là chỗ tôi làm sai trước khi
-   * test bắt được. Tin CÔNG KHAI do một thành viên đăng vẫn giữ `organizationId`, nhưng chỉ để
-   * attribution (badge "đăng bởi nhóm X" — xem `listing.routing.ts`); nó nằm trên trục danh mục
-   * chứ không nằm trên bảng tin của nhóm. Lọc theo org thì cả nhóm bị báo về những tin không
-   * hề xuất hiện trong nhóm mình.
+   * Chốt là `reach`, KHÔNG phải `organizationId` — và đây là chỗ tôi làm sai trước khi test bắt
+   * được. Tin LÊN SÀN do một thành viên đăng vẫn giữ `organizationId`, nhưng chỉ để attribution
+   * (badge "đăng bởi nhóm X" — xem `listing.routing.ts`); nó nằm trên bàn danh mục chứ không
+   * nằm trên bảng tin của nhóm. Lọc theo org thì cả nhóm bị báo về những tin không hề xuất hiện
+   * trong nhóm mình.
+   *
+   * Điều kiện viết dưới dạng LOẠI TRỪ `marketplace`, không phải "bằng `members`". Khi thang
+   * phủ sóng thay `visibility`, đổi máy móc `!== ORG_INTERNAL` thành `!== MEMBERS` sẽ làm mọi
+   * nhóm CÔNG KHAI lặng lẽ thôi báo tin cho chính thành viên mình — vì tin mặc định của họ nằm
+   * ở bậc `group_open`, mà bậc đó vẫn nằm trên bảng tin nhóm.
    */
   async notifyGroupOfListing(listing: {
     _id: Types.ObjectId
     organizationId: Types.ObjectId | null
-    visibility: PostVisibility
+    reach: ListingReach
     seller: Types.ObjectId
     posterName: string
     title: string
   }) {
-    if (listing.visibility !== POST_VISIBILITY.ORG_INTERNAL) return null
-    // Tin nội bộ luôn có org, nhưng kiểu vẫn cho `null` — hỏi tường minh thay vì `!`.
+    if (listing.reach === LISTING_REACH.MARKETPLACE) return null
+    // Tin trong nhóm luôn có org, nhưng kiểu vẫn cho `null` — hỏi tường minh thay vì `!`.
     if (!listing.organizationId) return null
 
     const notification = await notificationRepository.create({

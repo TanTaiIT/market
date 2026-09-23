@@ -2,9 +2,12 @@ import { z } from 'zod'
 import { Router } from 'express'
 import { roleGrantController } from './role-grant.controller'
 import {
+  categoryAxisGrantSchema,
+  categoryAxisQuerySchema,
   createRoleGrantSchema,
   roleGrantParamsSchema,
   roleGrantResponseSchema,
+  updateRoleGrantSchema,
 } from './role-grant.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
@@ -22,7 +25,26 @@ router.post(
   validate({ body: createRoleGrantSchema }),
   roleGrantController.grant,
 )
+/*
+ * Ai phụ trách danh mục nào — MASTER-ONLY, và phải khai TRƯỚC `/mine`? Không: hai path tĩnh
+ * khác hẳn nhau nên thứ tự không đụng gì. Master-only vì đây là bảng danh tính của cả hệ
+ * thống: tên và email của mọi người đang cầm quyền trục danh mục.
+ */
+router.get(
+  '/category-axis',
+  authenticate,
+  requireMaster,
+  validate({ query: categoryAxisQuerySchema }),
+  roleGrantController.categoryAxis,
+)
 router.get('/mine', authenticate, roleGrantController.mine)
+router.patch(
+  '/:id',
+  authenticate,
+  requireMaster,
+  validate({ params: roleGrantParamsSchema, body: updateRoleGrantSchema }),
+  roleGrantController.updateScope,
+)
 router.delete(
   '/:id',
   authenticate,
@@ -59,12 +81,57 @@ registry.registerPath({
 
 registry.registerPath({
   method: 'get',
+  path: '/role-grants/category-axis',
+  operationId: 'categoryAxisGrants',
+  tags: ['RoleGrant'],
+  summary: 'Ai đang phụ trách danh mục nào (master)',
+  description:
+    'CHỈ master — bảng này mang tên và email của mọi người đang cầm quyền trục danh mục. ' +
+    'Khác `/moderation/coverage`: ma trận đó chỉ nói ô CÓ hay KHÔNG có người phụ trách, ' +
+    'không nói ai. Lọc `categoryId`/`province` tuỳ chọn; grant toàn quốc ' +
+    '(`provinceCodes` rỗng) luôn khớp mọi tỉnh. Mỗi dòng mang `id` của grant — đầu vào của ' +
+    '`DELETE /role-grants/{id}`.',
+  ...protectedRoute,
+  request: { query: categoryAxisQuerySchema },
+  responses: {
+    200: jsonResponse('Phụ trách trục danh mục', envelope(z.array(categoryAxisGrantSchema))),
+    403: errorResponse('Cần quyền master'),
+  },
+})
+
+registry.registerPath({
+  method: 'get',
   path: '/role-grants/mine',
   operationId: 'myRoleGrants',
   tags: ['RoleGrant'],
   summary: 'Quyền hệ thống của chính mình',
   ...protectedRoute,
   responses: { 200: jsonResponse('Danh sách quyền', envelope(z.array(roleGrantResponseSchema))) },
+})
+
+registry.registerPath({
+  method: 'patch',
+  path: '/role-grants/{id}',
+  operationId: 'updateRoleGrantScope',
+  tags: ['RoleGrant'],
+  summary: 'Sửa phạm vi phụ trách (master)',
+  description:
+    'CHỈ master, và CHỈ grant trục danh mục — đổi qua lại giữa `category_province` và ' +
+    '`category_ward`, đổi danh mục, thêm bớt tỉnh/phường. Grant `org`/`system` trả 400: ' +
+    'đổi trục phải đi qua thu hồi + cấp lại, để chốt "org luôn còn một quản trị" còn chạy. ' +
+    'Thay TOÀN BỘ phạm vi chứ không vá từng field. Giữ nguyên `id` và `grantedAt` — sửa ' +
+    'không được làm đứt vết kiểm toán, và không để lại khoảng trống không ai phụ trách.',
+  ...protectedRoute,
+  request: {
+    params: roleGrantParamsSchema,
+    body: { content: { 'application/json': { schema: updateRoleGrantSchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã sửa phạm vi phụ trách', grantResponse),
+    400: errorResponse('Không phải grant trục danh mục, hoặc phạm vi không hợp lệ'),
+    403: errorResponse('Cần quyền master, hoặc đang sửa quyền của chính mình'),
+    404: errorResponse('Không tìm thấy quyền này'),
+  },
 })
 
 registry.registerPath({

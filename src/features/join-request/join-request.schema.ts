@@ -4,34 +4,28 @@ import { JOIN_REQUEST_STATUS, PAGINATION } from '../../common/constants'
 
 const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
-/*
- * Nhận MÃ NHÓM chứ không nhận slug hay id.
- *
- * Slug là địa chỉ công khai: ai nhìn thấy tên tổ chức cũng gõ được đơn xin vào. Mã nhóm chỉ
- * người được đưa mới có, và đổi được khi rò — hai tính chất mà slug không thể có, vì nó nằm
- * trong mọi đường dẫn đã phát ra ngoài.
- */
 /**
  * Hai đường vào nhóm, và chúng KHÔNG tương đương:
  *
- * - `code`: đường cũ, dùng được với MỌI nhóm. Mã do nhóm phát ra nên nhóm kiểm soát được ai
- *   đủ điều kiện gõ cửa, và xoay lại được khi mã lọt ra ngoài.
- * - `slug`: chỉ dùng được với nhóm `isPublic`. Nhóm công khai vốn đã cho duyệt và cho xem
+ * - `code`: dùng được với MỌI nhóm. Mã do nhóm phát ra nên nhóm kiểm soát được ai đủ điều
+ *   kiện gõ cửa, và xoay lại được khi mã lọt ra ngoài — id của nhóm thì nằm trong mọi link đã
+ *   phát và không đổi được.
+ * - `orgId`: chỉ dùng được với nhóm `isPublic`. Nhóm công khai vốn đã cho duyệt và cho xem
  *   hồ sơ, nên bắt thêm một cái mã ở bước cuối chỉ là thủ tục thừa.
  *
- * Nhóm RIÊNG TƯ gửi bằng slug sẽ nhận 404 y như slug không tồn tại — nếu không, đường này
- * thành máy dò: gửi thử slug rồi đọc mã lỗi là biết nhóm nào có thật.
+ * Nhóm RIÊNG TƯ gửi bằng id sẽ nhận 404 y như id không tồn tại — nếu không, đường này thành
+ * máy dò: gửi thử id rồi đọc mã lỗi là biết nhóm nào có thật.
  */
 export const createJoinRequestSchema = z
   .object({
     code: z.string().min(4).max(16).optional(),
-    slug: z.string().min(3).max(40).optional(),
+    orgId: objectId.optional(),
     claimedName: z.string().min(1).max(100).openapi({ example: 'Nguyễn Văn A' }),
     claimedUnit: z.string().max(100).optional().openapi({ example: '10A1' }),
     note: z.string().max(500).optional(),
   })
   .strict()
-  .refine((v) => Boolean(v.code) !== Boolean(v.slug), 'Gửi đúng một trong hai: code hoặc slug')
+  .refine((v) => Boolean(v.code) !== Boolean(v.orgId), 'Gửi đúng một trong hai: code hoặc orgId')
   .openapi('CreateJoinRequest')
 
 export const joinRequestParamsSchema = z.object({ id: objectId })

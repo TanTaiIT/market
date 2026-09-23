@@ -52,7 +52,7 @@ export function reportServerError(err: unknown, info: { method: string; route: s
   Sentry.withScope((scope) => {
     // `requestId` là sợi chỉ duy nhất nối một sự việc ở Sentry với các dòng log của chính nó.
     if (ctx?.requestId) scope.setTag('requestId', ctx.requestId)
-    if (ctx?.orgSlug) scope.setTag('orgSlug', ctx.orgSlug)
+    if (ctx?.orgId) scope.setTag('orgId', ctx.orgId)
     if (ctx?.userId) scope.setUser({ id: ctx.userId })
     scope.setTag('method', info.method)
     scope.setTag('route', info.route)

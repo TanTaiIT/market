@@ -41,7 +41,7 @@ beforeAll(async () => {
   seller = await registerUser(app, 'seller@cleanup.local', 'Người bán')
   await createOrg(app, master.token, {
     name: 'Org dọn ảnh',
-    slug: 'don-anh',
+    key: 'don-anh',
     ownerEmail: seller.email,
   })
 
@@ -112,7 +112,12 @@ describe('Job dọn ảnh mồ côi', () => {
 
     const result = await uploadCleanupService.sweep(cfg)
 
-    expect(result).toEqual({ scanned: 5, orphans: 2, deleted: 2 })
+    expect(result).toEqual({
+      scanned: 5,
+      orphans: 2,
+      deleted: 2,
+      orphanIds: ['ghim/orphan-1', 'ghim/orphan-2'],
+    })
     expect(deleted.sort()).toEqual(['ghim/orphan-1', 'ghim/orphan-2'])
   }, 60_000)
 
@@ -121,7 +126,39 @@ describe('Job dọn ảnh mồ côi', () => {
 
     const result = await uploadCleanupService.sweep(cfg)
 
-    expect(result).toEqual({ scanned: 2, orphans: 0, deleted: 0 })
+    expect(result).toEqual({ scanned: 2, orphans: 0, deleted: 0, orphanIds: [] })
+    expect(deleted).toEqual([])
+  }, 60_000)
+
+  /*
+   * Ca hỏng ĐÁNG SỢ NHẤT của cả tính năng, dựng lại bằng một cloud name lệch.
+   *
+   * `publicIdOf` khoá theo cloud name, nên env trỏ sai cloud là mọi URL đã lưu parse ra `null`,
+   * tập "còn chủ" rỗng, và MỌI asset trên cloud thành mồ côi. Không có chốt thì lượt quét này
+   * xoá sạch kho ảnh đang được dùng — không có đường khôi phục.
+   */
+  it('DB không tham chiếu tấm nào — DỪNG, không xoá gì', async () => {
+    const deleted = stubCloudinary(['ghim/keep-1', 'ghim/keep-2', 'ghim/orphan-1'])
+
+    const result = await uploadCleanupService.sweep({ ...cfg, cloudName: 'cloud-lech' })
+
+    expect(result).toEqual({ scanned: 3, orphans: 0, deleted: 0, orphanIds: [] })
+    expect(deleted).toEqual([])
+  }, 60_000)
+
+  it('dry-run — vẫn tính ra mồ côi nhưng không gọi lệnh xoá nào', async () => {
+    const deleted = stubCloudinary(['ghim/keep-1', 'ghim/keep-avatar', 'ghim/orphan-1'])
+
+    const result = await uploadCleanupService.sweep(cfg, { dryRun: true })
+
+    expect(result).toEqual({
+      scanned: 3,
+      orphans: 1,
+      // `deleted: 0` đi cùng `orphanIds` KHÔNG rỗng là toàn bộ điểm của dry-run: script kiểm tra
+      // đọc được danh sách sắp bị xoá mà chưa có tấm nào mất.
+      deleted: 0,
+      orphanIds: ['ghim/orphan-1'],
+    })
     expect(deleted).toEqual([])
   }, 60_000)
 
@@ -131,7 +168,7 @@ describe('Job dọn ảnh mồ côi', () => {
 
     const result = await uploadCleanupService.sweep(null)
 
-    expect(result).toEqual({ scanned: 0, orphans: 0, deleted: 0 })
+    expect(result).toEqual({ scanned: 0, orphans: 0, deleted: 0, orphanIds: [] })
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 })

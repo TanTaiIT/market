@@ -40,10 +40,10 @@ let categoryId = ''
 let conversationId = ''
 let secondConversationId = ''
 
-const SLUG = 'inbox-org'
-const asSeller = () => orgAuth(seller.token, SLUG)
-const asBuyer = () => orgAuth(buyer.token, SLUG)
-const asBystander = () => orgAuth(bystander.token, SLUG)
+const ORG = 'inbox-org'
+const asSeller = () => orgAuth(seller.token, ORG)
+const asBuyer = () => orgAuth(buyer.token, ORG)
+const asBystander = () => orgAuth(bystander.token, ORG)
 
 /**
  * Mốc dọn có độ phân giải mili-giây và so bằng `$gt`, nên một document tạo trong CÙNG mili-giây
@@ -100,7 +100,7 @@ beforeAll(async () => {
   orgId = (
     await createOrg(app, master.token, {
       name: 'Tổ chức Hộp Thư',
-      slug: SLUG,
+      key: ORG,
       ownerEmail: seller.email,
     })
   ).id

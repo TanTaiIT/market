@@ -42,7 +42,7 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${spammer.token}`)
     .send({
       ...listingPayload('Tin spam đang hiển thị', categoryId),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: 'Hồ Chí Minh',
     })
     .expect(201)

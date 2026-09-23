@@ -4,8 +4,8 @@ import {
   LISTING_CONDITION,
   ListingStatus,
   ListingCondition,
-  POST_VISIBILITY,
-  PostVisibility,
+  LISTING_REACH,
+  ListingReach,
   VN_PROVINCE_NAMES,
   VnProvinceName,
   REJECTION_SEVERITIES,
@@ -36,8 +36,14 @@ export interface IListingLocation {
 export interface IListing {
   /** `null` = tin của TRỤC DANH MỤC, không thuộc tổ chức nào. */
   organizationId: Types.ObjectId | null
-  /** Khoá định tuyến hàng đợi duyệt (quyết định Q3), không phải `organizationId`. */
-  visibility: PostVisibility
+  /**
+   * Bậc phủ sóng — xem `LISTING_REACH`. Bậc trên bao bậc dưới, nên tin `marketplace` vẫn nằm
+   * trong bảng tin của nhóm nó thuộc về.
+   *
+   * Hàng đợi duyệt là HÀM của nó, không còn bằng nó: `marketplace` → manager danh mục, hai bậc
+   * còn lại → quản trị nhóm (xem `listing.routing.ts`).
+   */
+  reach: ListingReach
   /**
    * Snapshot CỨNG lúc tạo tin. Không tính động từ org hay user: org đổi địa chỉ hoặc người
    * đăng chuyển tổ chức sẽ làm tin cũ nhảy hàng đợi.
@@ -56,6 +62,8 @@ export interface IListing {
   description: string
   price: number
   isNegotiable: boolean
+  /** Người bán nhận giao tận nơi — LỜI HỨA CỦA HỌ, không phải dịch vụ của sàn. */
+  canDeliver: boolean
   condition: ListingCondition
   images: string[]
   category: Types.ObjectId
@@ -165,6 +173,13 @@ const listingSchema = new Schema<IListingDocument>(
     description: { type: String, required: true, maxlength: 5000 },
     price: { type: Number, required: true, min: 0 },
     isNegotiable: { type: Boolean, default: false },
+    /*
+     * `default: false` chứ không `true`: tin cũ (và tin của client chưa cập nhật) không được
+     * mặc nhiên hứa giao hàng thay người bán. Viên "Giao tận nơi" trên thẻ tin trước đây được
+     * SUY TỪ HASH CỦA ID (`placeholders.listingShips`) — nó nói dối người mua về mọi tin; field
+     * này là thứ thay nó, và mặc định im lặng là cách duy nhất không tiếp tục nói dối.
+     */
+    canDeliver: { type: Boolean, default: false },
 
     condition: {
       type: String,
@@ -179,36 +194,48 @@ const listingSchema = new Schema<IListingDocument>(
       default: [],
     },
 
-    visibility: {
+    /*
+     * KHÔNG có `default`: bậc mặc định phụ thuộc `isPublic` của org đích (nhóm công khai →
+     * `group_open`, nhóm kín → `members`, không nhóm → `marketplace`), mà schema thì không
+     * nhìn thấy org. Service tính bằng `defaultReachFor` rồi khai tường minh. Thiếu nó là lỗi
+     * validation ồn ào — đúng thứ ta muốn, thay vì một bậc đoán bừa.
+     */
+    reach: {
       type: String,
-      enum: Object.values(POST_VISIBILITY),
-      default: POST_VISIBILITY.ORG_INTERNAL,
+      enum: Object.values(LISTING_REACH),
       required: true,
     },
-    // Chỉ bắt buộc với tin công khai: ở trục danh mục, tỉnh là thứ quyết định AI DUYỆT. Tin
-    // nội bộ do org duyệt nên không cần — ép nó ở đây là phá lời hứa "khu vực là tuỳ chọn".
+    /*
+     * Chỉ bắt buộc ở bậc `marketplace`: chỉ bậc đó mới nằm trên bàn danh mục, nơi TỈNH là thứ
+     * quyết định ai duyệt.
+     *
+     * `group_open` là cạm bẫy ở đây. Nó "công khai" theo nghĩa ai cũng đọc được, nhưng nó vẫn
+     * do chính nhóm duyệt — ép nó mang ô định tuyến là bắt mọi nhóm công khai phải chọn tỉnh
+     * cho từng tin nội bộ của mình. Điều kiện phải là `=== MARKETPLACE`, không phải "khác
+     * members".
+     */
     provinceCode: {
       type: String,
       default: null,
       trim: true,
       enum: [...VN_PROVINCE_NAMES, null],
-      required(this: { visibility?: string }) {
-        return this.visibility === POST_VISIBILITY.PUBLIC
+      required(this: { reach?: string }) {
+        return this.reach === LISTING_REACH.MARKETPLACE
       },
     },
     /*
-     * Bắt buộc với tin công khai như `provinceCode`, cùng một lý do: thiếu nó thì không biết
+     * Bắt buộc ở bậc `marketplace` như `provinceCode`, cùng một lý do: thiếu nó thì không biết
      * PHƯỜNG nào duyệt. Không `enum` 3.321 phường — cặp (tỉnh, phường) đã có `isWardOfProvince`
      * chốt ở `listing.schema.ts` và `resolveWardCode`, nhồi enum vào đây là luật thứ hai để lệch.
-     * Update validator của Mongoose chỉ chạy trên path CÓ trong update, nên tin công khai cũ
-     * (`wardCode` null) vẫn sửa/duyệt được sau migration.
+     * Update validator của Mongoose chỉ chạy trên path CÓ trong update, nên tin cũ (`wardCode`
+     * null) vẫn sửa/duyệt được sau migration.
      */
     wardCode: {
       type: String,
       default: null,
       trim: true,
-      required(this: { visibility?: string }) {
-        return this.visibility === POST_VISIBILITY.PUBLIC
+      required(this: { reach?: string }) {
+        return this.reach === LISTING_REACH.MARKETPLACE
       },
     },
     unitId: { type: Schema.Types.ObjectId, ref: 'OrgUnit', default: null },
@@ -344,7 +371,7 @@ listingSchema.plugin(tenantPlugin, { dualAxis: true })
 // --- Indexes ---
 // HAI họ index vì có hai trục truy vấn, và query của trục này không dùng được index của trục
 // kia: trục org luôn bắt đầu bằng `organizationId`, trục danh mục luôn bắt đầu bằng
-// `visibility` (org của nó là null nên prefix organizationId vô dụng).
+// `reach` (org của nó là null nên prefix organizationId vô dụng).
 /*
  * Index BẢNG TIN kết thúc bằng `rankAt` (khoá sắp xếp, phục vụ gói "đẩy tin"), còn index
  * HÀNG ĐỢI (unitId, machineReview) giữ `createdAt` — hàng đợi duyệt là FIFO theo thời điểm
@@ -380,7 +407,7 @@ listingSchema.index({ organizationId: 1, unitId: 1, status: 1, createdAt: -1 })
  * phải sort trong bộ nhớ toàn bộ tin của tỉnh — đúng cái giá mà ghi chú phía trên đang tránh.
  */
 listingSchema.index({ organizationId: 1, 'location.province': 1, status: 1, rankAt: -1, _id: -1 })
-listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, rankAt: -1, _id: -1 })
+listingSchema.index({ reach: 1, 'location.province': 1, status: 1, rankAt: -1, _id: -1 })
 
 /*
  * KHÔNG có index cho khoảng giá. Bản cũ có `{organizationId, price, status}` và nó vừa sai thứ
@@ -390,20 +417,20 @@ listingSchema.index({ visibility: 1, 'location.province': 1, status: 1, rankAt: 
  * chạm index giá. Thêm lại thì phải kèm bản cho trục danh mục, và phải chứng minh bằng số.
  */
 
-// Trục danh mục: bảng tin công khai (visibility + status) và hàng đợi của manager danh mục
-// (visibility + category + tỉnh).
-listingSchema.index({ visibility: 1, status: 1, rankAt: -1, _id: -1 })
+// Trục danh mục: bảng tin công khai (reach + status) và hàng đợi của manager danh mục
+// (reach + category + tỉnh).
+listingSchema.index({ reach: 1, status: 1, rankAt: -1, _id: -1 })
 // Ô của trục danh mục là (danh mục × tỉnh × phường) nên `wardCode` đứng ngay sau `provinceCode`:
 // grant cấp tỉnh chỉ dùng tới tiền tố `…provinceCode` và vẫn khớp chính index này.
 listingSchema.index({
-  visibility: 1,
+  reach: 1,
   category: 1,
   provinceCode: 1,
   wardCode: 1,
   status: 1,
   rankAt: -1,
 })
-listingSchema.index({ visibility: 1, provinceCode: 1, status: 1, rankAt: -1, _id: -1 })
+listingSchema.index({ reach: 1, provinceCode: 1, status: 1, rankAt: -1, _id: -1 })
 
 /*
  * "Tin của tôi" — NGOẠI LỆ của rule 13 (index trên collection có tenant phải mở đầu bằng
@@ -419,7 +446,7 @@ listingSchema.index({ seller: 1, createdAt: -1 })
 /*
  * Hai index cho người duyệt MÁY — cùng ngoại lệ rule 13(c) với "tin của tôi" ở trên: job quét
  * chạy trong `runUnscoped` (xem `moderation.machine.service.ts`), cố tình xuyên cả hai trục
- * nên mọi prefix `organizationId`/`visibility` đều vô dụng với nó.
+ * nên mọi prefix `organizationId`/`reach` đều vô dụng với nó.
  * - hàng đợi cần chấm: `{ status: pending, machineReview: null }`, xử theo thứ tự đăng;
  * - mẫu giá của danh mục: tin ACTIVE mới nhất cùng `category`, lấy xuyên trục vì "giá phổ
  *   biến của mặt hàng" không phân biệt tin org hay tin công khai.
@@ -429,12 +456,12 @@ listingSchema.index({ category: 1, status: 1, createdAt: -1 })
 
 // Index cho `attrs`, land CÙNG lượt với `?attrs=` trong `buildFilter` — đúng như ghi chú cũ ở
 // đây hẹn. Đủ HAI bản, cùng lý do với hai họ index ở trên: trục org bắt đầu bằng
-// `organizationId` (rule 13), trục danh mục bắt đầu bằng `visibility` vì org của nó là null.
+// `organizationId` (rule 13), trục danh mục bắt đầu bằng `reach` vì org của nó là null.
 //
 // `category` đứng ngay sau khoá trục: bộ lọc thuộc tính LUÔN đi kèm danh mục (service chặn
 // nếu thiếu), nên nó thu hẹp trước khi tới `attrs`.
 listingSchema.index({ organizationId: 1, category: 1, status: 1, 'attrs.k': 1, 'attrs.v': 1 })
-listingSchema.index({ visibility: 1, category: 1, status: 1, 'attrs.k': 1, 'attrs.v': 1 })
+listingSchema.index({ reach: 1, category: 1, status: 1, 'attrs.k': 1, 'attrs.v': 1 })
 
 // Slug chỉ unique TRONG org, và tin đã xoá không giữ chỗ slug vĩnh viễn.
 listingSchema.index(

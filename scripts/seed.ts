@@ -26,7 +26,7 @@ import {
   JOINED_VIA,
   LISTING_STATUS,
   LISTING_CONDITION,
-  POST_VISIBILITY,
+  LISTING_REACH,
   MEMBERSHIP_ROLES,
   ORG_CAPABILITY_PRESETS,
   ORG_TYPES,
@@ -152,7 +152,7 @@ function buildListings(
       seller: seller._id,
       posterName: seller.name,
       posterContact: seller.phone ?? '',
-      visibility: POST_VISIBILITY.ORG_INTERNAL,
+      reach: LISTING_REACH.MEMBERS,
       provinceCode: 'Hồ Chí Minh',
       status: LISTING_STATUS.ACTIVE,
       location: {
@@ -272,7 +272,7 @@ async function seed() {
   console.log(`Chủ org:     owner@hung-vuong.local / ${PASSWORD}`)
   console.log(`Thành viên:  member@hung-vuong.local / ${PASSWORD}`)
   console.log('Đăng nhập: POST /api/v1/auth/login { email, password } — không cần orgSlug nữa.')
-  console.log('Gọi API của org: thêm header `X-Org-Slug: hung-vuong`.')
+  console.log('Gọi API của org: thêm header `X-Org-Id: hung-vuong`.')
 
   await mongoose.disconnect()
   process.exit(0)

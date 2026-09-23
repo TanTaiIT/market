@@ -1,7 +1,7 @@
 import { Schema, Types, Query, MongooseQueryMiddleware, FilterQuery } from 'mongoose'
 import { PublicAxisScope, TenantScope, requireScope } from './tenantContext'
 import { CrossTenantWriteError } from './tenant.errors'
-import { POST_VISIBILITY, PUBLIC_LISTING_STATUSES } from '../constants'
+import { LISTING_REACH, PUBLICLY_READABLE_REACHES, PUBLIC_LISTING_STATUSES } from '../constants'
 
 export interface TenantPluginOptions {
   /**
@@ -14,7 +14,7 @@ export interface TenantPluginOptions {
   dualAxis?: boolean
   /**
    * Vế đọc trục danh mục của RIÊNG collection này. Mặc định là vế của `Listing` (khoá trục là
-   * `visibility`, người thường thấy tin đã duyệt). Collection không có `visibility` — `Report`,
+   * `reach`, người thường thấy tin đã duyệt). Collection không có `reach` — `Report`,
    * khoá trục là `organizationId: null` — phải tự khai vế của mình, và dùng `coverageOf` để
    * phần "ô của tôi" không bị chép lại. Chỉ có nghĩa khi `dualAxis`.
    */
@@ -83,16 +83,49 @@ export function coverageOf(
 }
 
 /**
- * Vế trục danh mục MẶC ĐỊNH — của `Listing`. `visibility` là khoá của trục, không phải
- * `organizationId` (quyết định Q3). Người duyệt thấy cả tin CHƯA duyệt, nhưng chỉ trong ô của mình.
+ * Vế ĐỌC CÔNG KHAI mặc định — của `Listing`. Khoá là `reach`, không phải `organizationId`.
+ * Người duyệt thấy cả tin CHƯA duyệt, nhưng chỉ trong ô của mình.
  */
 function listingPublicPredicate(scope: TenantScope): FilterQuery<unknown> | null {
   const axis = scope.publicAxis
   if (!axis) return null
-  if (axis.mode === 'approved') {
-    return { visibility: POST_VISIBILITY.PUBLIC, status: { $in: PUBLIC_LISTING_STATUSES } }
+
+  /*
+   * Nhánh NGƯỜI DUYỆT giữ nguyên equality trên trục, tuyệt đối không cộng `memberOrgIds` vào.
+   * Nhánh này cố ý BỎ kẹp `status` để bàn danh mục nhìn được tin chưa duyệt — nới thêm bất cứ
+   * gì vào đây là trao cho mọi manager danh mục một cửa sổ nhìn vào tin `pending`/`rejected`
+   * của những nhóm không liên quan gì tới ô của họ.
+   */
+  if (axis.mode !== 'approved') {
+    /*
+     * `MARKETPLACE` là EQUALITY, tuyệt đối không `$in` cả hai bậc công khai.
+     *
+     * Chỉ bậc `marketplace` nằm trên bàn danh mục. Nhánh này lại cố ý BỎ kẹp `status` để người
+     * duyệt nhìn được tin chưa duyệt — nên gộp `group_open` vào là trao cho mọi manager danh
+     * mục một cửa sổ nhìn thẳng vào tin `pending`/`rejected`/`hidden` của MỌI nhóm công khai,
+     * những nhóm chẳng liên quan gì tới ô của họ. Đây là cách rò rỉ dễ xảy ra nhất khi đọc
+     * "group_open nghĩa là công khai" rồi làm theo trực giác.
+     */
+    return coverageOf(axis, { reach: LISTING_REACH.MARKETPLACE })
   }
-  return coverageOf(axis, { visibility: POST_VISIBILITY.PUBLIC })
+
+  const approved = {
+    reach: { $in: PUBLICLY_READABLE_REACHES },
+    status: { $in: PUBLIC_LISTING_STATUSES },
+  }
+  if (scope.memberOrgIds.length === 0) return approved
+
+  /*
+   * Người đã vào nhóm đọc được tin của MỌI nhóm mình ở trong, không cần chỉ ra nhóm nào — đây
+   * là chỗ duy nhất trong hệ thống biết tới `memberOrgIds`.
+   *
+   * Có kẹp `status` mà nhánh org (`orgPredicate`) không có, và đó là cố ý: bảng tin không phải
+   * hàng đợi duyệt, tin `pending` của chính nhóm mình cũng không nên hiện ở đó. Bàn duyệt đi
+   * đường khác — nó có `ownOrgId` nên ăn nhánh org, và nhánh đó vẫn không kẹp.
+   */
+  return {
+    $or: [approved, { organizationId: { $in: scope.memberOrgIds }, status: approved.status }],
+  }
 }
 
 /** Hai vế đọc của collection dual-axis. Rỗng = không được đọc gì. */

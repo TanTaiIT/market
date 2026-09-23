@@ -101,12 +101,12 @@ registry.registerPath({
   path: '/auth/register',
   operationId: 'authRegister',
   tags: ['Auth'],
-  summary: 'Tạo Organization mới + tài khoản owner đầu tiên',
+  summary: 'Tạo tài khoản — không gắn tổ chức nào, vào nhóm là bước sau',
   request: { body: { content: { 'application/json': { schema: registerSchema } } } },
   responses: {
     201: jsonResponse('Đăng ký thành công', authResponse),
     400: errorResponse('Dữ liệu không hợp lệ'),
-    409: errorResponse('Organization slug đã tồn tại'),
+    409: errorResponse('Email đã có tài khoản'),
     429: errorResponse('Quá nhiều request'),
   },
 })
@@ -116,12 +116,11 @@ registry.registerPath({
   path: '/auth/login',
   operationId: 'authLogin',
   tags: ['Auth'],
-  summary: 'Đăng nhập trong phạm vi một Organization (subdomain hoặc orgSlug)',
+  summary: 'Đăng nhập — phiên không gắn tổ chức, org do từng request khai qua `X-Org-Id`',
   request: { body: { content: { 'application/json': { schema: loginSchema } } } },
   responses: {
     200: jsonResponse('Đăng nhập thành công', authResponse),
-    401: errorResponse('Sai thông tin đăng nhập, tài khoản bị khoá, hoặc thiếu organization'),
-    403: errorResponse('Organization không tồn tại hoặc đã bị khoá'),
+    401: errorResponse('Sai thông tin đăng nhập hoặc tài khoản bị khoá'),
     429: errorResponse('Quá nhiều request'),
   },
 })

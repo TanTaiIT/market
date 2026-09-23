@@ -49,7 +49,7 @@ let conversationId = ''
 let joinRequestId = ''
 let inviteId = ''
 let grantId = ''
-const SLUG = 'idor-org'
+const ORG = 'idor-org'
 const HCM = 'Hồ Chí Minh'
 
 const bearer = (who: TestUser) => ({ Authorization: `Bearer ${who.token}` })
@@ -67,7 +67,7 @@ beforeAll(async () => {
   stranger = await registerUser(app, 'stranger@idor.local', 'Người lạ')
 
   orgId = (
-    await createOrg(app, master.token, { name: 'Nhóm IDOR', slug: SLUG, ownerEmail: owner.email })
+    await createOrg(app, master.token, { name: 'Nhóm IDOR', key: ORG, ownerEmail: owner.email })
   ).id
   await addMember(stranger.id, orgId)
 
@@ -76,7 +76,7 @@ beforeAll(async () => {
     .set(bearer(owner))
     .send({
       ...listingPayload('Tin của chủ tin', categoryId),
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: HCM,
     })
     .expect(201)
@@ -97,13 +97,13 @@ beforeAll(async () => {
   const jr = await request(app)
     .post('/api/v1/join-requests')
     .set(bearer(applicant))
-    .send({ code: await joinCodeOf(SLUG), claimedName: 'Xin vào' })
+    .send({ code: await joinCodeOf(ORG), claimedName: 'Xin vào' })
     .expect(201)
   joinRequestId = jr.body.data.id
 
   const invite = await request(app)
     .post('/api/v1/invites')
-    .set(orgAuth(owner.token, SLUG))
+    .set(orgAuth(owner.token, ORG))
     .send({ channel: 'email', value: 'moi@idor.local' })
     .expect(201)
   inviteId = invite.body.data.id
@@ -189,14 +189,14 @@ describe('Quét người lạ — quản trị nhóm', () => {
   it('thành viên thường không gỡ được người khác khỏi nhóm', async () => {
     const res = await request(app)
       .delete(`/api/v1/memberships/${owner.id}`)
-      .set(orgAuth(stranger.token, SLUG))
+      .set(orgAuth(stranger.token, ORG))
     expect(BLOCKED).toContain(res.status)
   }, 60_000)
 
   it('thành viên thường không duyệt được đơn gia nhập', async () => {
     const res = await request(app)
       .patch(`/api/v1/join-requests/${joinRequestId}/approve`)
-      .set(orgAuth(stranger.token, SLUG))
+      .set(orgAuth(stranger.token, ORG))
       .send({})
     expect(BLOCKED).toContain(res.status)
   }, 60_000)
@@ -204,7 +204,7 @@ describe('Quét người lạ — quản trị nhóm', () => {
   it('thành viên thường không từ chối được đơn gia nhập', async () => {
     const res = await request(app)
       .patch(`/api/v1/join-requests/${joinRequestId}/reject`)
-      .set(orgAuth(stranger.token, SLUG))
+      .set(orgAuth(stranger.token, ORG))
       .send({ reason: 'không thích' })
     expect(BLOCKED).toContain(res.status)
   }, 60_000)
@@ -212,7 +212,7 @@ describe('Quét người lạ — quản trị nhóm', () => {
   it('thành viên thường không thu hồi được lời mời', async () => {
     const res = await request(app)
       .delete(`/api/v1/invites/${inviteId}`)
-      .set(orgAuth(stranger.token, SLUG))
+      .set(orgAuth(stranger.token, ORG))
     expect(BLOCKED).toContain(res.status)
   }, 60_000)
 })

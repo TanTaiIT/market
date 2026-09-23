@@ -50,19 +50,36 @@ docker-compose up --build
 | `npm run seed:bulk` | Seed khối lượng lớn — **xoá sạch collection trước khi ghi** |
 | `npm run migrate:v2` | Đưa dữ liệu v1 sang mô hình v2 (memberships, role_grants, gỡ chain) — idempotent |
 
-## Hai trục kiểm duyệt (v2)
+## Thang phủ sóng và hai hàng đợi (v2)
 
-Mỗi tin thuộc ĐÚNG MỘT hàng đợi, và khoá định tuyến là `visibility` — không phải `organizationId`:
+`Listing.reach` là một THANG BA BẬC, bậc trên bao bậc dưới:
 
-| `organizationId` | `visibility` | Hàng đợi | Ai duyệt |
+```
+members  ⊂  group_open  ⊂  marketplace
+```
+
+| bậc | ai đọc được | ở đâu | ai duyệt |
 |---|---|---|---|
-| có | `org_internal` | org | staff nhóm con → manager org |
-| có | `public` | danh mục | manager (danh mục × tỉnh) |
-| `null` | `public` | danh mục | manager (danh mục × tỉnh) |
-| `null` | `org_internal` | — | vô nghĩa, chặn ở validation |
+| `members` | thành viên nhóm | bảng tin nhóm | quản trị nhóm |
+| `group_open` | bất kỳ ai | hồ sơ nhóm + tìm kiếm | quản trị nhóm |
+| `marketplace` | bất kỳ ai | thêm bảng tin chung của sàn | manager (danh mục × tỉnh) |
 
-Tin công khai từ một tổ chức vẫn phải qua manager danh mục: `organizationId` chỉ còn là
-attribution (badge "đăng bởi trường X"). Ô (danh mục × tỉnh) chưa có ai phụ trách thì tin rơi về
+Bậc trên bao bậc dưới nên tin `marketplace` VẪN nằm trong bảng tin nhóm — một bản ghi duy nhất,
+không phải hai tin song song. `group_open` đòi nhóm đang `isPublic`; master gạt nhóm sang riêng
+tư thì mọi tin `group_open` của nhóm tự hạ về `members`.
+
+Mặc định khi đăng: nhóm công khai → `group_open`, nhóm kín → `members`, không nhóm →
+`marketplace`.
+
+| `organizationId` | `reach` | Hàng đợi | Ai duyệt |
+|---|---|---|---|
+| có | `members` / `group_open` | org | staff nhóm con → manager org |
+| có | `marketplace` | danh mục | manager (danh mục × tỉnh) |
+| `null` | `marketplace` | danh mục | manager (danh mục × tỉnh) |
+| `null` | `members` / `group_open` | — | vô nghĩa, chặn ở validation |
+
+Tin lên sàn từ một tổ chức vẫn phải qua manager danh mục: `organizationId` chỉ còn là
+attribution (badge "đăng bởi trường X") — nhưng nhóm GỠ được tin mang tên mình, xem `canTakedownListing`. Ô (danh mục × tỉnh) chưa có ai phụ trách thì tin rơi về
 hàng đợi của master — `GET /moderation/coverage` là chỗ nhìn thấy các ô đó trước khi master
 chết chìm.
 
@@ -82,14 +99,14 @@ Hai bảng tách bạch:
 Một giáo viên là thành viên của trường (thân phận) và **có thể có hoặc không** quyền duyệt tin.
 Gộp hai thứ vào một cột thì không biểu diễn nổi trường hợp đó.
 
-Org hoạt động của mỗi request đến từ **subdomain** hoặc header **`X-Org-Slug`** (nếu chỉ thuộc
+Org hoạt động của mỗi request đến từ header **`X-Org-Id`** (`_id` của org; nếu chỉ thuộc
 đúng một org thì suy ra được), rồi đối chiếu với `memberships` ngay lúc đó — không nằm trong
 token. Rời org là mất quyền ngay, không chờ token hết hạn.
 
 ```http
 POST /api/v1/auth/login          { "email": "...", "password": "..." }
 GET  /api/v1/listings            Authorization: Bearer <token>
-                                 X-Org-Slug: hung-vuong
+                                 X-Org-Id: <organizationId>
 ```
 
 ### Chốt an toàn của seed
@@ -168,7 +185,7 @@ tests/
 | user | ✅ Core | `GET/PATCH/DELETE /users/me`, `GET /users/:id` |
 | listing | ✅ Core | `GET /listings`, `GET /listings/nearby`, `GET/POST/PATCH/DELETE /listings/:id` |
 | notification | ✅ Core | `GET/POST /notifications`, `PATCH /notifications/:id/read` |
-| organization | ✅ Core | `GET /organizations/{lookup,slug-availability}` (public) · `POST /organizations`, `PATCH /organizations/:id/{status,slug}` (master) |
+| organization | ✅ Core | `GET /organizations/{lookup,profile/:id,by-code/:code}` (public) · `POST /organizations`, `PATCH /organizations/:id/{status,visibility}` (master) |
 | membership | ✅ Core (không có route riêng) | Quan hệ user ↔ org; sinh ra qua duyệt đơn tham gia |
 | join-request | ✅ Core | `POST /join-requests`, `GET /join-requests{,/mine}`, `PATCH /join-requests/:id/{approve,reject}`, `POST /join-requests/bulk-approve` |
 | role-grant | ✅ Core | `POST /role-grants`, `GET /role-grants/mine`, `DELETE /role-grants/:id` |
@@ -216,7 +233,7 @@ Script cần `.env` hợp lệ vì `src/config/env.ts` validate env lúc import 
 - **Response chuẩn**: `{ success, message, data, meta? }`.
 - **Quan sát hệ thống**: mọi request có `X-Request-Id` (nhận từ client nếu hợp lệ, không thì tự
   sinh) sống trong `AsyncLocalStorage` và được `logger` tự gắn vào MỌI dòng log cùng `userId` +
-  `orgSlug` — không tầng nào phải truyền tay. Log ở production là **JSON + timestamp ISO** để
+  `orgId` — không tầng nào phải truyền tay. Log ở production là **JSON + timestamp ISO** để
   lọc theo field; ở dev là một dòng ngắn cho mắt người. Lỗi 5xx (chỉ 5xx) đi tới Sentry khi có
   `SENTRY_DSN`, gom nhóm theo route mẫu chứ không theo URL có id. `GET /health` **ping Mongo
   thật** và trả 503 khi DB chết.

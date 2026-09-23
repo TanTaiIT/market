@@ -205,7 +205,7 @@ describe('Chưa xác thực thì chặn tới đâu', () => {
       .set(auth(chuaXacThuc))
       .send({
         ...listingPayload('Tin bị chặn', categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: 'Hồ Chí Minh',
       })
       .expect(403)
@@ -233,7 +233,7 @@ describe('Chưa xác thực thì chặn tới đâu', () => {
       .set(auth(chuaXacThuc))
       .send({
         ...listingPayload('Tin qua cửa', categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: 'Hồ Chí Minh',
       })
       .expect(201)

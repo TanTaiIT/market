@@ -13,6 +13,7 @@ import {
   orgAuth,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -29,7 +30,7 @@ let mongod: MongoMemoryReplSet
 let owner: TestUser
 let phoneCat = ''
 let bookCat = ''
-const SLUG = 'nhom-loc-duyet'
+const ORG = 'nhom-loc-duyet'
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -38,7 +39,7 @@ beforeAll(async () => {
   bookCat = await createCategory('Sách', 'sach-loc')
   const master = await makeMaster(app)
   owner = await registerUser(app, 'chu@loc.local', 'Chủ nhóm')
-  await createOrg(app, master.token, { name: 'Nhóm lọc', slug: SLUG, ownerEmail: owner.email })
+  await createOrg(app, master.token, { name: 'Nhóm lọc', key: ORG, ownerEmail: owner.email })
 
   for (const [title, categoryId] of [
     ['Điện thoại cũ còn tốt', phoneCat],
@@ -47,8 +48,8 @@ beforeAll(async () => {
   ] as const) {
     await request(app)
       .post('/api/v1/listings')
-      .set(orgAuth(owner.token, SLUG))
-      .send({ ...listingPayload(title, categoryId), orgSlug: SLUG })
+      .set(orgAuth(owner.token, ORG))
+      .send({ ...listingPayload(title, categoryId), orgId: orgIdOf(ORG) })
       .expect(201)
   }
 }, 120_000)
@@ -59,7 +60,7 @@ afterAll(async () => {
 })
 
 const list = (query: string) =>
-  request(app).get(`/api/v1/moderation/listings?${query}`).set(orgAuth(owner.token, SLUG))
+  request(app).get(`/api/v1/moderation/listings?${query}`).set(orgAuth(owner.token, ORG))
 const titles = (res: request.Response) => (res.body.data as { title: string }[]).map((l) => l.title)
 
 describe('GET /moderation/listings — lọc phía server', () => {

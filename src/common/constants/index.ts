@@ -188,17 +188,37 @@ export const FEED_LAYOUTS = {
 export type FeedLayout = (typeof FEED_LAYOUTS)[keyof typeof FEED_LAYOUTS]
 
 /**
- * Tin hiển thị ở đâu — và từ v2, đây cũng là KHOÁ ĐỊNH TUYẾN hàng đợi duyệt.
+ * THANG PHỦ SÓNG của một tin — bậc trên bao bậc dưới.
  *
- * Quyết định Q3 chọn "giới hạn hiển thị": tin muốn ra trang công khai phải qua manager danh
- * mục, kể cả khi nó thuộc một org. Vì vậy `orgId` chỉ còn là attribution (badge "đăng bởi
- * trường X"), còn `visibility` mới là thứ quyết định ai duyệt.
+ * ```
+ * members  ⊂  group_open  ⊂  marketplace
+ * ```
+ *
+ * | bậc           | ai đọc được    | ở đâu                            | ai duyệt        |
+ * |---------------|----------------|----------------------------------|-----------------|
+ * | `members`     | thành viên nhóm| bảng tin nhóm                    | quản trị nhóm   |
+ * | `group_open`  | bất kỳ ai      | hồ sơ nhóm + kết quả tìm kiếm    | quản trị nhóm   |
+ * | `marketplace` | bất kỳ ai      | thêm bảng tin chung của cả sàn   | manager danh mục|
+ *
+ * Thay cho `POST_VISIBILITY` hai giá trị, và đảo quyết định Q3 (xem
+ * `docs/architecture/v2-org-permission.plan.md`). Hai thứ Q3 không diễn đạt được:
+ *
+ * 1. Nhóm CÔNG KHAI mà tin bên trong vẫn kín với người ngoài — `group_open` là bậc đó.
+ * 2. Muốn bán cho cả nhóm lẫn cả sàn thì phải đăng hai tin rời nhau. Nay tin ở `marketplace`
+ *    VẪN nằm trong bảng tin nhóm, nên chỉ có MỘT bản ghi: lượt xem, người quan tâm và hội
+ *    thoại không bị tách đôi.
+ *
+ * Tên `reach` chứ không giữ `visibility`: chữ "visibility" đã bị `Organization.isPublic` và
+ * `PATCH /organizations/:id/visibility` chiếm, mà luật hạ bậc (nhóm chuyển riêng tư ⇒ hạ
+ * `group_open` về `members`) làm hai thứ đó dính vào nhau. Hai khái niệm coupled cùng tên là
+ * cách chắc chắn để quên mất cascade.
  */
-export const POST_VISIBILITY = {
-  ORG_INTERNAL: 'org_internal',
-  PUBLIC: 'public',
+export const LISTING_REACH = {
+  MEMBERS: 'members',
+  GROUP_OPEN: 'group_open',
+  MARKETPLACE: 'marketplace',
 } as const
-export type PostVisibility = (typeof POST_VISIBILITY)[keyof typeof POST_VISIBILITY]
+export type ListingReach = (typeof LISTING_REACH)[keyof typeof LISTING_REACH]
 
 /**
  * Giới tính trên hồ sơ. `UNDISCLOSED` là MẶC ĐỊNH và là một lựa chọn thật, không phải "chưa
@@ -232,6 +252,18 @@ export const PUBLIC_LISTING_STATUSES: ListingStatus[] = [
   LISTING_STATUS.ACTIVE,
   LISTING_STATUS.SOLD,
   LISTING_STATUS.EXPIRED,
+]
+
+/**
+ * Bậc phủ sóng mà NGƯỜI LẠ đọc được. Đặt ngay cạnh `PUBLIC_LISTING_STATUSES` là có chủ ý: hai
+ * mảng này cùng nhau là câu trả lời ĐẦY ĐỦ cho "một người không quan hệ gì với nhóm thấy được
+ * gì", và tách chúng ra hai đầu file là cách để sửa một cái mà quên cái kia.
+ *
+ * `members` vắng mặt, và đó là toàn bộ nội dung của bậc đó.
+ */
+export const PUBLICLY_READABLE_REACHES: ListingReach[] = [
+  LISTING_REACH.GROUP_OPEN,
+  LISTING_REACH.MARKETPLACE,
 ]
 
 export const LISTING_CONDITION = {
@@ -306,6 +338,40 @@ export const MODERATION_QUEUE = {
   MASTER: 'master',
 } as const
 export type ModerationQueue = (typeof MODERATION_QUEUE)[keyof typeof MODERATION_QUEUE]
+
+/**
+ * Hai HẠNG thao tác của bàn duyệt, và chúng không cùng một thẩm quyền.
+ *
+ * `APPROVE` — cho tin đi tiếp trên trục của nó. Thẩm quyền theo ĐÚNG trục: tin công khai thuộc
+ * người phụ trách danh mục, tin của nhóm thuộc quản trị nhóm.
+ *
+ * `TAKEDOWN` — rút tin khỏi lưu thông. Cửa này RỘNG hơn: nhóm sở hữu tin luôn gỡ được tin mang
+ * tên mình, kể cả tin đã lên bảng tin chung. Đó là quyền *từ chối cho mượn tên*, khác hẳn quyền
+ * *duyệt cho lên bảng chung* — nhóm không đẩy tin lên sàn được, nhưng phải rút được tin đang
+ * đứng dưới tên họ.
+ */
+export const MODERATION_ACTION = {
+  APPROVE: 'approve',
+  TAKEDOWN: 'takedown',
+} as const
+export type ModerationAction = (typeof MODERATION_ACTION)[keyof typeof MODERATION_ACTION]
+
+/**
+ * Quyết định nào thuộc hạng nào — BẢNG DUY NHẤT cho cả hai lớp chốt (`moderation.service` ở
+ * ngoài, `listing.service.setModerationStatus` ở trong). Hai lớp cùng tra một bảng thì không có
+ * cách nào lệch nhau; mỗi bên tự phán một kiểu là lớp ngoài cho qua còn lớp trong chặn, hoặc tệ
+ * hơn là ngược lại.
+ *
+ * `rejected` nằm ở `APPROVE` chứ không phải `TAKEDOWN`: từ chối là một PHÁN QUYẾT có hệ quả lên
+ * uy tín người bán, còn ẩn thì không (`applyTrustEffect`). Nhóm rút được tin khỏi lưu thông,
+ * nhưng không ghi được án lên hồ sơ người bán ở một trục không phải của họ.
+ */
+export const ACTION_BY_DECISION = {
+  [LISTING_STATUS.ACTIVE]: MODERATION_ACTION.APPROVE,
+  [LISTING_STATUS.REJECTED]: MODERATION_ACTION.APPROVE,
+  [LISTING_STATUS.HIDDEN]: MODERATION_ACTION.TAKEDOWN,
+} as const
+export type ModerationDecision = keyof typeof ACTION_BY_DECISION
 
 // Vết kiểm toán của thao tác quản trị. Tên dạng `<đối tượng>.<hành động>` để grep ra nhóm.
 export const AUDIT_ACTION = {

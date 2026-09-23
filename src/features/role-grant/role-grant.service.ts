@@ -1,7 +1,9 @@
 import { Types } from 'mongoose'
 import { roleGrantRepository } from './role-grant.repository'
 import { toPolicyGrant, toRoleGrantDto } from './role-grant.types'
+import type { UpdateGrantScopeInput } from './role-grant.schema'
 import { userRepository } from '../user/user.repository'
+import { categoryService } from '../category/category.service'
 import { Grant, canGrant, canRevoke } from '../../common/authz/policy'
 import { SCOPE_TYPES, SystemRole, ScopeType } from '../../common/constants'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
@@ -103,7 +105,75 @@ async function resolveRecipientId(input: GrantInput): Promise<string> {
   return user._id.toString()
 }
 
+/**
+ * Lỗi hình dạng phạm vi từ `enforceScopeShape` → 400, không phải 500.
+ *
+ * Hook `pre('validate')` của model gọi `next(new Error(...))` với một Error TRƠN. Nó không
+ * phải `mongoose.Error.ValidationError`, nên error handler không nhận ra và trả 500 — trong
+ * khi đây đúng là lỗi của người gửi ("category_ward cần ít nhất một phường").
+ *
+ * Nhận diện bằng `constructor === Error`, không bằng chuỗi thông điệp: thông điệp nằm rải
+ * trong model và sẽ đổi, còn mọi lỗi KHÁC ở đường này đều là lớp con — `ValidationError`,
+ * `CastError`, `MongoServerError`, `MongoNetworkError`. Bắt theo chuỗi là bỏ sót luật mới
+ * thêm; bắt tất cả là biến một sự cố mạng thành 400.
+ */
+function asScopeShapeError(err: unknown): never {
+  if (err instanceof Error && err.constructor === Error) throw new BadRequestError(err.message)
+  throw err
+}
+
 export const roleGrantService = {
+  /**
+   * AI ĐANG PHỤ TRÁCH DANH MỤC NÀO — bảng master mở để biết gọi ai, và để thu hồi.
+   *
+   * Tồn tại vì trước đó không có đường nào trả lời câu này: ma trận phủ sóng chỉ nói ô CÓ hay
+   * KHÔNG có người (`hasModerator`), còn `/role-grants/mine` chỉ trả quyền của chính người gọi.
+   * Hệ quả nặng hơn là `DELETE /role-grants/:id` vốn đã cho master thu hồi quyền của bất kỳ ai
+   * nhưng master không có cách nào lấy được `id` đó — một khả năng nằm im không dùng được, và
+   * cấp quyền trên thực tế là đường một chiều.
+   *
+   * `id` của grant nằm trong DTO chính vì vậy: nó là thứ duy nhất `revoke` nhận.
+   *
+   * Ghép danh tính và tên danh mục theo LÔ, không phải một truy vấn cho mỗi dòng — bảng này
+   * liệt kê mọi grant trục danh mục của cả hệ thống.
+   */
+  async listCategoryAxis(filter: { categoryId?: string; province?: string }) {
+    const grants = await roleGrantRepository.listCategoryAxisGrantsFiltered(filter)
+    if (grants.length === 0) return []
+
+    const [users, categories] = await Promise.all([
+      userRepository.findByIds(
+        [...new Set(grants.map((g) => g.userId.toString()))].map((id) => new Types.ObjectId(id)),
+      ),
+      categoryService.list({ includeInactive: true }),
+    ])
+
+    const userById = new Map(users.map((u) => [u._id.toString(), u]))
+    const categoryName = new Map(categories.map((c) => [c.id, c.name]))
+
+    return grants.map((g) => {
+      const holder = userById.get(g.userId.toString())
+      return {
+        ...toRoleGrantDto(g),
+        /*
+         * Tài khoản đã xoá mềm vẫn giữ grant (xoá tài khoản KHÔNG thu hồi quyền — xem
+         * `usableMastersExcluding`). Bảng phải nói ra thay vì giấu dòng đó: một ô do một tài
+         * khoản chết phụ trách nhìn như "đã có người" ở mọi chỗ khác, và đó chính là ô master
+         * cần thấy nhất.
+         */
+        holderName: holder?.name ?? 'Tài khoản không còn',
+        holderEmail: holder?.email ?? '',
+        /*
+         * `isActive`, đúng cờ mà `countUsable` dùng để đếm "người còn dùng được". Tài khoản
+         * xoá mềm không lọt tới đây: model có hook `this.where({ deletedAt: null })`, nên
+         * `holder` vắng mặt và rơi vào nhánh "Tài khoản không còn" ngay trên.
+         */
+        holderActive: Boolean(holder?.isActive),
+        categoryName: g.categoryId ? (categoryName.get(g.categoryId.toString()) ?? 'Khác') : '',
+      }
+    })
+  },
+
   /** Nạp quyền của một người về dạng tầng policy hiểu được. */
   async grantsOf(userId: string): Promise<Grant[]> {
     const docs = await roleGrantRepository.listActiveByUser(userId)
@@ -136,8 +206,9 @@ export const roleGrantService = {
     } catch (err) {
       if ((err as { code?: number }).code === 11000) {
         // Index unique không phân biệt danh sách phường, nên grant phường thứ hai trong cùng
-        // danh mục đụng nó. Bảng này APPEND-ONLY: sửa `wardCodes` tại chỗ là xoá vết "ai cho
-        // quyền gì, lúc nào", nên đường đúng là thu hồi rồi cấp lại với đủ danh sách.
+        // danh mục đụng nó. Đường đúng giờ là SỬA grant sẵn có (`updateScope`) với đủ danh
+        // sách phường — nó giữ nguyên `grantedAt` và ghi cả phạm vi trước lẫn sau vào log,
+        // nên không còn đánh đổi "sửa tại chỗ thì mất vết" như hồi chỉ có cấp/thu hồi.
         if (input.scopeType === SCOPE_TYPES.CATEGORY_WARD) {
           throw new ConflictError(
             'Người này đã có quyền phường trong danh mục đó — thu hồi rồi cấp lại với đủ danh sách phường',
@@ -145,8 +216,84 @@ export const roleGrantService = {
         }
         throw new ConflictError('Người này đã có đúng quyền đó')
       }
-      throw err
+      // Hình dạng phạm vi sai cũng từng ra 500 ở đường CẤP — cùng một hook, cùng một lỗi trơn.
+      return asScopeShapeError(err)
     }
+  },
+
+  /**
+   * Đổi PHẠM VI của một grant trục danh mục — nâng từ vài phường lên cả tỉnh, đổi danh mục,
+   * thêm bớt tỉnh.
+   *
+   * Trước đây không có đường này: role-grant chỉ có cấp và thu hồi, nên "sửa" nghĩa là gỡ rồi
+   * cấp lại — đứt vết kiểm toán (`grantedAt` nhảy về hôm nay), và có một khoảng thời gian ô đó
+   * KHÔNG ai phụ trách. Giữ nguyên `_id` và `grantedAt` là giữ nguyên lịch sử.
+   *
+   * CHỈ trục danh mục, và chỉ đổi qua lại giữa hai tầng của nó. Đây không phải giới hạn cho
+   * gọn mà là một chốt an toàn: cho phép biến một grant `org` thành `category_province` sẽ lấy
+   * đi người quản trị cuối cùng của một nhóm mà KHÔNG chạm chốt `usableOrgAdmins` — chốt đó
+   * nằm trong `revoke`, và một lượt sửa thì không đi qua đó. Đổi trục = thu hồi rồi cấp lại,
+   * để đúng chốt kia chạy.
+   *
+   * Thay TOÀN BỘ phạm vi, không vá từng field: hạ từ tầng phường xuống tầng tỉnh đòi phải xoá
+   * `wardCodes`, và một PATCH bán phần khiến việc đó thành thao tác dễ quên nhất trong form.
+   *
+   * Hình dạng phạm vi (tỉnh nào hợp lệ, phường có thuộc tỉnh không) do hook `enforceScopeShape`
+   * của model kiểm — không lặp lại ở đây, một luật ở hai chỗ là một luật sẽ lệch.
+   */
+  async updateScope(actorId: string, grantId: string, input: UpdateGrantScopeInput) {
+    const doc = await roleGrantRepository.findActiveById(grantId)
+    if (!doc) throw new NotFoundError('Không tìm thấy quyền này')
+
+    const axis: ScopeType[] = [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]
+    if (!axis.includes(doc.scopeType)) {
+      throw new BadRequestError(
+        'Chỉ sửa được phạm vi của quyền trục danh mục — đổi trục thì thu hồi rồi cấp lại',
+      )
+    }
+
+    const actorGrants = await this.grantsOf(actorId)
+    const target = { userId: doc.userId.toString(), grant: toPolicyGrant(doc) }
+    if (!canGrant({ userId: actorId, grants: actorGrants }, target)) {
+      throw new ForbiddenError('Không đủ thẩm quyền để sửa quyền này')
+    }
+
+    /*
+     * Chụp phạm vi CŨ trước khi ghi đè — đây là câu trả lời cho lập luận "bảng này append-only"
+     * ở `grant()`.
+     *
+     * Sửa tại chỗ thật sự xoá phạm vi cũ khỏi bản ghi, nên vết phải nằm ở chỗ khác. `AuditLog`
+     * là collection CÓ TENANT nên trục danh mục không ghi vào đó được (món nợ đã biết — xem
+     * `moderation.service`), và log hệ thống là đúng cái mà trục này vẫn dùng. Ghi cả trước
+     * lẫn sau, không chỉ sau: chỉ có cặp đó mới dựng lại được "ai đổi gì".
+     */
+    const before = {
+      scopeType: doc.scopeType,
+      categoryId: doc.categoryId?.toString() ?? null,
+      provinceCodes: [...doc.provinceCodes],
+      wardCodes: [...doc.wardCodes],
+    }
+
+    doc.scopeType = input.scopeType
+    doc.categoryId = new Types.ObjectId(input.categoryId)
+    doc.provinceCodes = input.provinceCodes
+    doc.wardCodes = input.wardCodes
+    // `save()` chạy `enforceScopeShape`; lỗi hình dạng ra 400 chứ không 500 — xem hàm đó.
+    await doc.save().catch(asScopeShapeError)
+
+    logger.info('role-grant scope updated', {
+      actorId,
+      grantId,
+      targetUserId: target.userId,
+      before,
+      after: {
+        scopeType: doc.scopeType,
+        categoryId: doc.categoryId?.toString() ?? null,
+        provinceCodes: doc.provinceCodes,
+        wardCodes: doc.wardCodes,
+      },
+    })
+    return toRoleGrantDto(doc)
   },
 
   async revoke(actorId: string, grantId: string) {

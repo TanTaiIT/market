@@ -63,7 +63,7 @@ index được. `attrs` phải theo đúng khuôn đó:
 
 ```
 { organizationId: 1, 'attrs.k': 1, 'attrs.v': 1 }          // trục org
-{ visibility: 1, status: 1, 'attrs.k': 1, 'attrs.v': 1 }   // trục danh mục
+{ reach: 1, status: 1, 'attrs.k': 1, 'attrs.v': 1 }   // trục danh mục
 ```
 
 Hai index này là chi phí thật trên M0 512 MB → kỷ luật `attrs` **chỉ chứa field

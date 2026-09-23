@@ -10,14 +10,14 @@
 |---|---|---|---|
 | Q1 | `staff` là gì | **Phạm vi hẹp hơn** (duyệt được, trong nhóm con của mình) | Lớp 5 giữ nguyên như §10 |
 | Q2 | Ai tạo org | **Chỉ master** | `POST /auth/register` **thôi tạo org**; tài khoản trở thành global |
-| Q3 | Tin org lên trang công khai | **Giới hạn hiển thị** | `visibility` — không phải `org_id` — là khoá định tuyến hàng đợi |
+| Q3 | Tin org lên trang công khai | **Giới hạn hiển thị** — ⚠️ ĐÃ THAY bằng thang phủ sóng, xem §0.1a | `reach` — không phải `org_id` — là khoá định tuyến hàng đợi |
 | Q4 | Org lồng nhau | Giữ `parentUnitId` trong schema, **truy vấn phẳng** ở vòng này | Không cần truy vấn cây |
 | — | Feature `chain` | **Bỏ hẳn** | Xoá model/routes/middleware, `chainReadable`, `Organization.chainId` |
 
 ### 0.1 Hệ quả của Q3 — phải đọc kỹ
 
 Thiết kế gốc (§3.1, §11) lấy `org_id IS NULL` làm ranh giới hai trục. Chọn "giới hạn hiển thị"
-nghĩa là **ranh giới chuyển sang `visibility`**:
+nghĩa là **ranh giới chuyển sang `visibility`** (nay là `reach` — xem §0.1a):
 
 | `orgId` | `visibility` | Hàng đợi | Hiển thị sau khi duyệt |
 |---|---|---|---|
@@ -28,6 +28,54 @@ nghĩa là **ranh giới chuyển sang `visibility`**:
 
 Mỗi tin vẫn thuộc **đúng một** hàng đợi (giữ được §11), nhưng `orgId` từ nay chỉ còn là
 *attribution*, không còn là *axis discriminator*. Đây là cái giá đã biết của Q3.
+
+### 0.1a ĐÃ ĐẢO — `visibility` hai giá trị → `reach` ba bậc
+
+> Bảng §0.1 ở trên giữ lại làm **hồ sơ lịch sử**. Nó không còn mô tả code đang chạy.
+
+Q3 giải quyết được câu hỏi "ai duyệt", nhưng nó gộp câu hỏi đó với câu "ai đọc được" vào cùng
+một field hai giá trị. Ba điểm gãy lộ ra khi dùng thật, và cả ba đều không diễn đạt được trong
+từ vựng cũ:
+
+1. **Nhóm CÔNG KHAI mà tin bên trong vẫn kín.** Người ngoài mở hồ sơ một nhóm đang công khai
+   chỉ đọc được "Tham gia để xem tin đăng bên trong". `Organization.isPublic` và
+   `visibility` là hai trục rời, nên "công khai" ở cấp nhóm không nói được gì về nội dung.
+2. **Ép chọn một trong hai.** Muốn bán cho cả nhóm lẫn cả sàn thì phải đăng hai tin — và hai tin
+   đó rời nhau: lượt xem, người quan tâm, hội thoại đều bị tách đôi.
+3. **Nhóm không gỡ được tin mang tên mình.** `orgId` chỉ còn là attribution, nên quản trị nhóm
+   NHÌN THẤY tin công khai đeo badge nhóm mình trong hàng đợi (nhánh đọc rộng hơn nhánh ghi) rồi
+   nhận 403 khi chạm vào.
+
+Thay bằng một **thang ba bậc, bậc trên bao bậc dưới** (`LISTING_REACH`):
+
+```
+members  ⊂  group_open  ⊂  marketplace
+```
+
+| `orgId` | `reach` | Hàng đợi | Ai đọc được |
+|---|---|---|---|
+| có | `members` | org | thành viên nhóm |
+| có | `group_open` | org — **y như `members`** | bất kỳ ai (hồ sơ nhóm + tìm kiếm) |
+| có | `marketplace` | **manager danh mục** | bất kỳ ai, thêm bảng tin chung |
+| `null` | `marketplace` | manager danh mục | bất kỳ ai |
+| `null` | `members`/`group_open` | — | **vô nghĩa, chặn ở validation** |
+
+Ba điều thay đổi về bản chất so với Q3:
+
+- **Hàng đợi là HÀM của bậc, không còn BẰNG bậc.** `group_open` đổi người đọc mà không đổi người
+  duyệt. §11 ("mỗi tin đúng một hàng đợi") vẫn nguyên.
+- **Bậc trên bao bậc dưới**, nên tin `marketplace` vẫn nằm trong bảng tin nhóm. Đây là thứ giải
+  điểm gãy 2, và nó chỉ đúng vì vẫn là MỘT bản ghi.
+- **`orgId` lấy lại một phần quyền lực**: không phải quyền duyệt, mà quyền GỠ. Xem
+  `canTakedownListing` — "một cửa duyệt, hai cửa gỡ". Quyền *từ chối cho mượn tên* khác quyền
+  *duyệt cho lên bảng chung*.
+
+`group_open` có một điều kiện nằm ngoài chính tin: nhóm phải đang `isPublic`. Chốt ở cả hai mép
+— `routeListing` lúc tạo, và `organizationService.setVisibility` hạ bậc khi nhóm chuyển riêng tư.
+
+Di trú (`scripts/migrate-listing-reach.ts`): `org_internal → members`, `public → marketplace`.
+**Không hồi tố nâng bậc** — tin cũ được đăng dưới lời hứa "chỉ thành viên", và người đăng không
+có mặt để đổi ý.
 
 ### 0.2 Quyết định kỹ thuật kèm theo
 
@@ -178,7 +226,7 @@ Viết tắt: **S-org** = staff grant `org`/`org_unit` · **M-org** = manager gr
 | Menu | Gate BE | S-org | M-org | S-dm | M-tỉnh | M-phường | Master |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Tổng quan | `requireOrg` + `requireOrgModerator` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
-| Duyệt tin | đọc `requireOrgReadOrMaster` · ghi `requireAnyModerator` + `assertCanModerateListing` | ✅¹ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| Duyệt tin | đọc `requireOrgReadOrMaster` · ghi `requireAnyModerator` + `assertCanActOnListing` | ✅¹ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | Báo cáo | đọc `requireOrgReadOrMaster` · xử `requireOrg` + `requireOrgModerator` | ✅ | ✅ | ❌² | ❌² | ❌² | ✅ |
 | Tin đăng | `requireOrgReadOrMaster` | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ |
 | Gửi thông báo | `requireOrg` + `requireOrgModerator` | ✅ | ✅ | ❌³ | ❌³ | ❌³ | ✅ |

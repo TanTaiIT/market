@@ -18,8 +18,8 @@ export interface RequestContext {
   requestId: string
   /** Có sau khi `authenticate` chạy — mọi log trước đó là của khách. */
   userId?: string
-  /** Org đang thao tác (`X-Org-Slug`), để lọc log theo một nhóm khi họ báo lỗi. */
-  orgSlug?: string
+  /** Org đang thao tác (`X-Org-Id`), để lọc log theo một nhóm khi họ báo lỗi. */
+  orgId?: string
 }
 
 const storage = new AsyncLocalStorage<RequestContext>()

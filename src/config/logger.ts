@@ -24,7 +24,7 @@ function serializeMeta(meta: Record<string, unknown>): string {
 const { combine, timestamp, printf, json } = winston.format
 
 /**
- * Gắn `requestId`/`userId`/`orgSlug` vào MỌI dòng log, lấy từ AsyncLocalStorage.
+ * Gắn `requestId`/`userId`/`orgId` vào MỌI dòng log, lấy từ AsyncLocalStorage.
  *
  * Ở đây chứ không ở từng call-site: có ~200 lời gọi `logger.*` rải khắp service và
  * repository, bắt mỗi chỗ tự truyền ngữ cảnh là 200 chỗ có thể quên — mà dòng bị quên lại
@@ -35,7 +35,7 @@ const withContext = winston.format((info) => {
   if (ctx) {
     info.requestId = ctx.requestId
     if (ctx.userId) info.userId = ctx.userId
-    if (ctx.orgSlug) info.orgSlug = ctx.orgSlug
+    if (ctx.orgId) info.orgId = ctx.orgId
   }
   return info
 })

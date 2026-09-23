@@ -20,7 +20,7 @@ let mongod: MongoMemoryReplSet
 let master: TestUser
 let seller: TestUser
 let categoryId = ''
-const ORG_SLUG = 'chuan-bi-xu'
+const ORG_KEY = 'chuan-bi-xu'
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -31,7 +31,7 @@ beforeAll(async () => {
   seller = await registerUser(app, 'seller@pricing.local', 'Người bán')
   await createOrg(app, master.token, {
     name: 'Org chuẩn bị Xu',
-    slug: ORG_SLUG,
+    key: ORG_KEY,
     ownerEmail: seller.email,
   })
 }, 120_000)
@@ -44,7 +44,7 @@ afterAll(async () => {
 function postListing(title: string) {
   return request(app)
     .post('/api/v1/listings')
-    .set(orgAuth(seller.token, ORG_SLUG))
+    .set(orgAuth(seller.token, ORG_KEY))
     .send({
       title,
       description: 'Mô tả đủ dài cho zod schema đi qua',
@@ -65,7 +65,7 @@ describe('Chuẩn bị hệ Xu — field phí trong hợp đồng API', () => {
   it('màn hình quota báo luôn phí — form đăng chỉ cần hỏi một endpoint', async () => {
     const res = await request(app)
       .get('/api/v1/listings/quota')
-      .set(orgAuth(seller.token, ORG_SLUG))
+      .set(orgAuth(seller.token, ORG_KEY))
       .expect(200)
 
     expect(res.body.data.fee).toEqual({ amount: 0, currency: 'xu' })
@@ -136,7 +136,7 @@ describe('Chuẩn bị gói tin — khoá sắp xếp rankAt', () => {
     // Chưa đẩy: tin mới đứng trước (rankAt = lúc tạo).
     const before = await request(app)
       .get('/api/v1/listings')
-      .set(orgAuth(seller.token, ORG_SLUG))
+      .set(orgAuth(seller.token, ORG_KEY))
       .expect(200)
     const idsBefore = before.body.data.map((l: { _id: string }) => l._id)
     expect(idsBefore.indexOf(newer)).toBeLessThan(idsBefore.indexOf(older))
@@ -150,7 +150,7 @@ describe('Chuẩn bị gói tin — khoá sắp xếp rankAt', () => {
 
     const after = await request(app)
       .get('/api/v1/listings')
-      .set(orgAuth(seller.token, ORG_SLUG))
+      .set(orgAuth(seller.token, ORG_KEY))
       .expect(200)
     const idsAfter = after.body.data.map((l: { _id: string }) => l._id)
     expect(idsAfter.indexOf(older)).toBeLessThan(idsAfter.indexOf(newer))

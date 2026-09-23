@@ -31,7 +31,7 @@ beforeAll(async () => {
   schoolId = (
     await createOrg(app, master.token, {
       name: 'Trường Có Lớp',
-      slug: 'truong-co-lop',
+      key: 'truong-co-lop',
       ownerEmail: schoolOwner.email,
       orgType: 'school',
     })
@@ -39,7 +39,7 @@ beforeAll(async () => {
 
   await createOrg(app, master.token, {
     name: 'Nhóm Phẳng',
-    slug: 'nhom-phang',
+    key: 'nhom-phang',
     ownerEmail: flatOwner.email,
     orgType: 'community',
   })
@@ -52,7 +52,7 @@ afterAll(async () => {
 
 /**
  * Client dựng bộ chuyển tổ chức từ đây: org hoạt động do client chỉ ra bằng header, nên không
- * có danh sách này thì người thuộc nhiều org không biết mình được gửi slug nào.
+ * có danh sách này thì người thuộc nhiều org không biết mình được gửi id nào.
  */
 describe('GET /organizations/mine', () => {
   it('trả đúng các tổ chức mình là thành viên, kèm vai trò', async () => {
@@ -62,7 +62,7 @@ describe('GET /organizations/mine', () => {
       .expect(200)
 
     expect(res.body.data).toHaveLength(1)
-    expect(res.body.data[0]).toMatchObject({ slug: 'truong-co-lop', role: 'admin' })
+    expect(res.body.data[0]).toMatchObject({ id: schoolId, role: 'admin' })
   })
 
   it('người chưa thuộc tổ chức nào nhận mảng rỗng, không phải lỗi', async () => {
@@ -77,35 +77,22 @@ describe('GET /organizations/mine', () => {
 })
 
 /**
- * Đổi slug mà URL cũ chết thì bảng alias chỉ là dữ liệu ghi ra rồi không ai đọc.
+ * Header trỏ tới một id không có org nào đứng sau — gõ sai, org đã xoá, hay một chuỗi không
+ * phải ObjectId — đều là cùng một 403, không phải 500 từ CastError của Mongoose.
  */
-describe('Slug cũ vẫn dẫn về đúng tổ chức sau khi đổi tên', () => {
-  // Đi bằng /memberships: bài này kiểm BẢNG ALIAS SLUG, endpoint chỉ là phương tiện org-scoped.
-  it('gọi API bằng slug cũ vẫn vào đúng org', async () => {
-    await request(app)
-      .patch(`/api/v1/organizations/${schoolId}/slug`)
-      .set('Authorization', `Bearer ${master.token}`)
-      .send({ slug: 'thpt-co-lop' })
-      .expect(200)
-
-    const viaNew = await request(app)
-      .get('/api/v1/memberships')
-      .set(orgAuth(schoolOwner.token, 'thpt-co-lop'))
-      .expect(200)
-
-    const viaOld = await request(app)
-      .get('/api/v1/memberships')
-      .set(orgAuth(schoolOwner.token, 'truong-co-lop'))
-      .expect(200)
-
-    expect(viaOld.body.data).toEqual(viaNew.body.data)
-    expect(viaOld.body.data[0].name).toBe('School Owner')
-  })
-
-  it('slug chưa từng tồn tại vẫn bị từ chối', async () => {
+describe('X-Org-Id không tra ra org nào', () => {
+  // Đi bằng /memberships: bài này kiểm `resolveTenant`, endpoint chỉ là phương tiện org-scoped.
+  it('id hợp lệ nhưng không tồn tại → 403', async () => {
     const res = await request(app)
       .get('/api/v1/memberships')
-      .set(orgAuth(schoolOwner.token, 'khong-co-that'))
+      .set(orgAuth(schoolOwner.token, new mongoose.Types.ObjectId().toString()))
+    expect(res.status).toBe(403)
+  })
+
+  it('chuỗi không phải ObjectId → 403, không phải 500', async () => {
+    const res = await request(app)
+      .get('/api/v1/memberships')
+      .set({ Authorization: `Bearer ${schoolOwner.token}`, 'X-Org-Id': 'khong-co-that' })
     expect(res.status).toBe(403)
   })
 })
@@ -141,10 +128,6 @@ describe('GET /organizations/lookup', () => {
     expect(names(await lookup('nhom lop').expect(200))).toHaveLength(0)
   })
 
-  it('tra được cả theo slug', async () => {
-    expect(names(await lookup('truongcolop').expect(200))).toContain('Trường Có Lớp')
-  })
-
   it('không khớp gì thì rỗng, không phải lỗi', async () => {
     expect(names(await lookup('khongcogi').expect(200))).toHaveLength(0)
   })
@@ -168,7 +151,7 @@ describe('Tạo org rồi trao quyền phụ trách', () => {
     const res = await request(app)
       .post('/api/v1/organizations')
       .set('Authorization', `Bearer ${master.token}`)
-      .send({ name: 'Trường Chưa Có Chủ', slug: 'truong-vo-chu' })
+      .send({ name: 'Trường Chưa Có Chủ' })
 
     expect(res.status).toBe(201)
     expect(res.body.data.status).toBe('pending_admin')
@@ -176,10 +159,10 @@ describe('Tạo org rồi trao quyền phụ trách', () => {
   })
 
   it('org chưa có người phụ trách thì không ai vào được', async () => {
-    // `findActiveById` chỉ thấy org `active`, nên slug này không resolve ra tenant nào.
+    // `findActiveById` chỉ thấy org `active`, nên id này không resolve ra tenant nào.
     const res = await request(app)
       .get('/api/v1/moderation/listings')
-      .set(orgAuth(admin.token, 'truong-vo-chu'))
+      .set(orgAuth(admin.token, orphanId))
 
     expect(res.status).toBe(403)
   })
@@ -213,12 +196,12 @@ describe('Tạo org rồi trao quyền phụ trách', () => {
 
     const desk = await request(app)
       .get('/api/v1/moderation/listings')
-      .set(orgAuth(admin.token, 'truong-vo-chu'))
+      .set(orgAuth(admin.token, orphanId))
     expect(desk.status).toBe(200)
 
     const roster = await request(app)
       .get('/api/v1/memberships')
-      .set(orgAuth(admin.token, 'truong-vo-chu'))
+      .set(orgAuth(admin.token, orphanId))
       .expect(200)
     expect(roster.body.data).toEqual([expect.objectContaining({ userId: admin.id, role: 'admin' })])
   }, 60_000)
@@ -233,7 +216,7 @@ describe('Tạo org rồi trao quyền phụ trách', () => {
 
     const roster = await request(app)
       .get('/api/v1/memberships')
-      .set(orgAuth(admin.token, 'truong-vo-chu'))
+      .set(orgAuth(admin.token, orphanId))
       .expect(200)
     expect(roster.body.data).toHaveLength(1)
   })
@@ -245,25 +228,17 @@ describe('Tạo org rồi trao quyền phụ trách', () => {
 describe('Sửa hồ sơ tổ chức', () => {
   const CLOUD = 'https://res.cloudinary.com/demo/image/upload/v1/org/avatar.jpg'
   let member: TestUser
-  /** Đọc slug hiện tại thay vì hardcode: test đổi slug ở trên đã dời nó đi một lần rồi. */
-  let slug = ''
 
   beforeAll(async () => {
     const { addMember } = await import('../helpers/fixtures')
     member = await registerUser(app, 'thanhvien@school.local', 'Thành viên thường')
     await addMember(member.id, schoolId)
-
-    const mine = await request(app)
-      .get('/api/v1/organizations/mine')
-      .set('Authorization', `Bearer ${schoolOwner.token}`)
-      .expect(200)
-    slug = mine.body.data.find((o: { id: string }) => o.id === schoolId).slug
   }, 60_000)
 
   it('admin sửa được tên, mô tả và ảnh', async () => {
     const res = await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .send({ name: 'Trường Có Lớp (mới)', description: 'Nhóm mua bán nội bộ', avatarUrl: CLOUD })
 
     expect(res.status).toBe(200)
@@ -277,13 +252,13 @@ describe('Sửa hồ sơ tổ chức', () => {
   it('đổi tên xong vẫn tra được org trong dropdown', async () => {
     // `nameTokens` phải dựng lại theo tên mới, không thì org biến mất khỏi ô tìm kiếm.
     const res = await request(app).get('/api/v1/organizations/lookup?q=moi').expect(200)
-    expect(res.body.data.map((o: { slug: string }) => o.slug)).toContain(slug)
+    expect(res.body.data.map((o: { id: string }) => o.id)).toContain(schoolId)
   })
 
   it('gỡ ảnh bằng null, bỏ trống thì giữ nguyên', async () => {
     const res = await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .send({ avatarUrl: null })
       .expect(200)
 
@@ -294,31 +269,22 @@ describe('Sửa hồ sơ tổ chức', () => {
   it('ảnh ngoài Cloudinary bị từ chối', async () => {
     const res = await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .send({ avatarUrl: 'https://evil.example.com/anh.jpg' })
-
-    expect(res.status).toBe(400)
-  })
-
-  it('không sửa được slug qua đường này', async () => {
-    const res = await request(app)
-      .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
-      .send({ slug: 'slug-moi' })
 
     expect(res.status).toBe(400)
   })
 
   /** Nội quy đọc lại qua hồ sơ nhóm: `PATCH` trả DTO tóm tắt, cố tình không mang `rules`. */
   const rulesOf = async () => {
-    const res = await request(app).get(`/api/v1/organizations/profile/${slug}`).expect(200)
+    const res = await request(app).get(`/api/v1/organizations/profile/${schoolId}`).expect(200)
     return res.body.data.rules as string[]
   }
 
   it('sửa được nội quy nhóm — thay CẢ mảng', async () => {
     await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .send({ rules: ['Không bán hàng giả', 'Ghi rõ tình trạng sản phẩm'] })
       .expect(200)
 
@@ -328,14 +294,14 @@ describe('Sửa hồ sơ tổ chức', () => {
   it('mảng rỗng là XOÁ HẾT nội quy, khác với không gửi field', async () => {
     await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .send({ rules: [] })
       .expect(200)
     expect(await rulesOf()).toEqual([])
 
     await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .send({ rules: ['Chỉ một dòng'] })
       .expect(200)
     expect(await rulesOf()).toEqual(['Chỉ một dòng'])
@@ -344,7 +310,7 @@ describe('Sửa hồ sơ tổ chức', () => {
     // xoá sạch nội quy của nhóm mỗi lần ai đó chỉ sửa mô tả.
     await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .send({ description: 'Chỉ sửa mô tả' })
       .expect(200)
     expect(await rulesOf()).toEqual(['Chỉ một dòng'])
@@ -353,7 +319,7 @@ describe('Sửa hồ sơ tổ chức', () => {
   it('quá 10 dòng nội quy thì từ chối', async () => {
     const res = await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .send({ rules: Array.from({ length: 11 }, (_, n) => `Điều ${n + 1}`) })
 
     expect(res.status).toBe(400)
@@ -362,7 +328,7 @@ describe('Sửa hồ sơ tổ chức', () => {
   it('dòng nội quy rỗng bị từ chối — không để nhóm có một gạch đầu dòng trống', async () => {
     const res = await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .send({ rules: ['Điều hợp lệ', '   '] })
 
     expect(res.status).toBe(400)
@@ -371,7 +337,7 @@ describe('Sửa hồ sơ tổ chức', () => {
   it('thành viên thường không sửa được hồ sơ nhóm', async () => {
     const res = await request(app)
       .patch('/api/v1/organizations/current')
-      .set(orgAuth(member.token, slug))
+      .set(orgAuth(member.token, schoolId))
       .send({ description: 'tôi tự sửa' })
 
     expect(res.status).toBe(403)
@@ -379,10 +345,10 @@ describe('Sửa hồ sơ tổ chức', () => {
 })
 
 /**
- * Mã nhóm thay slug làm đường vào.
+ * Mã nhóm là đường vào, không phải id.
  *
- * Slug là địa chỉ công khai — ai nhìn thấy tên tổ chức cũng gõ được đơn xin vào. Mã chỉ người
- * được đưa mới có, và xoay được khi rò.
+ * Id là địa chỉ công khai — nằm trong mọi link chia sẻ, ai cầm link cũng gõ được đơn xin vào.
+ * Mã chỉ người được đưa mới có, và xoay được khi rò.
  */
 describe('Mã nhóm', () => {
   let code = ''
@@ -391,11 +357,7 @@ describe('Mã nhóm', () => {
   beforeAll(async () => {
     const { joinCodeOf } = await import('../helpers/fixtures')
     outsider = await registerUser(app, 'nguoi-la@ma-nhom.local', 'Người lạ')
-    const mine = await request(app)
-      .get('/api/v1/organizations/mine')
-      .set('Authorization', `Bearer ${schoolOwner.token}`)
-      .expect(200)
-    code = await joinCodeOf(mine.body.data.find((o: { id: string }) => o.id === schoolId).slug)
+    code = await joinCodeOf(schoolId)
   }, 60_000)
 
   it('mã sinh sẵn lúc tạo org, không có ký tự dễ nhìn nhầm', () => {
@@ -409,7 +371,6 @@ describe('Mã nhóm', () => {
     expect(res.body.data.name).toBeTruthy()
     // Thẻ công khai không được lộ đường nào khác để lần ra org.
     expect(res.body.data.id).toBeUndefined()
-    expect(res.body.data.slug).toBeUndefined()
     expect(res.body.data.joinCode).toBeUndefined()
   })
 
@@ -438,15 +399,9 @@ describe('Mã nhóm', () => {
   })
 
   it('xoay mã: mã cũ chết ngay', async () => {
-    const mine = await request(app)
-      .get('/api/v1/organizations/mine')
-      .set('Authorization', `Bearer ${schoolOwner.token}`)
-      .expect(200)
-    const slug = mine.body.data.find((o: { id: string }) => o.id === schoolId).slug
-
     const rotated = await request(app)
       .post('/api/v1/organizations/current/join-code')
-      .set(orgAuth(schoolOwner.token, slug))
+      .set(orgAuth(schoolOwner.token, schoolId))
       .expect(200)
 
     expect(rotated.body.data.joinCode).not.toBe(code)
@@ -457,16 +412,10 @@ describe('Mã nhóm', () => {
   })
 
   it('người ngoài không xoay được mã', async () => {
-    const mine = await request(app)
-      .get('/api/v1/organizations/mine')
-      .set(`Authorization`, `Bearer ${schoolOwner.token}`)
-      .expect(200)
-    const slug = mine.body.data.find((o: { id: string }) => o.id === schoolId).slug
-
-    // Slug THẬT: 403 phải đến từ thiếu quyền, không phải từ việc slug không resolve ra org nào.
+    // Id THẬT: 403 phải đến từ thiếu quyền, không phải từ việc id không resolve ra org nào.
     const res = await request(app)
       .post('/api/v1/organizations/current/join-code')
-      .set(orgAuth(outsider.token, slug))
+      .set(orgAuth(outsider.token, schoolId))
 
     expect(res.status).toBe(403)
   })

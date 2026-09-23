@@ -5,7 +5,7 @@ import { User } from '../user/user.model'
 import { reportRepository } from '../report/report.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { runUnscoped } from '../../common/tenant/tenantContext'
-import { LISTING_STATUS, POST_VISIBILITY, TENANT_STATUS } from '../../common/constants'
+import { LISTING_REACH, LISTING_STATUS, TENANT_STATUS } from '../../common/constants'
 
 /**
  * Số đếm TOÀN HỆ THỐNG cho bàn của master. Mọi truy vấn ở đây cố ý bỏ qua trục tenant.
@@ -86,22 +86,26 @@ export const metricsRepository = {
   /** `Listing` gắn plugin `dualAxis` → mọi câu dưới đây BẮT BUỘC unscoped (xem đầu file). */
   listings(newWindows: number[]) {
     return runUnscoped('metrics: đếm tin toàn hệ thống cho bàn master', async () => {
-      const [total, byVisibility, ...fresh] = await Promise.all([
+      const [total, byReach, ...fresh] = await Promise.all([
         Listing.countDocuments({ deletedAt: null }).exec(),
         Listing.aggregate<{ _id: string; count: number }>([
           { $match: { deletedAt: null } },
-          { $group: { _id: '$visibility', count: { $sum: 1 } } },
+          { $group: { _id: '$reach', count: { $sum: 1 } } },
         ]),
         ...newWindows.map((d) =>
           Listing.countDocuments({ deletedAt: null, createdAt: { $gte: daysAgo(d) } }).exec(),
         ),
       ])
 
-      const visibilityOf = (v: string) => byVisibility.find((r) => r._id === v)?.count ?? 0
+      // BA xô cho ba bậc, không phải hai. Gộp `group_open` vào `orgInternal` sẽ giấu mất đúng
+      // con số nói lên mức độ các nhóm chịu mở nội dung ra ngoài — thứ đáng theo dõi nhất sau
+      // khi thang phủ sóng ra đời.
+      const countOf = (r: string) => byReach.find((row) => row._id === r)?.count ?? 0
       return {
         total,
-        publicAxis: visibilityOf(POST_VISIBILITY.PUBLIC),
-        orgInternal: visibilityOf(POST_VISIBILITY.ORG_INTERNAL),
+        marketplace: countOf(LISTING_REACH.MARKETPLACE),
+        groupOpen: countOf(LISTING_REACH.GROUP_OPEN),
+        members: countOf(LISTING_REACH.MEMBERS),
         fresh,
       }
     })
@@ -118,8 +122,13 @@ export const metricsRepository = {
     return runUnscoped('metrics: sức khoẻ hàng đợi duyệt toàn hệ thống', async () => {
       const pending = { status: LISTING_STATUS.PENDING, deletedAt: null }
       const [pendingPublicAxis, pendingOrgAxis, oldest, openReports] = await Promise.all([
-        Listing.countDocuments({ ...pending, visibility: POST_VISIBILITY.PUBLIC }).exec(),
-        Listing.countDocuments({ ...pending, visibility: POST_VISIBILITY.ORG_INTERNAL }).exec(),
+        Listing.countDocuments({ ...pending, reach: LISTING_REACH.MARKETPLACE }).exec(),
+        // CẢ HAI bậc dưới đều xếp hàng ở nhóm, nên tồn đọng của nhóm phải cộng cả hai. Đếm mỗi
+        // `members` là báo thiếu đúng phần tin của các nhóm công khai.
+        Listing.countDocuments({
+          ...pending,
+          reach: { $in: [LISTING_REACH.MEMBERS, LISTING_REACH.GROUP_OPEN] },
+        }).exec(),
         Listing.findOne(pending).sort({ createdAt: 1 }).select('createdAt').lean().exec(),
         // `countOpen()` trả về Query CHƯA `exec()`. Không gọi `.exec()` ngay trong callback là
         // pre hook của plugin chạy SAU khi AsyncLocalStorage đã thoát ngữ cảnh → "Missing

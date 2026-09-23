@@ -20,7 +20,7 @@ let mongod: MongoMemoryReplSet
 let master: TestUser
 let seller: TestUser
 let categoryId = ''
-const ORG_SLUG = 'tu-dien-cam'
+const ORG_KEY = 'tu-dien-cam'
 
 const asMaster = () => ({ Authorization: `Bearer ${master.token}` })
 
@@ -33,7 +33,7 @@ beforeAll(async () => {
   seller = await registerUser(app, 'seller@banned.local', 'Người bán')
   await createOrg(app, master.token, {
     name: 'Org từ điển cấm',
-    slug: ORG_SLUG,
+    key: ORG_KEY,
     ownerEmail: seller.email,
   })
 }, 120_000)
@@ -46,7 +46,7 @@ afterAll(async () => {
 function postListing(body: Record<string, unknown>) {
   return request(app)
     .post('/api/v1/listings')
-    .set(orgAuth(seller.token, ORG_SLUG))
+    .set(orgAuth(seller.token, ORG_KEY))
     .send({
       description: 'Mô tả đủ dài cho zod schema đi qua',
       price: 150000,

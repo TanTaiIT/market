@@ -142,6 +142,29 @@ export const roleGrantRepository = {
   },
 
   /**
+   * Grant còn hiệu lực của trục danh mục, KÈM bộ lọc — nguồn của bảng "ai phụ trách danh mục nào".
+   *
+   * Khác `listCategoryAxisGrants` ở đúng bộ lọc đó: hàm kia nuốt trọn để ma trận phủ sóng tự
+   * nhóm trong bộ nhớ, còn đường này phục vụ một bảng người dùng lọc được. Giữ hai hàm thay vì
+   * thêm tham số tuỳ chọn cho hàm cũ: ma trận PHẢI đọc trọn, và một tham số lọc bỏ quên ở đó
+   * là ma trận báo nhầm "ô này chưa có ai".
+   *
+   * `provinceCodes: []` = TOÀN QUỐC, nên lọc theo tỉnh phải `$or` với nó — bỏ vế đó là giấu
+   * đúng người phủ rộng nhất khỏi bảng đi tìm người phụ trách.
+   */
+  listCategoryAxisGrantsFiltered(filter: { categoryId?: string; province?: string }) {
+    const query: FilterQuery<IRoleGrantDocument> = {
+      scopeType: { $in: [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD] },
+      ...ACTIVE,
+    }
+    if (filter.categoryId) query.categoryId = new Types.ObjectId(filter.categoryId)
+    if (filter.province) {
+      query.$or = [{ provinceCodes: { $size: 0 } }, { provinceCodes: filter.province }]
+    }
+    return RoleGrant.find(query).sort({ grantedAt: -1 }).exec()
+  },
+
+  /**
    * Ai đang phụ trách một ô (danh mục × tỉnh × phường) — hỏi CẢ HAI tầng một lượt.
    *
    * Tầng tỉnh: `provinceCodes` rỗng = toàn quốc nên phải nằm trong `$or`, không lọc `$in` suông

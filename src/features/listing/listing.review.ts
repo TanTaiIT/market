@@ -52,9 +52,9 @@ const HOLD_TEXT: Record<MachineHold, { message: string; hint?: string }> = {
   category_manual_review: {
     message: 'Danh mục này luôn qua người duyệt, không phụ thuộc uy tín.',
   },
-  image_rejected: {
-    message: 'Một ảnh của tin không qua được kiểm duyệt ảnh và đã bị gỡ.',
-    hint: 'Phần chữ đang chờ người duyệt xem nốt. Bạn có thể thay ảnh khác ngay.',
+  gibberish: {
+    message: 'Tiêu đề hoặc mô tả trông như gõ ngẫu nhiên, nên tin cần người duyệt xem qua.',
+    hint: 'Viết rõ tên món đồ và vài dòng mô tả thật — tin sẽ lên bảng nhanh hơn nhiều.',
   },
 }
 

@@ -162,7 +162,7 @@ describe('Chừa đúng thứ phải chừa', () => {
     const { addMember } = await import('../helpers/fixtures')
     const org = await createOrg(app, master.token, {
       name: 'Trường Dọn Dẹp',
-      slug: 'truong-don-dep',
+      key: 'truong-don-dep',
       ownerEmail: master.email,
       provinceCode: HCM,
     })
@@ -177,14 +177,14 @@ describe('Chừa đúng thứ phải chừa', () => {
     const seller = await registerUser(app, 'co-tin@ghim.local', 'Có tin')
     const org = await createOrg(app, master.token, {
       name: 'Trường Có Tin',
-      slug: 'truong-co-tin',
+      key: 'truong-co-tin',
       ownerEmail: seller.email,
       provinceCode: HCM,
     })
     await request(app)
       .post('/api/v1/listings')
-      .set(orgAuth(seller.token, org.slug))
-      .send({ ...listingPayload('Tin nội bộ', categoryId), visibility: 'org_internal' })
+      .set(orgAuth(seller.token, org.id))
+      .send({ ...listingPayload('Tin nội bộ', categoryId), reach: 'members' })
       .expect(201)
 
     // Hạ cờ xác thực SAU khi đăng tin: dựng đúng trạng thái "chưa xác thực mà vẫn có tài sản".

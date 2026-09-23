@@ -21,13 +21,13 @@ import {
   runUnscoped,
   runWithTenant,
 } from '../src/common/tenant/tenantContext'
-import { normalizeOrgSlug } from '../src/common/utils/orgSlug'
+import { orgNameTokens } from '../src/common/utils/orgName'
 import {
   JOIN_REQUEST_STATUS,
   LISTING_STATUS,
   MEMBERSHIP_STATUS,
   MODERATABLE_STATUSES,
-  POST_VISIBILITY,
+  LISTING_REACH,
   REPORT_STATUS,
   VnProvinceName,
 } from '../src/common/constants'
@@ -207,7 +207,7 @@ async function sampleCtx(): Promise<Ctx> {
     // Mẫu cho case chạy dưới `anonScope` phải lấy từ tin TRỤC DANH MỤC đã duyệt: scope đó chỉ
     // đọc `visibility: public` + status công khai, nên một mẫu lấy từ tin nội bộ org sẽ dựng ra
     // filter khớp 0 doc và case tự loại mình khỏi phép đo.
-    const onPublicAxis = { visibility: POST_VISIBILITY.PUBLIC, status: LISTING_STATUS.ACTIVE }
+    const onPublicAxis = { reach: LISTING_REACH.MARKETPLACE, status: LISTING_STATUS.ACTIVE }
 
     const any = await Listing.findOne().exec()
     const located = await Listing.findOne({
@@ -219,7 +219,7 @@ async function sampleCtx(): Promise<Ctx> {
       'attrs.0': { $exists: true },
     }).exec()
     const queued = await Listing.findOne({
-      visibility: POST_VISIBILITY.PUBLIC,
+      reach: LISTING_REACH.MARKETPLACE,
       status: LISTING_STATUS.PENDING,
     }).exec()
     const membership = await Membership.findOne().exec()
@@ -261,7 +261,12 @@ const anonScope = publicOnlyScope()
 
 /** Thành viên org: HAI nhánh `$or` (trục org + trục danh mục) — đường đọc đắt nhất. */
 function memberScope(orgId: Types.ObjectId): TenantScope {
-  return { ownOrgId: orgId, readableOrgIds: [orgId], publicAxis: { mode: 'approved' } }
+  return {
+    ownOrgId: orgId,
+    readableOrgIds: [orgId],
+    memberOrgIds: [orgId],
+    publicAxis: { mode: 'approved' },
+  }
 }
 
 /**
@@ -275,6 +280,7 @@ function moderatorScope(
   return {
     ownOrgId: null,
     readableOrgIds: [],
+    memberOrgIds: [],
     publicAxis: { mode: 'moderator', categoryIds, cells },
   }
 }
@@ -462,7 +468,7 @@ const CASES: Case[] = [
         {
           $match: {
             status: { $in: [LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIFIED] },
-            visibility: POST_VISIBILITY.PUBLIC,
+            reach: LISTING_REACH.MARKETPLACE,
           },
         },
         {
@@ -519,22 +525,19 @@ const CASES: Case[] = [
   },
   {
     id: 'organization/lookup',
-    label: 'Dropdown chọn org — $or(slugNormalized neo đầu, name regex)',
-    ref: 'D2 — nhánh name không index nên cả $or rơi về COLLSCAN',
+    label: 'Ô tìm nhóm — $and(nameTokens neo đầu từng từ)',
+    ref: 'D2 — multikey nên mỗi từ có bounds thật, không COLLSCAN',
     model: Organization,
     needs: ['orgNameFragment'],
     scope: () => 'none',
     build: (ctx) => {
-      const query = req(ctx.orgNameFragment, 'orgNameFragment')
-      const normalized = normalizeOrgSlug(query)
-      const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
-      return Organization.find({
-        deletedAt: null,
-        $or: [
-          ...(normalized ? [{ slugNormalized: { $regex: `^${normalized}` } }] : []),
-          { name: { $regex: escaped, $options: 'i' } },
-        ],
-      })
+      const tokens = orgNameTokens(req(ctx.orgNameFragment, 'orgNameFragment'))
+      // `$and: []` là lỗi cú pháp Mongo — không có từ nào thì bỏ hẳn điều kiện.
+      const byName =
+        tokens.length > 0
+          ? { $and: tokens.map((token) => ({ nameTokens: { $regex: `^${token}` } })) }
+          : {}
+      return Organization.find({ deletedAt: null, ...byName })
         .sort({ name: 1 })
         .limit(PAGE.limit)
         .explain('executionStats')

@@ -2,7 +2,9 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
-    "moduleResolution": "node",
+    // moduleResolution để MẶC ĐỊNH theo "module": "commonjs" (= node10, y hệt "node").
+    // Ghi tường minh "node" thì TS 6 báo TS5107 (deprecated, TS 7 bỏ hẳn) ngay trên file này,
+    // mà VS Code đang được trỏ vào TS 6 của repo cha qua "js/ts.tsdk.path".
     "lib": ["ES2022"],
     "strict": true,
     "noImplicitOverride": true,

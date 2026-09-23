@@ -19,7 +19,7 @@ import {
 } from '../src/features/category-template/category-template.model'
 import { upsertCatalog } from './seedCatalog'
 import { runUnscoped } from '../src/common/tenant/tenantContext'
-import { normalizeOrgSlug, orgNameTokens } from '../src/common/utils/orgSlug'
+import { orgNameTokens } from '../src/common/utils/orgName'
 import { JOINED_VIA, MEMBERSHIP_ROLES, SCOPE_TYPES, SYSTEM_ROLES } from '../src/common/constants'
 
 /**
@@ -47,9 +47,7 @@ interface LegacyUser {
 
 interface LegacyOrg {
   _id: Types.ObjectId
-  slug: string
   ownerId: Types.ObjectId
-  slugNormalized?: string
 }
 
 async function dropChainRemnants() {
@@ -76,21 +74,6 @@ async function dropChainRemnants() {
   console.log(`notifications: gỡ sourceType/sourceChainId khỏi ${notif.modifiedCount} bản ghi`)
 }
 
-async function backfillOrgSlugNormalized() {
-  const db = mongoose.connection.db!
-  const orgs = await db
-    .collection<LegacyOrg>('organizations')
-    .find({ slugNormalized: { $exists: false } })
-    .toArray()
-
-  for (const org of orgs) {
-    await db
-      .collection('organizations')
-      .updateOne({ _id: org._id }, { $set: { slugNormalized: normalizeOrgSlug(org.slug) } })
-  }
-  console.log(`organizations: dựng slugNormalized cho ${orgs.length} bản ghi`)
-}
-
 /**
  * `organizations.nameTokens` — khoá tra của dropdown chọn org.
  *
@@ -98,7 +81,7 @@ async function backfillOrgSlugNormalized() {
  * LƯU, nên org đã có trong DB sẽ mãi thiếu field này và biến mất khỏi dropdown khi tìm theo
  * tên — im lặng, vì query vẫn chạy đúng và chỉ trả về ít hơn.
  *
- * Ghi thẳng qua driver như `slugNormalized` ở trên: `updateOne` không kích hoạt `pre('validate')`,
+ * Ghi thẳng qua driver: `updateOne` không kích hoạt `pre('validate')`,
  * mà chạy qua model thì phải nạp rồi save từng document.
  */
 async function backfillOrgNameTokens() {
@@ -312,7 +295,6 @@ async function migrate() {
 
   await runUnscoped('v2 migration', async () => {
     await dropChainRemnants()
-    await backfillOrgSlugNormalized()
     await backfillOrgNameTokens()
     await backfillMemberships()
     await migratePlatformAdmins()

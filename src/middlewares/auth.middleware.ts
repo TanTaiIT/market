@@ -2,7 +2,7 @@ import { Request } from 'express'
 import { verifyAccessToken } from '../common/utils/jwt'
 import { UnauthorizedError, ForbiddenError } from '../common/errors'
 import { catchAsync } from '../common/utils/catchAsync'
-import { currentScope, runWithTenant } from '../common/tenant/tenantContext'
+import { currentScope, narrowToOwnOrg, runWithTenant } from '../common/tenant/tenantContext'
 import { enrichRequestContext } from '../common/observability/requestContext'
 import { canAdminOrg, canModerateAnyInOrg, isMaster, Grant } from '../common/authz/policy'
 import { roleGrantService } from '../features/role-grant/role-grant.service'
@@ -53,15 +53,13 @@ export const optionalAuth = catchAsync(async (req, _res, next) => {
 })
 
 /**
- * Route cần org hoạt động: client phải chỉ ra org (subdomain hoặc header `X-Org-Slug`), hoặc
+ * Route cần org hoạt động: client phải chỉ ra org (header `X-Org-Id`), hoặc
  * chỉ thuộc đúng một org. Thông điệp nói rõ nguyên nhân vì đây là lỗi cấu hình phía client,
  * không phải lỗi quyền.
  */
 export const requireOrg = catchAsync(async (req, _res, next) => {
   if (!currentScope()?.ownOrgId) {
-    throw new ForbiddenError(
-      'Chưa xác định được tổ chức: gửi header X-Org-Slug hoặc truy cập qua subdomain của tổ chức',
-    )
+    throw new ForbiddenError('Chưa xác định được tổ chức: gửi header X-Org-Id')
   }
   next()
 })
@@ -103,14 +101,25 @@ export const requireMembershipOrOrgModerator = catchAsync(async (req, _res, next
  * của tầng query bên dưới.
  */
 export const requireOrgModerator = catchAsync(async (req, _res, next) => {
-  const orgId = currentScope()?.ownOrgId
+  const scope = currentScope()
+  const orgId = scope?.ownOrgId
   if (!orgId) throw new ForbiddenError('Chưa xác định được tổ chức')
 
   const grants = await loadGrants(req)
   if (!canModerateAnyInOrg(grants, orgId.toString())) {
     throw new ForbiddenError('Bạn không có quyền duyệt trong tổ chức này')
   }
-  next()
+
+  /*
+   * Bàn quản trị chỉ nhìn ĐÚNG org này — bỏ quyền đọc nội dung đa-nhóm.
+   *
+   * Thiếu dòng này thì người duyệt nhóm A, nếu tình cờ là thành viên thường nhóm B, thấy tin
+   * của B lẫn trong hàng đợi của A. Không phải lỗ hổng (họ đọc được tin đó ở bảng tin, và
+   * `assertCanActOnListing` chặn mọi thao tác) nhưng là một hàng đợi nói sai về phạm vi của nó.
+   *
+   * `requireOrgReadOrMaster` uỷ quyền xuống đây ở nhánh có org, nên một chỗ là đủ cho cả hai.
+   */
+  runWithTenant(narrowToOwnOrg(scope!), next)
 })
 
 /**
@@ -133,13 +142,16 @@ export const requireOrgReadOrMaster = catchAsync(async (req, _res, next) => {
 
   const grants = await loadGrants(req)
   if (!isMaster(grants)) {
-    throw new ForbiddenError(
-      'Chưa xác định được tổ chức: gửi header X-Org-Slug hoặc truy cập qua subdomain của tổ chức',
-    )
+    throw new ForbiddenError('Chưa xác định được tổ chức: gửi header X-Org-Id')
   }
 
   const readableOrgIds = await organizationRepository.allActiveIds()
-  runWithTenant({ ownOrgId: null, readableOrgIds, publicAxis: { mode: 'approved' } }, next)
+  // `memberOrgIds` rỗng: master đọc theo quyền hệ thống, không theo tư cách thành viên — và
+  // `readableOrgIds` ở đây đã là toàn bộ org đang hoạt động nên cộng thêm cũng không đổi gì.
+  runWithTenant(
+    { ownOrgId: null, readableOrgIds, memberOrgIds: [], publicAxis: { mode: 'approved' } },
+    next,
+  )
 })
 
 /** Đổi cấu trúc tổ chức (nhóm con, cài đặt): manager org trở lên, staff không đủ. */

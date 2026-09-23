@@ -11,6 +11,7 @@ import {
   makeMaster,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -42,13 +43,13 @@ beforeAll(async () => {
 
   await createOrg(app, master.token, {
     name: 'Chợ đồ cũ Hùng Vương',
-    slug: OPEN,
+    key: OPEN,
     ownerEmail: owner.email,
   })
   const secretId = (
     await createOrg(app, master.token, {
       name: 'Đồ điện tử sinh viên',
-      slug: SECRET,
+      key: SECRET,
       ownerEmail: owner.email,
     })
   ).id
@@ -72,17 +73,17 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-const slugs = (body: { data: { slug: string }[] }) => body.data.map((o) => o.slug)
+const ids = (body: { data: { id: string }[] }) => body.data.map((o) => o.id)
 
 describe('Tìm nhóm — chỉ nhóm công khai lộ ra', () => {
   it('bỏ trống từ khoá thì trả danh sách gợi ý, không phải lỗi', async () => {
     const res = await request(app).get('/api/v1/organizations/lookup').expect(200)
-    expect(slugs(res.body)).toContain(OPEN)
+    expect(ids(res.body)).toContain(orgIdOf(OPEN))
   })
 
   it('mỗi dòng có đủ số thành viên và mã để dựng thẻ nhóm', async () => {
     const res = await request(app).get('/api/v1/organizations/lookup?q=cho do cu').expect(200)
-    const row = res.body.data.find((o: { slug: string }) => o.slug === OPEN)
+    const row = res.body.data.find((o: { id: string }) => o.id === orgIdOf(OPEN))
 
     expect(row).toMatchObject({ name: 'Chợ đồ cũ Hùng Vương' })
     expect(typeof row.memberCount).toBe('number')
@@ -92,15 +93,17 @@ describe('Tìm nhóm — chỉ nhóm công khai lộ ra', () => {
   /** Chốt của cả thiết kế: gõ ĐÚNG TÊN nhóm riêng tư vẫn không thấy gì. */
   it('nhóm RIÊNG TƯ không lộ ra dù gõ đúng tên', async () => {
     const res = await request(app).get('/api/v1/organizations/lookup?q=do dien tu').expect(200)
-    expect(slugs(res.body)).not.toContain(SECRET)
+    expect(ids(res.body)).not.toContain(orgIdOf(SECRET))
   })
 })
 
 describe('Hồ sơ nhóm công khai', () => {
   it('khách CHƯA đăng nhập vẫn đọc được — phải xem trước khi quyết định vào', async () => {
-    const res = await request(app).get(`/api/v1/organizations/profile/${OPEN}`).expect(200)
+    const res = await request(app)
+      .get(`/api/v1/organizations/profile/${orgIdOf(OPEN)}`)
+      .expect(200)
 
-    expect(res.body.data).toMatchObject({ name: 'Chợ đồ cũ Hùng Vương', slug: OPEN })
+    expect(res.body.data).toMatchObject({ id: orgIdOf(OPEN), name: 'Chợ đồ cũ Hùng Vương' })
     expect(res.body.data.joined).toBe(false)
     expect(typeof res.body.data.postsThisWeek).toBe('number')
     expect(Array.isArray(res.body.data.rules)).toBe(true)
@@ -108,41 +111,78 @@ describe('Hồ sơ nhóm công khai', () => {
 
   it('người đã ở trong nhóm thấy cờ joined — nút không mời họ vào lại', async () => {
     const res = await request(app)
-      .get(`/api/v1/organizations/profile/${OPEN}`)
+      .get(`/api/v1/organizations/profile/${orgIdOf(OPEN)}`)
       .set(bearer(owner))
       .expect(200)
     expect(res.body.data.joined).toBe(true)
   })
 
   /**
-   * 404 chứ không 403: 403 xác nhận "có nhóm ở slug này, chỉ là không cho xem" — đủ để quét
-   * slug rồi lập ra danh sách các nhóm kín.
+   * 404 chứ không 403: 403 xác nhận "có nhóm ở id này, chỉ là không cho xem" — đủ để quét id
+   * rồi lập ra danh sách các nhóm kín.
    */
-  it('hồ sơ nhóm RIÊNG TƯ trả 404, không phân biệt được với slug không tồn tại', async () => {
-    const real = await request(app).get(`/api/v1/organizations/profile/${SECRET}`)
-    const fake = await request(app).get('/api/v1/organizations/profile/khong-ton-tai-dau')
+  it('hồ sơ nhóm RIÊNG TƯ trả 404, không phân biệt được với id không tồn tại', async () => {
+    const real = await request(app).get(`/api/v1/organizations/profile/${orgIdOf(SECRET)}`)
+    const fake = await request(app).get(
+      `/api/v1/organizations/profile/${new mongoose.Types.ObjectId().toString()}`,
+    )
 
     expect(real.status).toBe(404)
     expect(fake.status).toBe(404)
   })
 })
+/**
+ * MÃ LÀ CHÌA KHOÁ của hồ sơ nhóm kín — và mã sai phải im lặng y như không có mã.
+ *
+ * Cầm mã đã là điều kiện vào nhóm kín, nên đọc được nhóm là ai TRƯỚC khi gửi đơn không nới
+ * thêm quyền nào; nó chỉ bỏ đi bước "xin vào một nơi mình chưa từng nhìn thấy".
+ *
+ * Vế thứ hai mới là vế phải ghim: mã SAI trả 404 giống hệt ca không gửi mã. Trả 401/403 hay
+ * một thông điệp khác là biến endpoint thành máy dò mã cho một id đã biết — thu hẹp không
+ * gian tìm kiếm từ "mọi nhóm" xuống "đúng nhóm này".
+ */
+it('mã ĐÚNG mở được hồ sơ nhóm riêng tư; mã SAI vẫn 404 y như không có mã', async () => {
+  const code = await joinCodeOf(SECRET)
+  const url = `/api/v1/organizations/profile/${orgIdOf(SECRET)}`
+
+  const ok = await request(app).get(`${url}?code=${code}`).expect(200)
+  expect(ok.body.data.id).toBe(orgIdOf(SECRET))
+  // Khách chưa đăng nhập: cửa mã không kéo theo tư cách thành viên nào.
+  expect(ok.body.data.joined).toBe(false)
+
+  // Mã của nhóm KHÁC cũng là mã sai ở đây — chìa khoá phải khớp đúng ổ.
+  const other = await joinCodeOf(OPEN)
+  expect((await request(app).get(`${url}?code=${other}`)).status).toBe(404)
+  expect((await request(app).get(`${url}?code=ZZZZZZ`)).status).toBe(404)
+  expect((await request(app).get(url)).status).toBe(404)
+})
+
+/** Chuẩn hoá y như ô nhập mã: người ta chép mã ra thành ` abc-123 `. */
+it('mã gõ kèm dấu gạch và chữ thường vẫn mở được', async () => {
+  const code = await joinCodeOf(SECRET)
+  const messy = `${code.slice(0, 3)}-${code.slice(3)}`.toLowerCase()
+
+  await request(app)
+    .get(`/api/v1/organizations/profile/${orgIdOf(SECRET)}?code=${encodeURIComponent(messy)}`)
+    .expect(200)
+})
 
 describe('Xin vào nhóm', () => {
-  it('nhóm CÔNG KHAI: gửi bằng slug, không cần mã', async () => {
+  it('nhóm CÔNG KHAI: gửi bằng id, không cần mã', async () => {
     const res = await request(app)
       .post('/api/v1/join-requests')
       .set(bearer(seeker))
-      .send({ slug: OPEN, claimedName: 'Người tìm nhóm' })
+      .send({ orgId: orgIdOf(OPEN), claimedName: 'Người tìm nhóm' })
 
     expect(res.status).toBe(201)
   })
 
   /** Vế giữ cho cái mã còn nguyên tác dụng. Mất nó là mất toàn bộ lớp chống spam. */
-  it('nhóm RIÊNG TƯ: gửi bằng slug bị TỪ CHỐI', async () => {
+  it('nhóm RIÊNG TƯ: gửi bằng id bị TỪ CHỐI', async () => {
     const res = await request(app)
       .post('/api/v1/join-requests')
       .set(bearer(seeker))
-      .send({ slug: SECRET, claimedName: 'Người tìm nhóm' })
+      .send({ orgId: orgIdOf(SECRET), claimedName: 'Người tìm nhóm' })
 
     expect(res.status).toBe(404)
   })
@@ -161,7 +201,7 @@ describe('Xin vào nhóm', () => {
     const both = await request(app)
       .post('/api/v1/join-requests')
       .set(bearer(seeker))
-      .send({ slug: OPEN, code: 'ABCD', claimedName: 'X' })
+      .send({ orgId: orgIdOf(OPEN), code: 'ABCD', claimedName: 'X' })
     expect(both.status).toBe(400)
 
     const neither = await request(app)
@@ -178,7 +218,7 @@ describe('Gõ MÃ vào ô tìm — lối tắt vào thẳng nhóm', () => {
     const res = await request(app).get(`/api/v1/organizations/lookup?q=${code}`).expect(200)
 
     expect(res.body.data).toHaveLength(1)
-    expect(res.body.data[0].slug).toBe(OPEN)
+    expect(res.body.data[0].id).toBe(orgIdOf(OPEN))
   })
 
   /**
@@ -189,10 +229,10 @@ describe('Gõ MÃ vào ô tìm — lối tắt vào thẳng nhóm', () => {
   it('mã của nhóm RIÊNG TƯ cũng ra, dù tên của nó thì không', async () => {
     const code = await joinCodeOf(SECRET)
     const byCode = await request(app).get(`/api/v1/organizations/lookup?q=${code}`).expect(200)
-    expect(byCode.body.data[0]?.slug).toBe(SECRET)
+    expect(byCode.body.data[0]?.id).toBe(orgIdOf(SECRET))
 
     const byName = await request(app).get('/api/v1/organizations/lookup?q=do dien tu').expect(200)
-    expect(slugs(byName.body)).not.toContain(SECRET)
+    expect(ids(byName.body)).not.toContain(orgIdOf(SECRET))
   })
 })
 
@@ -206,10 +246,8 @@ describe('Hai lỗi thật gặp lúc dùng', () => {
    * là mongoose điền default vào, và bài test sẽ xanh trong khi production đỏ.
    */
   it('org tạo trước khi có field `isPublic` vẫn được coi là công khai', async () => {
-    await mongoose.connection.db!.collection('organizations').insertOne({
+    const inserted = await mongoose.connection.db!.collection('organizations').insertOne({
       name: 'Nhóm Đời Cũ',
-      slug: 'nhom-doi-cu',
-      slugNormalized: 'nhomdoicu',
       nameTokens: ['nhom', 'doi', 'cu'],
       joinCode: 'OLD777',
       status: 'active',
@@ -220,9 +258,9 @@ describe('Hai lỗi thật gặp lúc dùng', () => {
     })
 
     const found = await request(app).get('/api/v1/organizations/lookup?q=nhom doi cu').expect(200)
-    expect(slugs(found.body)).toContain('nhom-doi-cu')
+    expect(ids(found.body)).toContain(inserted.insertedId.toString())
 
-    await request(app).get('/api/v1/organizations/profile/nhom-doi-cu').expect(200)
+    await request(app).get(`/api/v1/organizations/profile/${inserted.insertedId}`).expect(200)
   })
 
   /**
@@ -231,18 +269,18 @@ describe('Hai lỗi thật gặp lúc dùng', () => {
    */
   it('thành viên nhóm RIÊNG TƯ mở được hồ sơ nhóm mình', async () => {
     const res = await request(app)
-      .get(`/api/v1/organizations/profile/${SECRET}`)
+      .get(`/api/v1/organizations/profile/${orgIdOf(SECRET)}`)
       .set(bearer(owner))
       .expect(200)
 
-    expect(res.body.data).toMatchObject({ slug: SECRET, joined: true })
+    expect(res.body.data).toMatchObject({ id: orgIdOf(SECRET), joined: true })
   })
 
   /** Vế đối xứng: người NGOÀI vẫn không thấy gì, nếu không thì chốt riêng tư mất tác dụng. */
   it('người ngoài vẫn nhận 404 trên hồ sơ nhóm riêng tư', async () => {
     const nobody = await registerUser(app, 'khong-lien-quan@example.com', 'Không liên quan')
     const res = await request(app)
-      .get(`/api/v1/organizations/profile/${SECRET}`)
+      .get(`/api/v1/organizations/profile/${orgIdOf(SECRET)}`)
       .set(bearer(nobody))
     expect(res.status).toBe(404)
   })
@@ -257,15 +295,11 @@ describe('Hai lỗi thật gặp lúc dùng', () => {
 describe('Master đổi chế độ hiển thị của nhóm', () => {
   let openId = ''
 
-  beforeAll(async () => {
-    const res = await request(app)
-      .get('/api/v1/organizations?q=Hùng Vương')
-      .set(bearer(master))
-      .expect(200)
-    openId = res.body.data.find((o: { slug: string }) => o.slug === OPEN).id
-  }, 60_000)
+  beforeAll(() => {
+    openId = orgIdOf(OPEN)
+  })
 
-  it('gạt sang riêng tư: rơi khỏi tìm kiếm, hồ sơ 404 với người ngoài, slug hết xin vào được', async () => {
+  it('gạt sang riêng tư: rơi khỏi tìm kiếm, hồ sơ 404 với người ngoài, id hết xin vào được', async () => {
     await request(app)
       .patch(`/api/v1/organizations/${openId}/visibility`)
       .set(bearer(master))
@@ -273,16 +307,16 @@ describe('Master đổi chế độ hiển thị của nhóm', () => {
       .expect(200)
 
     const found = await request(app).get('/api/v1/organizations/lookup?q=Hùng').expect(200)
-    expect(found.body.data.map((o: { slug: string }) => o.slug)).not.toContain(OPEN)
+    expect(ids(found.body)).not.toContain(openId)
 
-    await request(app).get(`/api/v1/organizations/profile/${OPEN}`).expect(404)
+    await request(app).get(`/api/v1/organizations/profile/${openId}`).expect(404)
 
-    // Xin vào bằng slug là đặc quyền của nhóm công khai — nhóm kín chỉ còn đường mã.
-    const bySlug = await request(app)
+    // Xin vào bằng id là đặc quyền của nhóm công khai — nhóm kín chỉ còn đường mã.
+    const byId = await request(app)
       .post('/api/v1/join-requests')
       .set(bearer(seeker))
-      .send({ slug: OPEN, claimedName: 'Người tìm nhóm' })
-    expect(bySlug.status).toBe(404)
+      .send({ orgId: openId, claimedName: 'Người tìm nhóm' })
+    expect(byId.status).toBe(404)
 
     // Và gạt ngược lại thì mọi thứ trở về — không có đường một chiều nào ở đây.
     await request(app)
@@ -292,7 +326,7 @@ describe('Master đổi chế độ hiển thị của nhóm', () => {
       .expect(200)
 
     const back = await request(app).get('/api/v1/organizations/lookup?q=Hùng').expect(200)
-    expect(back.body.data.map((o: { slug: string }) => o.slug)).toContain(OPEN)
+    expect(ids(back.body)).toContain(openId)
   }, 60_000)
 
   it('chủ nhóm KHÔNG tự rút nhóm mình khỏi sàn được', async () => {
@@ -308,7 +342,7 @@ describe('Master đổi chế độ hiển thị của nhóm', () => {
   it('không sửa được qua đường hồ sơ nhóm — body lạ bị chặn ở schema', async () => {
     const res = await request(app)
       .patch('/api/v1/organizations/current')
-      .set({ Authorization: `Bearer ${owner.token}`, 'X-Org-Slug': OPEN })
+      .set({ Authorization: `Bearer ${owner.token}`, 'X-Org-Id': orgIdOf(OPEN) })
       .send({ isPublic: false })
 
     expect(res.status).toBe(400)

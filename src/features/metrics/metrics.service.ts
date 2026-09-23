@@ -74,8 +74,9 @@ export const metricsService = {
 
       listings: {
         total: listings.total,
-        publicAxis: listings.publicAxis,
-        orgInternal: listings.orgInternal,
+        marketplace: listings.marketplace,
+        groupOpen: listings.groupOpen,
+        members: listings.members,
         new7d: listings.fresh[0],
         new30d: listings.fresh[1],
         active: countOf(LISTING_STATUS.ACTIVE),

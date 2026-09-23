@@ -10,7 +10,6 @@ export function toOrganizationDto(org: IOrganizationDocument): OrganizationSumma
   return {
     id: org._id.toString(),
     name: org.name,
-    slug: org.slug,
     joinCode: org.joinCode,
     avatarUrl: org.avatarUrl,
     description: org.description,
@@ -27,8 +26,8 @@ export function toOrganizationDto(org: IOrganizationDocument): OrganizationSumma
 /**
  * Thẻ nhóm hiện cho người vừa nhập mã, TRƯỚC khi họ bấm xin vào.
  *
- * Không mang `id`, `slug` lẫn `joinCode`: endpoint này công khai, ai dò trúng một mã cũng đọc
- * được — cho họ đúng thứ cần để nhận ra nhóm, không thêm gì để lần ra org bằng đường khác.
+ * Không mang `id` lẫn `joinCode`: endpoint này công khai, ai dò trúng một mã cũng đọc được —
+ * cho họ đúng thứ cần để nhận ra nhóm, không thêm gì để lần ra org bằng đường khác.
  */
 export function toOrganizationCardDto(org: IOrganizationDocument, memberCount: number) {
   return {
@@ -50,18 +49,20 @@ export function toMyOrganizationDto(row: {
   return {
     id: row.org._id.toString(),
     name: row.org.name,
-    slug: row.org.slug,
     avatarUrl: row.org.avatarUrl,
     coverUrl: row.org.coverUrl,
     provinceCode: row.org.provinceCode,
     role: row.membership.role,
     unitId: row.membership.unitId?.toString() ?? null,
     feedLayout: row.org.feedLayout,
+    // `!== false` chứ không truthiness: nhóm tạo trước khi `isPublic` ra đời không có field,
+    // và mặc định của nó là công khai — cùng lập luận với `toOrganizationDto` ở đầu file.
+    isPublic: row.org.isPublic !== false,
     /*
      * `findByIds` cố ý GIỮ org bị khoá trong danh sách, với lý do "người gọi cần phân biệt
      * khoá với không còn" — nhưng lời hứa đó chỉ thành thật khi DTO nói ra trạng thái. Thiếu
      * nó, client tự chọn org duy nhất mình thuộc về mà không biết nó đã khoá, rồi mọi request
-     * mang một slug BE chắc chắn từ chối.
+     * mang một org BE chắc chắn từ chối.
      */
     status: row.org.status,
   }
@@ -69,8 +70,8 @@ export function toMyOrganizationDto(row: {
 
 /**
  * Một dòng trong danh sách nhóm. PHẢI đủ để phân biệt hai nhóm trùng tên bằng mắt — "THPT Lý
- * Thường Kiệt — Quận Tân Bình, TP.HCM" chứ không phải mỗi cái tên (§6.2). Cố tình không mang
- * `id`: người dùng đi tiếp bằng slug, và API này là công khai.
+ * Thường Kiệt — Quận Tân Bình, TP.HCM" chứ không phải mỗi cái tên (§6.2). Mang `id` vì đó là
+ * thứ người dùng đi tiếp bằng (mở hồ sơ, gửi đơn) — và chỉ nhóm CÔNG KHAI mới lọt vào đây.
  *
  * `memberCount` do người gọi đếm theo lô rồi truyền vào — đếm từng nhóm một ở đây là N+1
  * ngay giữa đường tìm kiếm.
@@ -80,8 +81,8 @@ export function toOrganizationLookupDto(
   memberCount: number,
 ): OrganizationLookupDto {
   return {
+    id: org._id.toString(),
     name: org.name,
-    slug: org.slug,
     joinCode: org.joinCode,
     avatarUrl: org.avatarUrl,
     coverUrl: org.coverUrl,
@@ -102,8 +103,8 @@ export function toOrganizationProfileDto(
   extra: { memberCount: number; postsThisWeek: number; joined: boolean },
 ): OrganizationProfileDto {
   return {
+    id: org._id.toString(),
     name: org.name,
-    slug: org.slug,
     joinCode: org.joinCode,
     avatarUrl: org.avatarUrl,
     coverUrl: org.coverUrl,
@@ -112,6 +113,7 @@ export function toOrganizationProfileDto(
     district: org.district,
     rules: org.rules,
     allowOutsiderPosts: org.allowOutsiderPosts,
+    isPublic: org.isPublic !== false,
     feedLayout: org.feedLayout,
     allowJoinRequests: org.allowJoinRequests,
     ...extra,

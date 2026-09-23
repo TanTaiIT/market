@@ -45,7 +45,6 @@ export async function startTestDb(): Promise<MongoMemoryReplSet> {
   process.env.MONGO_URI = uri
   process.env.JWT_SECRET = 'test_secret'
   process.env.JWT_REFRESH_SECRET = 'test_refresh_secret'
-  delete process.env.APP_BASE_DOMAIN
 
   await mongoose.connect(uri)
   return mongod
@@ -101,18 +100,38 @@ export async function makeMaster(app: Application, email = 'master@platform.loca
   return user
 }
 
+/**
+ * Sổ `key → id` của các org mà `createOrg` đã dựng trong file test đang chạy.
+ *
+ * Org không có khoá chữ nào — định danh duy nhất là `_id`, thứ chỉ có SAU khi tạo. Test thì cần
+ * một tên gọi ổn định cho từng org ngay từ lúc khai hằng số (`'nhom-a'`, `'nhom-b'`), nên `key`
+ * là tên gọi NỘI BỘ của test: không gửi lên BE, không phải một field của org. Mọi fixture nhận
+ * `key` đều tra sổ này; truyền thẳng một ObjectId cũng được — cho test đã cầm id trong tay.
+ */
+const orgIds = new Map<string, string>()
+
+const OBJECT_ID = /^[0-9a-fA-F]{24}$/
+
+export function orgIdOf(keyOrId: string): string {
+  if (OBJECT_ID.test(keyOrId)) return keyOrId
+  const id = orgIds.get(keyOrId)
+  if (!id) throw new Error(`Chưa có org nào mang key "${keyOrId}" — gọi createOrg với key đó trước`)
+  return id
+}
+
 export async function createOrg(
   app: Application,
   masterToken: string,
   input: {
     name: string
-    slug: string
+    /** Tên gọi nội bộ của test cho org này — xem `orgIdOf`. */
+    key: string
     ownerEmail: string
     orgType?: string
     provinceCode?: string
   },
 ) {
-  const { ownerEmail, ...body } = input
+  const { ownerEmail, key, ...body } = input
   const res = await request(app)
     .post('/api/v1/organizations')
     .set('Authorization', `Bearer ${masterToken}`)
@@ -121,14 +140,15 @@ export async function createOrg(
 
   // Org sinh ra ở `pending_admin` — chưa ai vào được. Trao quyền ngay để fixture trả về một
   // org dùng được, đúng như bản cũ làm trong một lượt.
-  const org = res.body.data as { id: string; slug: string; name: string }
+  const org = res.body.data as { id: string; name: string }
   await request(app)
     .post(`/api/v1/organizations/${org.id}/admin`)
     .set('Authorization', `Bearer ${masterToken}`)
     .send({ email: ownerEmail })
     .expect(200)
 
-  return org
+  orgIds.set(key, org.id)
+  return { ...org, key }
 }
 
 /** Thêm thành viên thẳng vào DB: đường mời/roster là việc của vòng sau (§7.4). */
@@ -177,9 +197,9 @@ export async function setTrustLevel(userId: string, level: number) {
   ).exec()
 }
 
-/** Header chuẩn của một request có org: token + org hoạt động. */
-export function orgAuth(token: string, orgSlug: string) {
-  return { Authorization: `Bearer ${token}`, 'X-Org-Slug': orgSlug }
+/** Header chuẩn của một request có org: token + org hoạt động (theo `key` hoặc id). */
+export function orgAuth(token: string, orgKey: string) {
+  return { Authorization: `Bearer ${token}`, 'X-Org-Id': orgIdOf(orgKey) }
 }
 
 /** Nạp từ điển cụm cấm mặc định — cổng nội dung đọc DB, không đọc mảng hardcode nữa. */
@@ -232,14 +252,14 @@ export function listingPayload(title: string, categoryId: string) {
 }
 
 /**
- * Mã nhóm của một org, tra theo slug.
+ * Mã nhóm của một org, tra theo `key` (hoặc id).
  *
- * Đơn gia nhập đi bằng MÃ chứ không còn bằng slug, mà mã thì sinh ngẫu nhiên lúc tạo org nên
- * test không đoán trước được — phải hỏi DB.
+ * Đơn gia nhập đi bằng MÃ, mà mã thì sinh ngẫu nhiên lúc tạo org nên test không đoán trước
+ * được — phải hỏi DB.
  */
-export async function joinCodeOf(slug: string): Promise<string> {
+export async function joinCodeOf(orgKey: string): Promise<string> {
   const { Organization } = await import('../../src/features/organization/organization.model')
-  const org = await Organization.findOne({ slug }).select('joinCode').lean().exec()
-  if (!org) throw new Error(`Không có org nào slug "${slug}"`)
+  const org = await Organization.findById(orgIdOf(orgKey)).select('joinCode').lean().exec()
+  if (!org) throw new Error(`Không có org nào mang key "${orgKey}"`)
   return org.joinCode
 }

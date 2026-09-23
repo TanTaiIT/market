@@ -74,7 +74,7 @@ router.patch(
  *
  * Trước đây hai route này nằm dưới `requireOrg`, và đó là lỗi khoá chặt trục công khai:
  * người phụ trách danh mục liệt kê được hàng đợi nhưng mọi cú bấm đều 403, còn master mượn
- * slug một org bất kỳ thì ăn 404 vì tenant scope lúc đó không phủ tin công khai chưa duyệt.
+ * id một org bất kỳ thì ăn 404 vì tenant scope lúc đó không phủ tin công khai chưa duyệt.
  * Kết quả: tin công khai của người không thuộc nhóm nào kẹt `pending` vĩnh viễn.
  */
 // ĐỌC một tin cho bàn duyệt cũng đi cửa này: người xử báo cáo cần mở được tin bị tố ở mọi

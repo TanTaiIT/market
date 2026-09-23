@@ -30,8 +30,8 @@ import {
   MODERATION_QUEUE,
   JOIN_REQUEST_STATUS,
   JOINED_VIA,
-  POST_VISIBILITY,
-  PostVisibility,
+  LISTING_REACH,
+  ListingReach,
   REPORT_KIND,
   REPORT_STATUS,
   REPORT_TARGET,
@@ -67,7 +67,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const HISTORY_DAYS = 180
 
 /**
- * Tỉ lệ tin đi TRỤC DANH MỤC: `organizationId: null` + `visibility: public` + `provinceCode`.
+ * Tỉ lệ tin đi TRỤC DANH MỤC: `organizationId: null` + `reach: marketplace` + `provinceCode`.
  * Đây là nửa còn lại của mô hình hai trục — thiếu nó thì bảng tin của khách vãng lai, bộ lọc
  * tỉnh, `/listings/nearby` và hàng đợi của manager danh mục đều đọc ra rỗng.
  */
@@ -349,7 +349,7 @@ type SeedUnit = { _id: Types.ObjectId; name: string }
 type SeedOrg = {
   id: Types.ObjectId
   name: string
-  slug: string
+  key: string
   owner: SeedUser
   moderator: SeedUser
   /** Owner + members: những người được gán làm `seller` của tin. */
@@ -360,9 +360,9 @@ type SeedOrg = {
 }
 
 const ORG_SEEDS = [
-  { name: 'Trường Hùng Vương', slug: 'hung-vuong', members: 10, share: 0.45 },
-  { name: 'Trường Cao Thắng', slug: 'cao-thang', members: 8, share: 0.3 },
-  { name: 'Cửa hàng XYZ', slug: 'xyz', members: 6, share: 0.25 },
+  { name: 'Trường Hùng Vương', key: 'hung-vuong', members: 10, share: 0.45 },
+  { name: 'Trường Cao Thắng', key: 'cao-thang', members: 8, share: 0.3 },
+  { name: 'Cửa hàng XYZ', key: 'xyz', members: 6, share: 0.25 },
 ]
 
 /**
@@ -418,12 +418,12 @@ function buildOrg(spec: (typeof ORG_SEEDS)[number], passwordHash: string) {
     return user
   }
 
-  const owner = makeUser(`Chủ ${spec.name}`, `owner@${spec.slug}.local`, 'owner')
-  const moderator = makeUser(vietnameseName(), `mod@${spec.slug}.local`, 'moderator')
+  const owner = makeUser(`Chủ ${spec.name}`, `owner@${spec.key}.local`, 'owner')
+  const moderator = makeUser(vietnameseName(), `mod@${spec.key}.local`, 'moderator')
   const members = Array.from({ length: spec.members }, (_, i) =>
     // Email đánh số theo chỉ số chứ không theo tên: email giờ unique TOÀN CỤC, mà tên tiếng
     // Việt sinh ngẫu nhiên hoàn toàn có thể trùng nhau.
-    makeUser(vietnameseName(), `member${i + 1}@${spec.slug}.local`, 'member'),
+    makeUser(vietnameseName(), `member${i + 1}@${spec.key}.local`, 'member'),
   )
 
   // Nhóm con phẳng (không lồng nhau): `parentUnitId` để null là đủ cho mọi đường đọc hiện có,
@@ -442,7 +442,7 @@ function buildOrg(spec: (typeof ORG_SEEDS)[number], passwordHash: string) {
   const org: SeedOrg = {
     id: orgId,
     name: spec.name,
-    slug: spec.slug,
+    key: spec.key,
     owner,
     moderator,
     sellers: [owner, ...members],
@@ -454,7 +454,7 @@ function buildOrg(spec: (typeof ORG_SEEDS)[number], passwordHash: string) {
 
 // ── SEED LISTINGS ───────────────────────────────────────────────────
 
-/** Trục của tin. Quyết định `organizationId`, `visibility` và `provinceCode` cùng một lúc. */
+/** Trục của tin. Quyết định `organizationId`, `reach` và `provinceCode` cùng một lúc. */
 type Axis = 'org' | 'public'
 
 type ListingSeed = {
@@ -463,7 +463,7 @@ type ListingSeed = {
   _id: Types.ObjectId
   /** `null` = trục danh mục: tin không thuộc org nào. */
   organizationId: Types.ObjectId | null
-  visibility: PostVisibility
+  reach: ListingReach
   /** Snapshot tỉnh, CHỈ có ở trục danh mục — nó là khoá định tuyến hàng đợi duyệt. */
   provinceCode: string | null
   /** Nhóm con của người đăng, chỉ có ở trục org. */
@@ -532,7 +532,7 @@ function buildListing(
     // được: tin công khai thiếu `provinceCode` thì `required` của model nổ, còn tin org mà có
     // `provinceCode` thì lọt vào hàng đợi của manager danh mục dù nó không thuộc trục đó.
     organizationId: isPublic ? null : org.id,
-    visibility: isPublic ? POST_VISIBILITY.PUBLIC : POST_VISIBILITY.ORG_INTERNAL,
+    reach: isPublic ? LISTING_REACH.MARKETPLACE : LISTING_REACH.MEMBERS,
     provinceCode: isPublic ? province : null,
     // Nhóm con là chuyện nội bộ org; trục danh mục không có tầng đó.
     unitId: isPublic ? null : chance(60) ? pick(org.units)._id : null,
@@ -547,7 +547,7 @@ function buildListing(
     price: priceFor(),
     isNegotiable: chance(40),
     condition,
-    images: imagesFor(`${org.slug}-${slugCounter}`),
+    images: imagesFor(`${org.key}-${slugCounter}`),
     category: categories.get(categorySlug)!,
     seller: seller._id,
     // Snapshot người đăng, khớp cách `listing.model.ts` cố tình không populate `seller`.
@@ -805,7 +805,7 @@ const EDGE_CASES: Array<{ label: string; apply: (doc: ListingSeed, ctx: EdgeCont
  */
 function toPublicAxis(doc: ListingSeed, province: VnProvinceName): void {
   doc.organizationId = null
-  doc.visibility = POST_VISIBILITY.PUBLIC
+  doc.reach = LISTING_REACH.MARKETPLACE
   doc.provinceCode = province
   doc.unitId = null
   doc.location.province = province
@@ -1147,7 +1147,6 @@ async function seedBulk() {
       built.map((b) => ({
         _id: b.org.id,
         name: b.org.name,
-        slug: b.org.slug,
         joinCode: generateJoinCode(),
       })),
     )
@@ -1257,7 +1256,7 @@ function report(docs: ListingSeed[], orgs: SeedOrg[], aux: AuxRows) {
   const alive = docs.filter((d) => d.deletedAt === null).length
   const publicAxis = docs.filter((d) => d.organizationId === null)
   const byOrg = orgs.map(
-    (o) => `${o.slug}=${docs.filter((d) => d.organizationId?.equals(o.id)).length}`,
+    (o) => `${o.key}=${docs.filter((d) => d.organizationId?.equals(o.id)).length}`,
   )
 
   console.log('\n── Kết quả ─────────────────────────────')
@@ -1275,7 +1274,7 @@ function report(docs: ListingSeed[], orgs: SeedOrg[], aux: AuxRows) {
   console.log(`Có moderation : ${docs.filter((d) => d.moderation).length}`)
   console.log(`Có attrs      : ${docs.filter((d) => d.attrs.length > 0).length}`)
   console.log(`Có unitId     : ${docs.filter((d) => d.unitId !== null).length}`)
-  console.log(`Ca biên       : ${EDGE_CASES.length} tin đầu của org ${orgs[0].slug}`)
+  console.log(`Ca biên       : ${EDGE_CASES.length} tin đầu của org ${orgs[0].key}`)
   console.log(
     `Phụ trợ       : ${Object.entries(aux)
       .map(([name, rows]) => `${name}=${rows.length}`)
@@ -1283,7 +1282,7 @@ function report(docs: ListingSeed[], orgs: SeedOrg[], aux: AuxRows) {
   )
   console.log('────────────────────────────────────────')
   console.log(
-    `Login: POST /auth/login { orgSlug: "${orgs[0].slug}", email: "owner@${orgs[0].slug}.local", password: "${PASSWORD}" }`,
+    `Login: POST /auth/login { email: "owner@${orgs[0].key}.local", password: "${PASSWORD}" }`,
   )
   console.log(`Mọi tài khoản seed dùng chung mật khẩu "${PASSWORD}".`)
 }

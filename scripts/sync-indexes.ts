@@ -4,6 +4,17 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import mongoose from 'mongoose'
 import { env } from '../src/config/env'
+/*
+ * Side-effect: bơm `DNS_SERVERS` cho c-ares TRƯỚC lượt tra SRV đầu — xem `applyDnsOverride`.
+ *
+ * Không phải import thừa. Thiếu nó thì `mongodb+srv://` đi qua resolver mặc định của máy, và ở
+ * những mạng chặn/không trả lời SRV (VPN doanh nghiệp, DNS nhà mạng) lượt tra chết bằng
+ * `querySrv ECONNREFUSED` — một thông điệp không hề nhắc tới DNS lẫn Atlas, nên người đọc đi
+ * tìm nhầm ở whitelist IP. MỌI script nối DB đều import dòng này; file này là chỗ duy nhất
+ * quên, và nó quên được vì docblock ngay dưới có nhắc tên `config/database.ts` nên một lượt
+ * grep vẫn thấy khớp.
+ */
+import '../src/config/database'
 
 /**
  * Đồng bộ index của MỌI model — bước deploy bắt buộc, không phải một migration một lần.

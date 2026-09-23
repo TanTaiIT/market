@@ -25,11 +25,11 @@ let master: TestUser
 let orgId = ''
 let otherOwner: TestUser
 
-const SLUG = 'roster-a'
-const OTHER_SLUG = 'roster-b'
+const ORG = 'roster-a'
+const OTHER_ORG = 'roster-b'
 
-const members = (token: string, slug: string) =>
-  request(app).get('/api/v1/memberships').set(orgAuth(token, slug))
+const members = (token: string, org: string) =>
+  request(app).get('/api/v1/memberships').set(orgAuth(token, org))
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -39,7 +39,7 @@ beforeAll(async () => {
   owner = await registerUser(app, 'owner@roster.local', 'Chủ tổ chức')
   const org = await createOrg(app, master.token, {
     name: 'Trường Roster',
-    slug: SLUG,
+    key: ORG,
     // 'school' mới có `capabilities.hasUnits` — nhóm con là thứ ca cuối cùng cần tới.
     orgType: 'school',
     ownerEmail: owner.email,
@@ -52,7 +52,7 @@ beforeAll(async () => {
   otherOwner = await registerUser(app, 'owner@roster-b.local', 'Chủ tổ chức B')
   const otherOrg = await createOrg(app, master.token, {
     name: 'Trường Roster B',
-    slug: OTHER_SLUG,
+    key: OTHER_ORG,
     ownerEmail: otherOwner.email,
   })
   const otherMember = await registerUser(app, 'member@roster-b.local', 'Thành viên B')
@@ -66,7 +66,7 @@ afterAll(async () => {
 
 describe('GET /memberships', () => {
   it('trả đủ danh bạ, chủ tổ chức đứng đầu', async () => {
-    const res = await members(owner.token, SLUG).expect(200)
+    const res = await members(owner.token, ORG).expect(200)
 
     expect(res.body.data.map((m: { name: string }) => m.name)).toEqual([
       'Chủ tổ chức',
@@ -81,7 +81,7 @@ describe('GET /memberships', () => {
    * trọng nhất của org.
    */
   it('có cả người không đi qua đơn gia nhập', async () => {
-    const res = await members(owner.token, SLUG).expect(200)
+    const res = await members(owner.token, ORG).expect(200)
     const chu = res.body.data.find((m: { name: string }) => m.name === 'Chủ tổ chức')
 
     // Tài khoản mới đứng ở bậc trần: danh bạ phải nói đúng thế, không phải bậc 0 của mô hình cũ.
@@ -100,7 +100,7 @@ describe('GET /memberships', () => {
    * được thành viên (`DELETE` dùng `requireOrgAdmin`) nhưng không nhìn được mình đang xoá ai.
    */
   it('master không thuộc org vẫn đọc được danh bạ', async () => {
-    const res = await members(master.token, SLUG).expect(200)
+    const res = await members(master.token, ORG).expect(200)
 
     expect(res.body.data.map((m: { name: string }) => m.name)).toEqual([
       'Chủ tổ chức',
@@ -110,11 +110,11 @@ describe('GET /memberships', () => {
 
   /** Nới cho người QUẢN org này, không nới cho người ngoài: chủ org B không quản gì ở org A. */
   it('chủ tổ chức khác vẫn bị chặn — nới cổng không phải mở cổng', async () => {
-    await members(otherOwner.token, SLUG).expect(403)
+    await members(otherOwner.token, ORG).expect(403)
   })
 
   it('KHÔNG trả email/phone — danh bạ để nhận ra người, không phải bản sao hồ sơ', async () => {
-    const res = await members(owner.token, SLUG).expect(200)
+    const res = await members(owner.token, ORG).expect(200)
     const keys = Object.keys(res.body.data[0]).sort()
 
     expect(keys).toEqual([
@@ -130,7 +130,7 @@ describe('GET /memberships', () => {
   })
 
   it('mỗi org chỉ thấy người của mình', async () => {
-    const res = await members(otherOwner.token, OTHER_SLUG).expect(200)
+    const res = await members(otherOwner.token, OTHER_ORG).expect(200)
     const names = res.body.data.map((m: { name: string }) => m.name)
 
     expect(names).toContain('Chủ tổ chức B')
@@ -138,7 +138,7 @@ describe('GET /memberships', () => {
   })
 
   it('thành viên thường CŨNG xem được, nhưng bản rút gọn', async () => {
-    const res = await members(member.token, SLUG).expect(200)
+    const res = await members(member.token, ORG).expect(200)
 
     // Nhóm thì phải thấy nhau. Ba field hồ sơ vận hành thì không — bậc uy tín là kết luận của
     // bàn duyệt về một người, không phải thông tin để cả nhóm bình phẩm.
@@ -164,7 +164,7 @@ describe('GET /memberships', () => {
  * chỉ có xoá tài khoản. Đây là nửa còn thiếu của vòng đời.
  */
 describe('Quản trị nhóm quản lý thành viên', () => {
-  const asOwner = () => orgAuth(owner.token, SLUG)
+  const asOwner = () => orgAuth(owner.token, ORG)
 
   it('gỡ được một thành viên thường — họ biến khỏi danh bạ', async () => {
     const leaving = await registerUser(app, 'se-bi-go@roster.local', 'Người sẽ bị gỡ')
@@ -200,7 +200,7 @@ describe('Quản trị nhóm quản lý thành viên', () => {
     // Master là đường sửa sai cuối cùng — họ đứng ngoài chốt này.
     await request(app)
       .delete(`/api/v1/memberships/${coAdmin.id}`)
-      .set(orgAuth(master.token, SLUG))
+      .set(orgAuth(master.token, ORG))
       .expect(200)
   }, 60_000)
 
@@ -210,7 +210,7 @@ describe('Quản trị nhóm quản lý thành viên', () => {
 
     await request(app)
       .delete(`/api/v1/memberships/${victim.id}`)
-      .set(orgAuth(member.token, SLUG))
+      .set(orgAuth(member.token, ORG))
       .expect(403)
   }, 60_000)
 })

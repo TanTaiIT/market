@@ -22,7 +22,6 @@ beforeAll(async () => {
   process.env.MONGO_URI = uri
   process.env.JWT_SECRET = 'test_secret'
   process.env.JWT_REFRESH_SECRET = 'test_refresh_secret'
-  delete process.env.APP_BASE_DOMAIN
 
   await mongoose.connect(uri)
 
@@ -42,10 +41,10 @@ beforeAll(async () => {
   const owner = await registerUser(app, 'owner@cat-org.local', 'Cat Owner')
   const org = await createOrg(app, superToken, {
     name: 'Cat Org',
-    slug: 'cat-org',
+    key: 'cat-org',
     ownerEmail: owner.email,
   })
-  orgHeaders = orgAuth(owner.token, org.slug)
+  orgHeaders = orgAuth(owner.token, org.id)
   // File test này đăng nhiều tin liên tiếp để thử ràng buộc danh mục; quota mặc định (3 tin
   // chờ) sẽ chặn ngang giữa chừng và che mất thứ đang thực sự được kiểm.
   await setTrustLevel(owner.id, 1)

@@ -14,6 +14,7 @@ import {
   orgAuth,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -55,7 +56,7 @@ let member: TestUser
 let categoryId = ''
 let orgId = ''
 
-const SLUG = 'nhom-notif-realtime'
+const ORG = 'nhom-notif-realtime'
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -68,7 +69,7 @@ beforeAll(async () => {
 
   const org = await createOrg(app, master.token, {
     name: 'Nhóm Notif',
-    slug: SLUG,
+    key: ORG,
     ownerEmail: owner.email,
   })
   orgId = org.id
@@ -89,7 +90,7 @@ describe('Thông báo báo được cho người đang ở màn khác', () => {
   it('quản trị soạn thông báo → phát cho cả nhóm, KHÔNG loại ai', async () => {
     await request(app)
       .post('/api/v1/notifications')
-      .set(orgAuth(owner.token, SLUG))
+      .set(orgAuth(owner.token, ORG))
       .send({ title: 'Nghỉ lễ', body: 'Nhóm nghỉ ngày mai' })
       .expect(201)
 
@@ -108,8 +109,8 @@ describe('Thông báo báo được cho người đang ở màn khác', () => {
   it('thành viên đăng tin → phát cho nhóm và LOẠI chính người đăng', async () => {
     await request(app)
       .post('/api/v1/listings')
-      .set(orgAuth(member.token, SLUG))
-      .send({ ...listingPayload('Bàn học cũ', categoryId), orgSlug: SLUG })
+      .set(orgAuth(member.token, ORG))
+      .send({ ...listingPayload('Bàn học cũ', categoryId), orgId: orgIdOf(ORG) })
       .expect(201)
 
     expect(emitSpy.toOrgMembers).toHaveBeenCalledTimes(1)
@@ -123,7 +124,7 @@ describe('Thông báo báo được cho người đang ở màn khác', () => {
   }, 60_000)
 
   /**
-   * Tin CÔNG KHAI không sinh thông báo nhóm — `notifyGroupOfListing` chặn ở `visibility`. Nếu
+   * Tin CÔNG KHAI không sinh thông báo nhóm — `notifyGroupOfListing` chặn ở `reach`. Nếu
    * tín hiệu vẫn phát thì chuông của cả nhóm kêu cho một tin họ không hề nhận được.
    */
   it('tin công khai KHÔNG làm chuông cả nhóm kêu', async () => {
@@ -132,7 +133,7 @@ describe('Thông báo báo được cho người đang ở màn khác', () => {
       .set({ Authorization: `Bearer ${member.token}` })
       .send({
         ...listingPayload('Tin công khai', categoryId),
-        visibility: 'public',
+        reach: 'marketplace',
         provinceCode: 'Hồ Chí Minh',
       })
       .expect(201)

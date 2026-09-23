@@ -20,6 +20,7 @@ import { listingProductResponseSchema } from '../listing-product/listing-product
 import { validate } from '../../middlewares/validate.middleware'
 import {
   authenticate,
+  optionalAuth,
   requireMaster,
   requireOrgReadOrMaster,
   requireVerifiedEmail,
@@ -76,7 +77,7 @@ router.get('/products', listingController.products)
  * THỜI GIAN theo ngày/tháng/năm để nhìn xu hướng. Gộp hai thứ vào một endpoint sẽ đẻ ra một
  * response mà mỗi màn chỉ dùng một nửa.
  */
-// Quản trị nhóm xem bản CỦA NHÓM (kèm `X-Org-Slug`), master không kèm org xem toàn hệ thống.
+// Quản trị nhóm xem bản CỦA NHÓM (kèm `X-Org-Id`), master không kèm org xem toàn hệ thống.
 router.get(
   '/report',
   authenticate,
@@ -95,7 +96,15 @@ router.get(
   listingController.postingStats,
 )
 
-router.get('/:id', validate({ params: listingParamsSchema }), listingController.getById)
+// `optionalAuth`, KHÔNG `authenticate`: khách vẫn đọc tin công khai; token chỉ để xét tư cách
+// thành viên cho tin nội bộ (xem `listingService.getForViewer`). Thiếu dòng này thì `req.user`
+// luôn rỗng ở đây và thành viên nào cũng bị coi là khách.
+router.get(
+  '/:id',
+  optionalAuth,
+  validate({ params: listingParamsSchema }),
+  listingController.getById,
+)
 
 // Protected (chủ tin)
 router.post(
@@ -333,11 +342,20 @@ registry.registerPath({
   operationId: 'listingGetById',
   tags: ['Listing'],
   summary: 'Chi tiết tin đăng (tăng viewCount)',
-  description: listSummary,
+  description:
+    'Quyền đọc xét theo NGƯỜI GỌI, không theo `X-Org-Id`: tin công khai đã duyệt thì ai cũng ' +
+    'đọc được (kể cả khách); tin nội bộ chỉ thành viên của nhóm sở hữu tin (hoặc người có quyền ' +
+    'duyệt trong nhóm đó) mới đọc được, bất kể request đang chỉ ra nhóm nào. Gửi token để được ' +
+    'xét là thành viên. ' +
+    listSummary,
+  // Hai phương án bảo mật = token TUỲ CHỌN theo OpenAPI: `{}` là "không cần gì".
+  security: [{ [bearerAuth.name]: [] }, {}],
   request: { params: listingParamsSchema },
   responses: {
     200: jsonResponse('Chi tiết tin', listingResponse),
-    404: errorResponse('Không tìm thấy tin hoặc tin chưa được public'),
+    404: errorResponse(
+      'Không tìm thấy tin, tin chưa được public, hoặc tin nội bộ của nhóm mà bạn không thuộc về',
+    ),
   },
 })
 

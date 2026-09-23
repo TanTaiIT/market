@@ -9,7 +9,8 @@ export const reportRepository = {
    * Ghi với `organizationId` TƯỜNG MINH — org của TIN, hoặc `null` cho trục công khai — và chạy
    * unscoped. Để plugin so với scope thì thành viên hai nhóm đang đứng ở nhóm A báo cáo tin của
    * nhóm B là `CrossTenantWriteError`, trong khi đó là đúng việc. Quyền ĐỌC tin (tức quyền báo
-   * cáo nó) đã được `listingService.getById` kiểm trước đó, trong scope của người tố.
+   * cáo nó) đã được `listingService.getForViewer` kiểm trước đó — theo QUAN HỆ của người tố với
+   * nhóm sở hữu tin, không theo `X-Org-Id` họ đang gửi.
    */
   create(data: Partial<IReport> & { organizationId: Types.ObjectId | null }) {
     return runUnscoped('report: đóng dấu trục của TIN, không phải org của người tố', () =>
@@ -56,7 +57,7 @@ export const reportRepository = {
    * cả ba, nếu không hàng đợi vẫn còn hai bản ghi về việc đã giải quyết xong.
    *
    * Unscoped + lọc `organizationId` tường minh, vì thẩm quyền đã xét ở service theo trục của
-   * báo cáo: master đóng báo cáo của một org từ danh sách xuyên tổ chức (không kèm `X-Org-Slug`)
+   * báo cáo: master đóng báo cáo của một org từ danh sách xuyên tổ chức (không kèm `X-Org-Id`)
    * thì scope không có org đó — để plugin lọc là `updateMany` khớp 0 dòng, và báo cáo "đã xử"
    * vẫn nằm mở trong hàng đợi.
    */

@@ -11,6 +11,7 @@ import {
   orgAuth,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -31,15 +32,15 @@ let master: TestUser
 let admin: TestUser
 let member: TestUser
 
-const SLUG = 'truong-bay-tin'
+const ORG = 'truong-bay-tin'
 
 const bearer = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` })
 const patch = (u: TestUser, body: Record<string, unknown>) =>
-  request(app).patch('/api/v1/organizations/current').set(orgAuth(u.token, SLUG)).send(body)
+  request(app).patch('/api/v1/organizations/current').set(orgAuth(u.token, ORG)).send(body)
 
 const layoutOf = async (u: TestUser) => {
   const res = await request(app).get('/api/v1/organizations/mine').set(bearer(u)).expect(200)
-  return res.body.data.find((o: { slug: string }) => o.slug === SLUG)?.feedLayout
+  return res.body.data.find((o: { id: string }) => o.id === orgIdOf(ORG))?.feedLayout
 }
 
 beforeAll(async () => {
@@ -52,7 +53,7 @@ beforeAll(async () => {
 
   const org = await createOrg(app, master.token, {
     name: 'Trường Bày Tin',
-    slug: SLUG,
+    key: ORG,
     ownerEmail: admin.email,
   })
 
@@ -111,19 +112,25 @@ describe('Nội quy nhóm — đường ghi từng bị bỏ sót', () => {
   it('quản trị nhóm ghi được nội quy', async () => {
     await patch(admin, { rules: ['Chỉ đăng đồ thật', 'Ghi rõ giá và tình trạng'] }).expect(200)
 
-    const res = await request(app).get(`/api/v1/organizations/profile/${SLUG}`).expect(200)
+    const res = await request(app)
+      .get(`/api/v1/organizations/profile/${orgIdOf(ORG)}`)
+      .expect(200)
     expect(res.body.data.rules).toEqual(['Chỉ đăng đồ thật', 'Ghi rõ giá và tình trạng'])
   })
 
   /** Mảng rỗng = XOÁ HẾT. Không phân biệt được với "không gửi" thì không có đường gỡ nội quy. */
   it('mảng rỗng xoá sạch nội quy, khác hẳn không gửi field', async () => {
     await patch(admin, { rules: [] }).expect(200)
-    const cleared = await request(app).get(`/api/v1/organizations/profile/${SLUG}`).expect(200)
+    const cleared = await request(app)
+      .get(`/api/v1/organizations/profile/${orgIdOf(ORG)}`)
+      .expect(200)
     expect(cleared.body.data.rules).toEqual([])
 
     // Không gửi `rules` thì giữ nguyên — ở đây là giữ nguyên mảng rỗng vừa đặt.
     await patch(admin, { description: 'Mô tả mới' }).expect(200)
-    const kept = await request(app).get(`/api/v1/organizations/profile/${SLUG}`).expect(200)
+    const kept = await request(app)
+      .get(`/api/v1/organizations/profile/${orgIdOf(ORG)}`)
+      .expect(200)
     expect(kept.body.data.rules).toEqual([])
     expect(kept.body.data.description).toBe('Mô tả mới')
   })

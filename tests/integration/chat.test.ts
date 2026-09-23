@@ -3,6 +3,7 @@ import request from 'supertest'
 import mongoose, { Types } from 'mongoose'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import type { Application } from 'express'
+import { orgIdOf } from '../helpers/fixtures'
 
 let app: Application
 let mongod: MongoMemoryReplSet
@@ -10,10 +11,10 @@ let mongod: MongoMemoryReplSet
 let categoryId = ''
 
 /** Org A: người bán + người mua. Org B: người ngoài, dùng để kiểm chứng cách ly tenant. */
-const seller = { token: '', id: '', slug: '' }
-const buyer = { token: '', id: '', slug: '' }
-const outsiderSameOrg = { token: '', id: '', slug: '' }
-const otherOrg = { token: '', id: '', slug: '' }
+const seller = { token: '', id: '', key: '' }
+const buyer = { token: '', id: '', key: '' }
+const outsiderSameOrg = { token: '', id: '', key: '' }
+const otherOrg = { token: '', id: '', key: '' }
 
 let listingId = ''
 /** Tin trên trục danh mục (`organizationId: null`) — người ngoài mọi nhóm vẫn đọc được. */
@@ -26,24 +27,24 @@ let masterToken = ''
 const orgIds: Record<string, string> = {}
 
 /** Chủ org: master tạo org và chỉ định người chủ — không còn luồng tự đăng ký kèm org. */
-async function createOwner(slug: string) {
+async function createOwner(key: string) {
   const { registerUser, createOrg } = await import('../helpers/fixtures')
-  const user = await registerUser(app, `owner@${slug}.local`, `Owner ${slug}`)
+  const user = await registerUser(app, `owner@${key}.local`, `Owner ${key}`)
   const org = await createOrg(app, masterToken, {
-    name: `Org ${slug}`,
-    slug,
+    name: `Org ${key}`,
+    key,
     ownerEmail: user.email,
   })
-  orgIds[slug] = org.id
-  return { token: user.token, id: user.id, slug }
+  orgIds[key] = org.id
+  return { token: user.token, id: user.id, key }
 }
 
 /** Thành viên thứ hai — đường mời chưa làm, nên tạo membership thẳng ở tầng model. */
-async function joinOrg(slug: string, name: string, email: string) {
+async function joinOrg(key: string, name: string, email: string) {
   const { registerUser, addMember } = await import('../helpers/fixtures')
   const user = await registerUser(app, email, name)
-  await addMember(user.id, orgIds[slug])
-  return { token: user.token, id: user.id, slug }
+  await addMember(user.id, orgIds[key])
+  return { token: user.token, id: user.id, key }
 }
 
 beforeAll(async () => {
@@ -52,7 +53,6 @@ beforeAll(async () => {
   process.env.MONGO_URI = uri
   process.env.JWT_SECRET = 'test_secret'
   process.env.JWT_REFRESH_SECRET = 'test_refresh_secret'
-  delete process.env.APP_BASE_DOMAIN
 
   await mongoose.connect(uri)
   const { createApp } = await import('../../src/app')
@@ -79,6 +79,10 @@ beforeAll(async () => {
       categoryId,
       images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
       location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
+      // Khai TƯỜNG MINH bậc thấp nhất: cả file đo luật "chỉ mở được hội thoại với tin mình
+      // xem được", và mặc định của một nhóm công khai nay là `group_open` — bậc ai cũng đọc,
+      // tức là không còn ca "người ngoài không xem được" để mà đo.
+      reach: 'members',
     })
     .expect(201)
   listingId = created.body.data._id
@@ -91,14 +95,14 @@ beforeAll(async () => {
   )
 
   /*
-   * Tin thứ hai trên TRỤC DANH MỤC (`organizationId: null`, `visibility: public`) — thứ mà
+   * Tin thứ hai trên TRỤC DANH MỤC (`organizationId: null`, `reach: marketplace`) — thứ mà
    * người không thuộc nhóm nào đọc được. Dựng thẳng ở tầng model chứ không qua API: đường API
    * đòi người đăng phải có org scope, mà ở đây cần đúng một tin không thuộc org nào.
    */
   const publicListing = await runUnscoped('test fixture: tin trục công khai', () =>
     Listing.create({
       organizationId: null,
-      visibility: 'public',
+      reach: 'marketplace',
       provinceCode: 'Hồ Chí Minh',
       wardCode: 'Phường Bến Thành',
       title: 'Bàn học gỗ thông còn mới',
@@ -117,7 +121,7 @@ beforeAll(async () => {
   const noPhoto = await runUnscoped('test fixture: tin không ảnh', () =>
     Listing.create({
       organizationId: orgIds['chat-a'],
-      visibility: 'org_internal',
+      reach: 'members',
       title: 'Ghế nhựa cũ cho ai cần',
       description: 'Ghế nhựa còn chắc, cho tặng, tới lấy tại nhà',
       price: 0,
@@ -136,8 +140,8 @@ afterAll(async () => {
   await mongod.stop()
 })
 
-function as(who: { token: string; slug: string }) {
-  return { Authorization: `Bearer ${who.token}`, 'X-Org-Slug': who.slug }
+function as(who: { token: string; key: string }) {
+  return { Authorization: `Bearer ${who.token}`, 'X-Org-Id': orgIdOf(who.key) }
 }
 
 describe('Chat — mở hội thoại', () => {
@@ -154,6 +158,26 @@ describe('Chat — mở hội thoại', () => {
     )
     expect(res.body.data.unread).toBe(false)
     conversationId = res.body.data.id
+  })
+
+  /*
+   * Ghim thẳng BẤT BIẾN thay vì ghim triệu chứng.
+   *
+   * `unread` ở test trên tính bằng `lastReadAt < lastMessageAt`, nên nó chỉ đúng khi hai mốc
+   * BẰNG nhau. Trước đây chúng là hai lần `new Date()` riêng: máy nhanh thì rơi cùng mili-giây
+   * và test xanh, CI chậm hơn thì thỉnh thoảng lệch 1ms và hội thoại vừa mở đã sáng đèn chưa
+   * đọc. Test này so thẳng hai con số, nên nó không có cửa nào để nhấp nháy.
+   */
+  it('mốc mở hội thoại và mốc đã-đọc của người mở là MỘT', async () => {
+    const doc = await mongoose.connection
+      .collection('conversations')
+      .findOne({ _id: new Types.ObjectId(conversationId) })
+    expect(doc).not.toBeNull()
+
+    const participants = doc!.participants as Array<{ user: Types.ObjectId; lastReadAt: Date }>
+    const opener = participants.find((p) => p.user.toString() === buyer.id)
+
+    expect(opener?.lastReadAt.getTime()).toBe((doc!.lastMessageAt as Date).getTime())
   })
 
   it('tin KHÔNG có ảnh thì `listingImage` rỗng, không phải thiếu field', async () => {
@@ -197,7 +221,7 @@ describe('Chat — mở hội thoại', () => {
    * thuộc nhóm nào bấm "Nhắn tin" nhận `Missing tenant context for "chat.open"`, vì `orgActor`
    * đòi một org mà họ không có. Trên trục danh mục công khai thì đó là đa số người mua.
    *
-   * Không gửi `X-Org-Slug` là CỐ Ý — nó tái hiện đúng client của một người chưa vào nhóm nào.
+   * Không gửi `X-Org-Id` là CỐ Ý — nó tái hiện đúng client của một người chưa vào nhóm nào.
    */
   it('người KHÔNG thuộc nhóm nào vẫn nhắn được cho người đăng tin công khai', async () => {
     const { registerUser } = await import('../helpers/fixtures')

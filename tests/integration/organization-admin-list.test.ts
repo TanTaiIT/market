@@ -17,7 +17,7 @@ import {
  *
  * Tồn tại vì master cố ý KHÔNG thuộc org nào (quyền của họ là grant `master/system`, không phải
  * membership), nên `/organizations/mine` luôn rỗng với họ và bộ chuyển tổ chức phía client không
- * có gì để đặt vào `X-Org-Slug`. Test ở đây khoá đúng ba thứ khiến endpoint này khác `lookup`:
+ * có gì để đặt vào `X-Org-Id`. Test ở đây khoá đúng ba thứ khiến endpoint này khác `lookup`:
  * chỉ master gọi được, có trả `id`, và trả cả org đang bị khoá.
  */
 
@@ -41,13 +41,13 @@ beforeAll(async () => {
 
   await createOrg(app, master.token, {
     name: 'Trường Lý Thường Kiệt',
-    slug: 'truong-ly-thuong-kiet',
+    key: 'truong-ly-thuong-kiet',
     ownerEmail: owner.email,
   })
   suspendedId = (
     await createOrg(app, master.token, {
       name: 'Chung Cư Hưng Vương',
-      slug: 'chung-cu-hung-vuong',
+      key: 'chung-cu-hung-vuong',
       ownerEmail: owner.email,
     })
   ).id
@@ -77,7 +77,7 @@ describe('GET /organizations — cửa vào', () => {
    * Chốt của cả tính năng: master không có membership nào, mà vẫn phải gọi được. Thêm nhầm
    * `requireOrg` vào route này là khoá vòng tròn — cần org scope để lấy danh sách org.
    */
-  it('master KHÔNG thuộc org nào vẫn gọi được, không cần X-Org-Slug', async () => {
+  it('master KHÔNG thuộc org nào vẫn gọi được, không cần X-Org-Id', async () => {
     const mine = await request(app)
       .get(`${url}/mine`)
       .set('Authorization', `Bearer ${master.token}`)
@@ -90,12 +90,11 @@ describe('GET /organizations — cửa vào', () => {
 })
 
 describe('GET /organizations — nội dung bảng', () => {
-  /** `lookup` cố tình giấu `id`; ở đây `id` chính là thứ endpoint tồn tại để trả. */
-  it('trả id và slug — đủ để client đặt vào X-Org-Slug', async () => {
+  /** `id` là định danh duy nhất của nhóm — thứ client đặt vào `X-Org-Id`. */
+  it('mỗi dòng mang id dạng ObjectId', async () => {
     const res = await asMaster().expect(200)
     for (const row of res.body.data) {
       expect(row.id).toMatch(/^[0-9a-f]{24}$/)
-      expect(row.slug).toBeTruthy()
     }
   })
 
@@ -108,7 +107,7 @@ describe('GET /organizations — nội dung bảng', () => {
   it('lọc theo status thu hẹp đúng một dòng', async () => {
     const res = await asMaster('?status=active').expect(200)
     expect(res.body.data).toHaveLength(1)
-    expect(res.body.data[0].slug).toBe('truong-ly-thuong-kiet')
+    expect(res.body.data[0].name).toBe('Trường Lý Thường Kiệt')
   })
 
   it('meta phân trang khớp với limit đã gửi', async () => {
@@ -119,7 +118,7 @@ describe('GET /organizations — nội dung bảng', () => {
 })
 
 describe('GET /organizations — tìm kiếm', () => {
-  it('gõ KHÔNG DẤU vẫn ra: tìm trên nameTokens/slugNormalized đã fold dấu', async () => {
+  it('gõ KHÔNG DẤU vẫn ra: `nameTokens` đã fold dấu', async () => {
     const res = await asMaster('?q=hung vuong').expect(200)
     expect(res.body.data).toHaveLength(1)
     expect(res.body.data[0].id).toBe(suspendedId)

@@ -13,6 +13,7 @@ import {
   orgAuth,
   registerUser,
   startTestDb,
+  orgIdOf,
 } from '../helpers/fixtures'
 
 /**
@@ -34,17 +35,17 @@ let adminB: TestUser
 let outsider: TestUser
 let categoryId = ''
 
-const SLUG_A = 'truong-a'
-const SLUG_B = 'truong-b'
+const ORG_A = 'truong-a'
+const ORG_B = 'truong-b'
 
 const bearer = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` })
 
-/** Người ngoài đề xuất tin vào org — `orgSlug` trong body, đúng đường của người không phải thành viên. */
-async function postTo(slug: string, title: string): Promise<string> {
+/** Người ngoài đề xuất tin vào org — `orgId` trong body, đúng đường của người không phải thành viên. */
+async function postTo(org: string, title: string): Promise<string> {
   const res = await request(app)
     .post('/api/v1/listings')
     .set(bearer(outsider))
-    .send({ ...listingPayload(title, categoryId), orgSlug: slug })
+    .send({ ...listingPayload(title, categoryId), orgId: orgIdOf(org) })
     .expect(201)
   return res.body.data._id
 }
@@ -61,17 +62,17 @@ beforeAll(async () => {
 
   await createOrg(app, master.token, {
     name: 'Trường A',
-    slug: SLUG_A,
+    key: ORG_A,
     ownerEmail: adminA.email,
   })
   await createOrg(app, master.token, {
     name: 'Trường B',
-    slug: SLUG_B,
+    key: ORG_B,
     ownerEmail: adminB.email,
   })
 
-  await postTo(SLUG_A, 'Xe đạp của trường A')
-  await postTo(SLUG_B, 'Xe đạp của trường B')
+  await postTo(ORG_A, 'Xe đạp của trường A')
+  await postTo(ORG_B, 'Xe đạp của trường B')
 }, 120_000)
 
 afterAll(async () => {
@@ -82,7 +83,7 @@ afterAll(async () => {
 const titlesOf = (body: { data: { title: string }[] }) => body.data.map((l) => l.title)
 
 describe('Master chưa chọn org — đọc được mọi tổ chức', () => {
-  it('hàng đợi duyệt tin gộp tin của CẢ HAI trường, không cần X-Org-Slug', async () => {
+  it('hàng đợi duyệt tin gộp tin của CẢ HAI trường, không cần X-Org-Id', async () => {
     const res = await request(app)
       .get('/api/v1/moderation/listings')
       .set(bearer(master))
@@ -108,7 +109,7 @@ describe('Master chưa chọn org — đọc được mọi tổ chức', () => 
   it('chọn org rồi thì thu hẹp lại đúng org đó', async () => {
     const res = await request(app)
       .get('/api/v1/moderation/listings')
-      .set(orgAuth(master.token, SLUG_A))
+      .set(orgAuth(master.token, ORG_A))
       .expect(200)
 
     const titles = titlesOf(res.body)
@@ -126,7 +127,7 @@ describe('Cách ly tenant KHÔNG bị nới theo', () => {
   it('quản trị trường A KHÔNG thấy tin của trường B', async () => {
     const res = await request(app)
       .get('/api/v1/moderation/listings')
-      .set(orgAuth(adminA.token, SLUG_A))
+      .set(orgAuth(adminA.token, ORG_A))
       .expect(200)
 
     const titles = titlesOf(res.body)

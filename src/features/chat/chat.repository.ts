@@ -127,22 +127,6 @@ export const chatRepository = {
   },
 
   /**
-   * Xoá avatar snapshot bị máy kiểm ảnh từ chối (webhook `moderation.webhook.service.ts`).
-   * `arrayFilters` vì một hội thoại có nhiều participant — chỉ phần tử khớp mới bị xoá.
-   *
-   * Không còn bọc `runUnscoped`: nó từng cần để vượt qua `tenantPlugin` cho một sự kiện không
-   * thuộc org nào. Plugin đã gỡ, nên bọc thêm chỉ là hứa hẹn sai về một hàng rào không có.
-   */
-  async clearParticipantAvatarRef(pattern: RegExp): Promise<number> {
-    const res = await Conversation.updateMany(
-      { 'participants.avatar': pattern },
-      { $set: { 'participants.$[p].avatar': '' } },
-      { arrayFilters: [{ 'p.avatar': pattern }] },
-    ).exec()
-    return res.modifiedCount
-  },
-
-  /**
    * Avatar snapshot của người tham gia mọi hội thoại — cho job dọn ảnh mồ côi
    * (`upload.cleanup.service.ts`). Snapshot chụp lúc mở hội thoại (§2.3 cấm populate), nên nó
    * có thể là chủ CUỐI CÙNG của một ảnh mà user đã đổi từ lâu — thiếu nguồn này là job giật

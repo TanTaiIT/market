@@ -86,11 +86,6 @@ const envSchema = z.object({
    */
   SENTRY_DSN: z.string().url().optional(),
 
-  // Domain gốc để tách subdomain -> Organization.slug (vd 'app.com' => hungvuong.app.com).
-  // Bỏ trống ở dev/test: khi đó org hoạt động đến từ header `X-Org-Slug`, hoặc suy ra khi
-  // người dùng chỉ thuộc đúng một org.
-  APP_BASE_DOMAIN: z.string().optional(),
-
   /**
    * Client ID được PHÉP của Google, phân tách bằng dấu phẩy.
    *
@@ -157,7 +152,45 @@ const envSchema = z.object({
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
   CLOUDINARY_UPLOAD_FOLDER: z.string().default('ghim'),
+  /**
+   * Preset mà app gửi kèm mỗi lượt upload. Từ khi preset chuyển sang **Signed**, tên nó là một
+   * tham số ĐƯỢC KÝ — app không được tự chọn nữa, nếu không chữ ký và request lệch nhau.
+   *
+   * Tên `ghim_unsigned` giữ nguyên vì đó là tên thật đang có trên Console; đổi tên ở đó thì đổi
+   * cả biến này. (Tên giờ sai nghĩa, nhưng đổi tên preset là một lượt downtime upload.)
+   */
+  CLOUDINARY_UPLOAD_PRESET: z.string().default('ghim_unsigned'),
   IMAGE_CLEANUP_EVERY: z.string().default('24 hours'),
+
+  /*
+   * BỎ QUA XÁC THỰC EMAIL — tạm thời, đi cùng lớp phủ KYC cho vòng kiểm duyệt Bộ Công Thương.
+   *
+   * Bật thì tài khoản đăng ký bằng mật khẩu được đặt `emailVerifiedAt` NGAY LÚC TẠO. Nó sửa
+   * hai thứ cùng lúc, và thứ hai mới là thứ suýt cháy:
+   *
+   * 1. `requireVerifiedEmail` chặn đăng tin và nhắn tin — ẩn bước xác thực ở app mà không có
+   *    cờ này thì người đăng ký xong không làm được gì, đúng thứ Bộ thử đầu tiên.
+   * 2. `unverified-cleanup` XOÁ CỨNG tài khoản `emailVerifiedAt: null` sau `UNVERIFIED_TTL_DAYS`
+   *    (mặc định 7 ngày) — kể cả tài khoản demo đưa cho Bộ. Đặt mốc là chúng rơi khỏi diện quét.
+   *
+   * KHÔNG dùng cho production thật: nó biến email thành một chuỗi chưa ai chứng minh là có thật.
+   */
+  SKIP_EMAIL_VERIFICATION: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+
+  /*
+   * CỔNG KYC — tài khoản phải được master duyệt mới dùng được (yêu cầu Bộ Công Thương).
+   *
+   * MẶC ĐỊNH TẮT, và đó là điểm mấu chốt: tắt thì `kycGate` trả về ở dòng đầu và hệ thống chạy
+   * y hệt như chưa từng có module `features/kyc`. Bật đúng giai đoạn kiểm duyệt; gỡ về sau
+   * chỉ là xoá dòng này, xoá `router.use(kycGate)` ở `features/index.ts`, và xoá thư mục kia.
+   */
+  KYC_REQUIRED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 
   AWS_S3_BUCKET: z.string().optional(),
   AWS_REGION: z.string().optional(),

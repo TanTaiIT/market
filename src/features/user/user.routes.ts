@@ -45,7 +45,7 @@ router.delete('/me', authenticate, apiLimiter, userController.deleteMe)
  * sau thì 'report' bị nuốt thành một cái id rồi rụng ở validate ObjectId với lỗi 400 khó hiểu
  * (cùng cái bẫy đã ghi ở '/listings/mine').
  */
-// Quản trị nhóm xem THÀNH VIÊN của nhóm (kèm `X-Org-Slug`); master không kèm org xem tài khoản
+// Quản trị nhóm xem THÀNH VIÊN của nhóm (kèm `X-Org-Id`); master không kèm org xem tài khoản
 // toàn hệ thống. Cùng cửa với `/listings/report`.
 router.get(
   '/report',

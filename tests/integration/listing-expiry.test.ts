@@ -47,7 +47,7 @@ async function postActive(title: string, who: TestUser = seller) {
   const res = await request(app)
     .post('/api/v1/listings')
     .set(bearer(who))
-    .send({ ...listingPayload(title, categoryId), visibility: 'public', provinceCode: HCM })
+    .send({ ...listingPayload(title, categoryId), reach: 'marketplace', provinceCode: HCM })
     .expect(201)
   const id = res.body.data._id as string
   await publishListing(id)

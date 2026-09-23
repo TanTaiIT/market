@@ -25,7 +25,7 @@ let master: TestUser
 let trusted: TestUser
 let categoryId = ''
 let orgId = ''
-const ORG_SLUG = 'cong-noi-dung'
+const ORG_KEY = 'cong-noi-dung'
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -38,7 +38,7 @@ beforeAll(async () => {
 
   const org = await createOrg(app, master.token, {
     name: 'Org cổng nội dung',
-    slug: ORG_SLUG,
+    key: ORG_KEY,
     ownerEmail: trusted.email,
   })
   orgId = org.id
@@ -53,7 +53,7 @@ afterAll(async () => {
 function post(who: TestUser, body: Record<string, unknown>) {
   return request(app)
     .post('/api/v1/listings')
-    .set(orgAuth(who.token, ORG_SLUG))
+    .set(orgAuth(who.token, ORG_KEY))
     .send({
       description: 'Mô tả đủ dài cho zod schema đi qua',
       price: 150000,
@@ -88,14 +88,14 @@ describe('Cổng nội dung — BLOCK từ cửa', () => {
     // Không bao giờ chạm bảng tin.
     const board = await request(app)
       .get('/api/v1/listings')
-      .set(orgAuth(trusted.token, ORG_SLUG))
+      .set(orgAuth(trusted.token, ORG_KEY))
       .expect(200)
     expect(board.body.data.map((l: { _id: string }) => l._id)).not.toContain(res.body.data._id)
 
     // Người đăng được báo vì sao.
     const inbox = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(trusted.token, ORG_SLUG))
+      .set(orgAuth(trusted.token, ORG_KEY))
       .expect(200)
     expect(inbox.body.data.some((n: { body: string }) => n.body.includes('sừng tê giác'))).toBe(
       true,
@@ -122,7 +122,7 @@ describe('Cổng nội dung — BLOCK từ cửa', () => {
 
     const res = await request(app)
       .patch(`/api/v1/listings/${id}`)
-      .set(orgAuth(clean.token, ORG_SLUG))
+      .set(orgAuth(clean.token, ORG_KEY))
       .send({ description: 'Cập nhật: có bán kèm pháo nổ' })
     expect(res.status).toBe(400)
     expect(res.body.message).toContain('pháo nổ')

@@ -25,7 +25,7 @@ let master: TestUser
 let seller: TestUser
 let categoryId = ''
 let orgId = ''
-const ORG_SLUG = 'may-duyet'
+const ORG_KEY = 'may-duyet'
 
 beforeAll(async () => {
   mongod = await startTestDb()
@@ -42,7 +42,7 @@ beforeAll(async () => {
   // `ownerEmail` đã kèm membership cho seller — không addMember thêm kẻo trùng key.
   const org = await createOrg(app, master.token, {
     name: 'Org máy duyệt',
-    slug: ORG_SLUG,
+    key: ORG_KEY,
     ownerEmail: seller.email,
   })
   orgId = org.id
@@ -56,7 +56,7 @@ afterAll(async () => {
 async function post(body: Record<string, unknown>) {
   const res = await request(app)
     .post('/api/v1/listings')
-    .set(orgAuth(seller.token, ORG_SLUG))
+    .set(orgAuth(seller.token, ORG_KEY))
     .send({
       description: 'Mô tả đủ dài cho zod schema đi qua',
       price: 150000,
@@ -96,7 +96,7 @@ describe('Người duyệt máy — vòng đời qua job', () => {
 
     const inbox = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(seller.token, ORG_SLUG))
+      .set(orgAuth(seller.token, ORG_KEY))
       .expect(200)
     expect(
       inbox.body.data.some((n: { title: string }) => n.title === 'Tin của bạn đã được duyệt'),
@@ -131,7 +131,7 @@ describe('Người duyệt máy — vòng đời qua job', () => {
 
     const inbox = await request(app)
       .get('/api/v1/notifications')
-      .set(orgAuth(seller.token, ORG_SLUG))
+      .set(orgAuth(seller.token, ORG_KEY))
       .expect(200)
     expect(inbox.body.data.some((n: { body: string }) => n.body.includes('pháo nổ'))).toBe(true)
   }, 60_000)
@@ -161,7 +161,7 @@ describe('Người duyệt máy — vòng đời qua job', () => {
 
     await request(app)
       .patch(`/api/v1/listings/${held!._id}`)
-      .set(orgAuth(seller.token, ORG_SLUG))
+      .set(orgAuth(seller.token, ORG_KEY))
       .send({ title: 'Tiêu đề đã đổi sau khi bị giữ' })
       .expect(200)
 
@@ -177,7 +177,7 @@ describe('Người duyệt máy — vòng đời qua job', () => {
     await addMember(fresh.id, orgId)
     const created = await request(app)
       .post('/api/v1/listings')
-      .set(orgAuth(fresh.token, ORG_SLUG))
+      .set(orgAuth(fresh.token, ORG_KEY))
       .send({
         title: 'Tin giả làm người ngoài để thử máy',
         description: 'Mô tả đủ dài cho zod schema đi qua',

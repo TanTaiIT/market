@@ -9,17 +9,12 @@ import {
 } from '../../common/constants'
 import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 
-export const organizationSlugSchema = z
-  .string()
-  .min(3)
-  .max(40)
-  .regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, 'Slug chỉ gồm a-z, 0-9 và dấu gạch ngang')
+const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const organizationSummarySchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    slug: z.string(),
     /** Mã để mời người vào nhóm. Chỉ trả cho người có quyền đọc org này, không nằm ở thẻ công khai. */
     joinCode: z.string(),
     avatarUrl: z.string().nullable(),
@@ -31,7 +26,7 @@ export const organizationSummarySchema = z
     status: z.nativeEnum(TENANT_STATUS),
     /**
      * Nhóm có lộ ra ngoài không. `false` = riêng tư: không vào tìm kiếm, hồ sơ trả 404 cho
-     * người ngoài, và chỉ xin vào được bằng MÃ chứ không bằng slug.
+     * người ngoài, và chỉ xin vào được bằng MÃ chứ không bằng id.
      *
      * Trả ở DTO này vì đây là bảng của master — nơi duy nhất đổi được nó. Hồ sơ công khai KHÔNG
      * cần: nhóm riêng tư vốn đã 404 ở đó, nên trả thêm một cờ chỉ để nói "đúng, nó riêng tư".
@@ -44,15 +39,15 @@ export const organizationSummarySchema = z
  * Một dòng trong danh sách nhóm — kết quả tìm và khối "Gợi ý cho bạn".
  *
  * CHỈ nhóm `isPublic` mới lọt vào đây, nên trả `joinCode` là hợp lệ: nhóm công khai vốn xin vào
- * được bằng slug, cái mã lúc đó chỉ còn là lối tắt gõ nhanh chứ không còn là cổng chặn. Nhóm
+ * được bằng id, cái mã lúc đó chỉ còn là lối tắt gõ nhanh chứ không còn là cổng chặn. Nhóm
  * riêng tư không bao giờ xuất hiện ở route này, mã của họ vẫn kín.
  *
- * Vẫn KHÔNG có `id` — xem `toOrganizationLookupDto`. Slug đủ để mở hồ sơ nhóm.
+ * `id` là định danh duy nhất của nhóm — mở hồ sơ, gửi đơn, gắn `X-Org-Id` đều bằng nó.
  */
 export const organizationLookupSchema = z
   .object({
+    id: z.string(),
     name: z.string(),
-    slug: z.string(),
     joinCode: z.string(),
     avatarUrl: z.string().nullable(),
     /**
@@ -71,16 +66,16 @@ export const organizationLookupSchema = z
   .openapi('OrganizationLookup')
 
 /**
- * Hồ sơ nhóm công khai, mở theo slug — màn người dùng đọc TRƯỚC khi bấm xin vào.
+ * Hồ sơ nhóm công khai, mở theo id — màn người dùng đọc TRƯỚC khi bấm xin vào.
  *
- * Khác `OrganizationCard` (tra bằng mã) ở chỗ có `slug`: card sinh ra cho người đã cầm mã và cố
- * tình không cho lần ngược ra định danh, còn ở đây nhóm vốn đã công khai nên giấu slug là giấu
+ * Khác `OrganizationCard` (tra bằng mã) ở chỗ có `id`: card sinh ra cho người đã cầm mã và cố
+ * tình không cho lần ngược ra định danh, còn ở đây nhóm vốn đã công khai nên giấu id là giấu
  * chính cái địa chỉ vừa dùng để tới.
  */
 export const organizationProfileSchema = z
   .object({
+    id: z.string(),
     name: z.string(),
-    slug: z.string(),
     joinCode: z.string(),
     avatarUrl: z.string().nullable(),
     coverUrl: z.string().nullable(),
@@ -105,6 +100,14 @@ export const organizationProfileSchema = z
      * người dùng tới một lỗi 400 từ `routeListing`.
      */
     allowOutsiderPosts: z.boolean(),
+    /**
+     * Nhóm có công khai không — ĐIỀU KIỆN của bậc `group_open`.
+     *
+     * Cùng lý do với `allowOutsiderPosts` ngay trên: form đăng tin phải biết có được bày bậc
+     * "Ai cũng xem được" hay không. Không có field này thì client hoặc giấu luôn bậc đó ở mọi
+     * nhóm (mất đúng tính năng vừa làm), hoặc bày nó ở nhóm kín rồi ăn 400 từ `routeListing`.
+     */
+    isPublic: z.boolean(),
     /** Người đang xem đã là thành viên chưa — quyết định nút hiện "Tham gia" hay "Đã tham gia". */
     joined: z.boolean(),
   })
@@ -119,11 +122,9 @@ export const organizationLookupQuerySchema = z.object({
 })
 
 /**
- * Bảng tổ chức của master. Khác `lookup` ở hai điểm quyết định:
- *
- * `lookup` là route CÔNG KHAI nên cố tình không trả `id` — có `id` thì nó thành công cụ liệt kê
- * khách hàng. Bảng này chỉ master gọi được, và `id` chính là thứ nó tồn tại để trả: master
- * không thuộc org nào cả, nên đây là nguồn DUY NHẤT để họ chọn org đang thao tác (`X-Org-Slug`).
+ * Bảng tổ chức của master. Khác `lookup` ở điểm quyết định: `lookup` là route CÔNG KHAI và chỉ
+ * trả nhóm `isPublic` đang hoạt động, còn bảng này trả MỌI org kể cả đang khoá hay chưa có người
+ * phụ trách — đúng phần việc của master.
  *
  * `q` không có min 2 ký tự: bỏ trống nghĩa là "liệt kê tất cả", đúng nhu cầu của một bảng quản trị.
  */
@@ -134,30 +135,10 @@ export const organizationAdminQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
-/**
- * Nhánh kiểm tra khả dụng lúc TẠO org: nhận slug thô (chưa chuẩn hoá) vì người dùng đang gõ,
- * service sẽ tự fold. Response chỉ có available + gợi ý, không có tên org nào.
- */
-export const slugAvailabilityQuerySchema = z.object({
-  slug: z.string().min(1).max(80),
-  district: z.string().max(100).optional(),
-  provinceCode: z.string().max(60).optional(),
-})
-
-export const slugAvailabilitySchema = z
-  .object({
-    slug: z.string(),
-    available: z.boolean(),
-    reason: z.enum(['invalid', 'reserved', 'taken']).optional(),
-    suggestions: z.array(z.string()).optional(),
-  })
-  .openapi('SlugAvailability')
-
 export const myOrganizationSchema = z
   .object({
     id: z.string(),
     name: z.string(),
-    slug: z.string(),
     avatarUrl: z.string().nullable(),
     /**
      * Ảnh bìa — ẢNH THAY THẾ khi nhóm chưa đặt avatar, cùng lý do với `organizationLookupSchema`.
@@ -170,6 +151,8 @@ export const myOrganizationSchema = z
     provinceCode: z.string().nullable(),
     role: z.string(),
     unitId: z.string().nullable(),
+    /** Nhóm có công khai không — ô chọn nhóm ở form đăng tin đọc nó để dựng thang phủ sóng. */
+    isPublic: z.boolean(),
     /**
      * Kiểu bày bảng tin của org này. Trả ở ĐÂY chứ không ở một endpoint cấu hình riêng: client
      * đã gọi `/organizations/mine` để dựng bộ chuyển tổ chức, nên nó có sẵn layout của mọi org
@@ -181,7 +164,7 @@ export const myOrganizationSchema = z
   })
   .openapi('MyOrganization')
 
-/** Thẻ nhóm cho người cầm mã — cố tình KHÔNG có `id`, `slug` hay chính cái mã. */
+/** Thẻ nhóm cho người cầm mã — cố tình KHÔNG có `id` hay chính cái mã. */
 export const organizationCardSchema = z
   .object({
     name: z.string(),
@@ -194,14 +177,24 @@ export const organizationCardSchema = z
   })
   .openapi('OrganizationCard')
 
-export const orgSlugParamsSchema = z.object({ slug: organizationSlugSchema })
-
 export const joinCodeParamsSchema = z.object({
   code: z.string().min(4).max(16),
 })
 
-export const organizationParamsSchema = z.object({
-  organizationId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id'),
+export const organizationParamsSchema = z.object({ organizationId: objectId })
+
+/**
+ * `?code=` trên hồ sơ nhóm — CHÌA KHOÁ, không phải bộ lọc.
+ *
+ * Nhóm riêng tư vốn 404 với người ngoài. Đưa đúng mã của chính nhóm đó thì mở được hồ sơ:
+ * cầm mã đã là điều kiện vào nhóm kín, nên đọc được mô tả và số thành viên TRƯỚC khi gửi đơn
+ * không nới thêm quyền nào — nó chỉ bỏ đi cái bước "xin vào một nơi mình chưa từng thấy".
+ *
+ * Mã SAI vẫn 404, y hệt không gửi mã: phân biệt "sai mã" với "không có nhóm" là biến endpoint
+ * thành máy dò mã cho một id đã biết.
+ */
+export const organizationProfileQuerySchema = z.object({
+  code: z.string().min(4).max(16).optional(),
 })
 
 /**
@@ -211,7 +204,6 @@ export const organizationParamsSchema = z.object({
 export const createOrganizationSchema = z
   .object({
     name: z.string().min(1).max(150).openapi({ example: 'THPT Lý Thường Kiệt' }),
-    slug: organizationSlugSchema.optional().openapi({ example: 'thpt-ly-thuong-kiet' }),
     orgType: z.nativeEnum(ORG_TYPES).optional(),
     provinceCode: z.string().max(60).optional(),
     district: z.string().max(100).optional(),
@@ -238,9 +230,6 @@ export const grantOrgAdminSchema = z
  *
  * `null` cho ảnh nghĩa là GỠ, khác hẳn bỏ trống (không đổi). Không có `null` thì không có cách
  * nào xoá một cái avatar đã đặt.
- *
- * `slug` KHÔNG nằm ở đây: đổi slug là đổi mọi link chia sẻ đã phát ra ngoài, nên nó ở lại chỗ
- * cũ của master.
  */
 export const updateOrganizationSchema = z
   .object({
@@ -281,18 +270,13 @@ export const setOrgStatusSchema = z
  *
  * Cố tình KHÔNG gộp vào `updateOrganizationSchema`: route đó gác bằng `requireOrgAdmin`, nên
  * gộp là trao cho quản trị nhóm quyền tự rút nhóm mình khỏi sàn. Khả năng khám phá là chuyện
- * của cả sàn, không phải quyền tự trị của một nhóm — vì vậy nó đi cùng họ với `/status` và
- * `/slug`, những thao tác master khác cũng khoá theo `:organizationId`.
+ * của cả sàn, không phải quyền tự trị của một nhóm — vì vậy nó đi cùng họ với `/status`, thao
+ * tác master khác cũng khoá theo `:organizationId`.
  */
 export const setOrgVisibilitySchema = z
   .object({ isPublic: z.boolean() })
   .strict()
   .openapi('SetOrgVisibility')
-
-export const changeOrgSlugSchema = z
-  .object({ slug: organizationSlugSchema })
-  .strict()
-  .openapi('ChangeOrganizationSlug')
 
 /**
  * Người phụ trách THẬT của một nhóm — bảng tổ chức của master.
@@ -305,6 +289,14 @@ export const changeOrgSlugSchema = z
  */
 export const orgManagerSchema = z
   .object({
+    /**
+     * Id của GRANT, không phải của người — đầu vào duy nhất của `DELETE /role-grants/{id}`.
+     *
+     * Thiếu nó thì bảng người phụ trách chỉ để nhìn: master thấy ai đang quản nhóm nhưng không
+     * có đường nào gỡ, y hệt bệnh cũ của trục danh mục. Một người có thể giữ nhiều grant, nên
+     * `userId` KHÔNG thay thế được nó.
+     */
+    grantId: z.string(),
     userId: z.string(),
     /** `null` khi grant còn hiệu lực nhưng tài khoản đã bị xoá — xem `organizationService.managers`. */
     name: z.string().nullable(),
@@ -331,8 +323,6 @@ registry.register('OrganizationProfile', organizationProfileSchema)
 registry.register('MyOrganization', myOrganizationSchema)
 registry.register('UpdateOrganization', updateOrganizationSchema)
 registry.register('OrganizationCard', organizationCardSchema)
-registry.register('SlugAvailability', slugAvailabilitySchema)
 registry.register('CreateOrganization', createOrganizationSchema)
 registry.register('SetOrganizationStatus', setOrgStatusSchema)
-registry.register('ChangeOrganizationSlug', changeOrgSlugSchema)
 registry.register('OrgManager', orgManagerSchema)
