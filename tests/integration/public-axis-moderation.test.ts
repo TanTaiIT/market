@@ -33,6 +33,9 @@ let orgMember: TestUser
 
 let jobs = ''
 let phones = ''
+/** Danh mục CHƯA ai phụ trách — từ khi 'một ô một người' thành luật, ca cấp quyền nào cũng
+    cần một ô trống của riêng nó, không mượn ô của `catManager` được nữa. */
+let spare = ''
 const HCM = 'Hồ Chí Minh'
 const ORG = 'truong-cong-khai'
 
@@ -44,6 +47,7 @@ beforeAll(async () => {
 
   jobs = await createCategory('Việc làm', 'viec-lam')
   phones = await createCategory('Điện thoại', 'dien-thoai')
+  spare = await createCategory('Đồ gia dụng', 'do-gia-dung')
 
   master = await makeMaster(app)
   catManager = await registerUser(app, 'catman@pub.local', 'Phụ trách Việc làm HCM')
@@ -223,12 +227,20 @@ describe('Trục công khai — chỉ master cấp quyền, không còn staff', 
   const helperManager = () => ({
     role: 'manager',
     scopeType: 'category_province',
-    categoryId: jobs,
+    categoryId: spare,
     provinceCodes: [HCM],
   })
 
   it('manager danh mục cấp cho người khác → 403, kể cả đúng ô của mình', async () => {
-    await grant(catManager, { ...helperManager(), userEmail: helper.email }).expect(403)
+    // Ô của CHÍNH `catManager` (jobs × HCM) — 403 đến từ thẩm quyền, không từ chuyện ô đã có
+    // người: cấp quyền trên trục danh mục là việc của một mình master.
+    await grant(catManager, {
+      userEmail: helper.email,
+      role: 'manager',
+      scopeType: 'category_province',
+      categoryId: jobs,
+      provinceCodes: [HCM],
+    }).expect(403)
   }, 60_000)
 
   it('`staff` đã bỏ: master gửi role staff → 400, không phải 403', async () => {
@@ -238,7 +250,7 @@ describe('Trục công khai — chỉ master cấp quyền, không còn staff', 
   it('master cấp manager bằng email → 201, đúng người', async () => {
     const res = await grant(master, { ...helperManager(), userEmail: helper.email }).expect(201)
     expect(res.body.data.userId).toBe(helper.id)
-    expect(res.body.data.categoryId).toBe(jobs)
+    expect(res.body.data.categoryId).toBe(spare)
   }, 60_000)
 
   it('email chưa có tài khoản → 404, không tạo grant treo', async () => {
@@ -582,11 +594,13 @@ describe('Sửa phạm vi phụ trách', () => {
 
   it('nâng từ tầng PHƯỜNG lên cả tỉnh — giữ nguyên id và grantedAt', async () => {
     const who = await registerUser(app, 'nang-cap@pub.local', 'Người được nâng')
+    // Danh mục riêng: ca này nói về việc NÂNG TẦNG, không về việc chia ô với ai.
+    const solo = await createCategory('Nội thất', 'noi-that')
     await grantRole({
       userId: who.id,
       role: 'manager',
       scopeType: 'category_ward',
-      categoryId: jobs,
+      categoryId: solo,
       provinceCodes: [HCM],
       wardCodes: ['Phường Bến Thành'],
     })
@@ -596,7 +610,7 @@ describe('Sửa phạm vi phụ trách', () => {
 
     await patch(master, before.id, {
       scopeType: 'category_province',
-      categoryId: jobs,
+      categoryId: solo,
       provinceCodes: [HCM],
       wardCodes: [],
     }).expect(200)
@@ -649,5 +663,115 @@ describe('Sửa phạm vi phụ trách', () => {
       provinceCodes: [HCM],
       wardCodes: [],
     }).expect(400)
+  }, 60_000)
+})
+
+/**
+ * MỘT Ô, MỘT NGƯỜI PHỤ TRÁCH.
+ *
+ * Index unique trên model khoá theo `userId` nên nó chỉ chặn một người được cấp hai lần; hai
+ * NGƯỜI khác nhau cùng một ô thì lọt qua nó. Hệ quả không phải là quyền rộng hơn mà là không ai
+ * chịu trách nhiệm: mỗi tin trong ô có hai người cùng duyệt được, và cả hai đều tưởng người kia
+ * đã xem.
+ *
+ * Hai ca giữa là hai ca mà một phép so `provinceCodes` bằng nhau sẽ cho qua — chúng là lý do
+ * chốt này phải hỏi "hai phạm vi có giao nhau không" chứ không phải "hai phạm vi có giống nhau
+ * không".
+ */
+describe('Một ô chỉ có một người phụ trách', () => {
+  let rival: TestUser
+  /*
+   * Danh mục RIÊNG cho cả khối này. `jobs` đã bị vài fixture phía trên chiếm bằng `grantRole`
+   * (ghi thẳng qua model, không đi qua chốt) — trong đó có một grant TOÀN QUỐC, thứ đè lên mọi
+   * ô của danh mục đó. Mượn `jobs` là mỗi ca dưới đây đo lẫn dữ liệu của ca khác.
+   */
+  let cell = ''
+  let hanoiGrantId = ''
+  const HANOI = 'Hà Nội'
+  const BENTHANH = 'Phường Bến Thành'
+
+  const give = (body: Record<string, unknown>) =>
+    request(app).post('/api/v1/role-grants').set(bearer(master)).send(body)
+  const rescope = (id: string, body: Record<string, unknown>) =>
+    request(app).patch(`/api/v1/role-grants/${id}`).set(bearer(master)).send(body)
+
+  beforeAll(async () => {
+    rival = await registerUser(app, 'doi-thu@pub.local', 'Người thứ hai')
+    cell = await createCategory('Xe máy', 'xe-may')
+    // Người giữ ô gốc, cấp thẳng qua model: đây là TIỀN ĐỀ của mọi ca dưới, không phải một
+    // lượt cấp đang được đo.
+    await grantRole({
+      userId: catManager.id,
+      role: 'manager',
+      scopeType: 'category_province',
+      categoryId: cell,
+      provinceCodes: [HCM],
+    })
+  })
+
+  it('cấp manager thứ hai cho đúng ô đã có người → 409, kèm TÊN người đang giữ', async () => {
+    const res = await give({
+      userEmail: rival.email,
+      role: 'manager',
+      scopeType: 'category_province',
+      categoryId: cell,
+      provinceCodes: [HCM],
+    }).expect(409)
+
+    expect(res.body.message).toContain('Phụ trách Việc làm HCM')
+  }, 60_000)
+
+  /** Hai bản ghi trông khác hẳn nhau, nhưng grant cấp tỉnh phủ trọn mọi phường của tỉnh đó. */
+  it('cấp cấp PHƯỜNG trong tỉnh đã có người cấp tỉnh → 409', async () => {
+    await give({
+      userEmail: rival.email,
+      role: 'manager',
+      scopeType: 'category_ward',
+      categoryId: cell,
+      provinceCodes: [HCM],
+      wardCodes: [BENTHANH],
+    }).expect(409)
+  }, 60_000)
+
+  /** `provinceCodes` rỗng là TOÀN QUỐC, nên nó đè lên mọi ô đã có người của danh mục đó. */
+  it('cấp TOÀN QUỐC khi một tỉnh đã có người → 409', async () => {
+    await give({
+      userEmail: rival.email,
+      role: 'manager',
+      scopeType: 'category_province',
+      categoryId: cell,
+      provinceCodes: [],
+    }).expect(409)
+  }, 60_000)
+
+  it('nhưng tỉnh KHÁC trong cùng danh mục thì cấp được → 201', async () => {
+    const res = await give({
+      userEmail: rival.email,
+      role: 'manager',
+      scopeType: 'category_province',
+      categoryId: cell,
+      provinceCodes: [HANOI],
+    }).expect(201)
+
+    hanoiGrantId = res.body.data.id
+  }, 60_000)
+
+  it('sửa phạm vi sang ô đã có người cũng bị chặn → 409', async () => {
+    await rescope(hanoiGrantId, {
+      scopeType: 'category_province',
+      categoryId: cell,
+      provinceCodes: [HCM],
+      wardCodes: [],
+    }).expect(409)
+  }, 60_000)
+
+  /** Chốt xuôi: không loại chính nó ra khỏi phép so thì MỌI lượt sửa đều tự đụng phạm vi cũ. */
+  it('sửa mà vẫn giữ tỉnh cũ thì không tự đụng chính mình → 200', async () => {
+    await rescope(hanoiGrantId, {
+      scopeType: 'category_province',
+      categoryId: cell,
+      provinceCodes: [HANOI, 'Hải Phòng'],
+      wardCodes: [],
+    }).expect(200)
   }, 60_000)
 })

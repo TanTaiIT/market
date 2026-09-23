@@ -94,16 +94,25 @@ export function publicOnlyScope(memberOrgIds: Types.ObjectId[] = []): TenantScop
 }
 
 /**
- * Bỏ quyền đọc nội dung đa-nhóm, giữ lại đúng phạm vi quản trị của request.
+ * Thu scope về ĐÚNG MỘT NHÓM cho một bàn quản trị. Hai trường, hai đường rò khác nhau.
  *
- * Mọi cổng mở ra một BÀN QUẢN TRỊ của một org phải gọi hàm này. Bàn đó lọc theo
- * `readableOrgIds`, mà `listingPublicPredicate` lại cộng thêm `memberOrgIds` vào nhánh đọc —
- * không thu về thì hàng đợi duyệt của nhóm A lẫn tin của nhóm B chỉ vì người duyệt tình cờ là
- * thành viên B. Không phải lỗ hổng (họ vốn đọc được tin đó ở bảng tin, và `assertCanActOnListing`
- * vẫn chặn mọi thao tác) nhưng là một hàng đợi nói sai về phạm vi của chính nó.
+ * Mọi cổng mở ra bàn quản trị của một org phải gọi hàm này. Bàn đó lọc theo `readableOrgIds`,
+ * nhưng `tenantPlugin` ghép các nhánh đọc bằng `$or` — nên mỗi trường còn sống dưới đây là một
+ * vế `$or` nữa kéo dữ liệu ngoài nhóm vào một hàng đợi đáng lẽ chỉ nói về nhóm đó.
+ *
+ * - `memberOrgIds` → tin của nhóm B, chỉ vì người duyệt A tình cờ là thành viên B.
+ * - `publicAxis`  → nhánh `listingPublicPredicate` bậc `approved`, tức MỌI tin ACTIVE công
+ *   khai của TOÀN SÀN. Đây là vế rộng hơn hẳn vế trên và từng bị bỏ sót đúng một lần: bản
+ *   trước chỉ xoá `memberOrgIds`, nên bàn quản trị của một nhóm 10 tin trả về 122 dòng.
+ *
+ * Không phải lỗ hổng — tin đó ai cũng đọc được ở bảng tin, và `assertCanActOnListing` chặn mọi
+ * thao tác. Nhưng là một hàng đợi nói sai về phạm vi của chính nó.
+ *
+ * Xoá `publicAxis` KHÔNG chạm trục danh mục: `requireCategoryModerator` tự ghi đè trường này
+ * bằng axis `moderator` của riêng nó, và hai route đó khai TRƯỚC `router.use` của trục org.
  */
 export function narrowToOwnOrg(scope: TenantScope): TenantScope {
-  return { ...scope, memberOrgIds: [] }
+  return { ...scope, memberOrgIds: [], publicAxis: null }
 }
 
 /**

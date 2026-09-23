@@ -111,13 +111,10 @@ export const requireOrgModerator = catchAsync(async (req, _res, next) => {
   }
 
   /*
-   * Bàn quản trị chỉ nhìn ĐÚNG org này — bỏ quyền đọc nội dung đa-nhóm.
+   * Bàn quản trị chỉ nhìn ĐÚNG org này — `narrowToOwnOrg` cắt CẢ HAI đường đọc rộng hơn
+   * (`memberOrgIds` và `publicAxis`), xem docblock của hàm đó để biết mỗi đường rò ra gì.
    *
-   * Thiếu dòng này thì người duyệt nhóm A, nếu tình cờ là thành viên thường nhóm B, thấy tin
-   * của B lẫn trong hàng đợi của A. Không phải lỗ hổng (họ đọc được tin đó ở bảng tin, và
-   * `assertCanActOnListing` chặn mọi thao tác) nhưng là một hàng đợi nói sai về phạm vi của nó.
-   *
-   * `requireOrgReadOrMaster` uỷ quyền xuống đây ở nhánh có org, nên một chỗ là đủ cho cả hai.
+   * `requireOrgReadOrMaster` uỷ quyền xuống đây ở nhánh có org
    */
   runWithTenant(narrowToOwnOrg(scope!), next)
 })

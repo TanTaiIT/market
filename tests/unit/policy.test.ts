@@ -8,6 +8,7 @@ import {
   canTakedownListing,
   canGrant,
   canRevoke,
+  categoryScopesOverlap,
 } from '../../src/common/authz/policy'
 import { SYSTEM_ROLES, SCOPE_TYPES } from '../../src/common/constants'
 
@@ -449,5 +450,75 @@ describe('canApproveListing — tầng phường', () => {
 
   it('master vẫn là fallback của mọi ô', () => {
     expect(canApproveListing([master], { ...publicInLagi, wardCode: WARD_DALAT })).toBe(true)
+  })
+})
+
+const province = (categoryId: string, codes: string[]): Grant => ({
+  role: SYSTEM_ROLES.MANAGER,
+  scopeType: SCOPE_TYPES.CATEGORY_PROVINCE,
+  categoryId,
+  provinceCodes: codes,
+  orgId: null,
+  unitId: null,
+})
+const ward = (categoryId: string, code: string, wards: string[]): Grant => ({
+  role: SYSTEM_ROLES.MANAGER,
+  scopeType: SCOPE_TYPES.CATEGORY_WARD,
+  categoryId,
+  provinceCodes: [code],
+  wardCodes: wards,
+  orgId: null,
+  unitId: null,
+})
+
+/**
+ * MỘT Ô, MỘT NGƯỜI PHỤ TRÁCH — hình học của phạm vi, tách hẳn khỏi câu hỏi "ai đang giữ ô nào".
+ *
+ * Ba ca dưới đây là ba ca mà một phép so `provinceCodes` bằng nhau sẽ trả lời SAI, và mỗi ca
+ * đều để lọt hai người vào cùng một ô.
+ */
+describe('categoryScopesOverlap', () => {
+  it('khác danh mục thì không bao giờ đè nhau, dù trùng hết tỉnh', () => {
+    expect(categoryScopesOverlap(province(CAT_JOB, [HCM]), province(CAT_BOOK, [HCM]))).toBe(false)
+  })
+
+  it('cùng danh mục, chung một tỉnh là đè', () => {
+    expect(categoryScopesOverlap(province(CAT_JOB, [HCM, HANOI]), province(CAT_JOB, [HANOI]))).toBe(
+      true,
+    )
+    expect(categoryScopesOverlap(province(CAT_JOB, [HCM]), province(CAT_JOB, [HANOI]))).toBe(false)
+  })
+
+  /** Ca 1: `provinceCodes` rỗng là TOÀN QUỐC, không phải "không tỉnh nào". */
+  it('toàn quốc đè lên mọi tỉnh, và đè cả một toàn quốc khác', () => {
+    expect(categoryScopesOverlap(province(CAT_JOB, []), province(CAT_JOB, [LAMDONG]))).toBe(true)
+    expect(categoryScopesOverlap(province(CAT_JOB, [LAMDONG]), province(CAT_JOB, []))).toBe(true)
+    expect(categoryScopesOverlap(province(CAT_JOB, []), province(CAT_JOB, []))).toBe(true)
+  })
+
+  /** Ca 2: hai bản ghi trông khác hẳn nhau, nhưng tỉnh phủ trọn mọi phường của nó. */
+  it('grant cấp tỉnh đè lên grant cấp phường cùng tỉnh', () => {
+    expect(
+      categoryScopesOverlap(province(CAT_JOB, [LAMDONG]), ward(CAT_JOB, LAMDONG, [WARD_LAGI])),
+    ).toBe(true)
+    expect(
+      categoryScopesOverlap(ward(CAT_JOB, LAMDONG, [WARD_LAGI]), province(CAT_JOB, [HCM])),
+    ).toBe(false)
+  })
+
+  /** Ca 3: chỉ khi CẢ HAI ở tầng phường mới được xét tới danh sách phường. */
+  it('hai grant phường cùng tỉnh chỉ đè khi trùng ít nhất một phường', () => {
+    expect(
+      categoryScopesOverlap(
+        ward(CAT_JOB, LAMDONG, [WARD_LAGI, WARD_PHUOCHOI]),
+        ward(CAT_JOB, LAMDONG, [WARD_PHUOCHOI]),
+      ),
+    ).toBe(true)
+    expect(
+      categoryScopesOverlap(
+        ward(CAT_JOB, LAMDONG, [WARD_LAGI]),
+        ward(CAT_JOB, LAMDONG, [WARD_DALAT]),
+      ),
+    ).toBe(false)
   })
 })

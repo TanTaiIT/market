@@ -4,8 +4,8 @@ import { toPolicyGrant, toRoleGrantDto } from './role-grant.types'
 import type { UpdateGrantScopeInput } from './role-grant.schema'
 import { userRepository } from '../user/user.repository'
 import { categoryService } from '../category/category.service'
-import { Grant, canGrant, canRevoke } from '../../common/authz/policy'
-import { SCOPE_TYPES, SystemRole, ScopeType } from '../../common/constants'
+import { Grant, canGrant, canRevoke, categoryScopesOverlap } from '../../common/authz/policy'
+import { SCOPE_TYPES, SYSTEM_ROLES, SystemRole, ScopeType } from '../../common/constants'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { logger } from '../../config/logger'
 
@@ -122,6 +122,48 @@ function asScopeShapeError(err: unknown): never {
   throw err
 }
 
+const CATEGORY_AXIS: ScopeType[] = [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]
+
+/**
+ * MỘT Ô, MỘT NGƯỜI PHỤ TRÁCH — chặn hai manager cùng phủ một ô (danh mục × tỉnh × phường).
+ *
+ * Index unique trên model KHÔNG thay được chốt này: nó khoá theo `userId`, nên nó chỉ chặn một
+ * người được cấp hai lần, còn hai NGƯỜI khác nhau cùng một ô thì lọt. Mà Mongo cũng không có
+ * unique index nào diễn đạt được 'hai mảng giao nhau', nên chốt phải nằm ở đây.
+ *
+ * Lọc `manager` ở CẢ HAI vế không phải để chừa chỗ cho vai khác: `staff` đã bị bỏ khỏi trục này
+ * (`createRoleGrantSchema` trả 400 nếu gửi lên), nên qua API mọi grant ở đây đều là manager.
+ * Vế lọc chỉ để những dòng `staff` CŨ còn sót trong DB — do seed hoặc do thời còn cấp phó —
+ * không chặn nhầm một lượt cấp hợp lệ.
+ *
+ * Không loại trừ chính người đang giữ: một người ôm cả grant tỉnh lẫn grant phường trong cùng
+ * tỉnh là dữ liệu thừa, không phải quyền rộng hơn — đường đúng là `updateScope`.
+ *
+ * ĐÁNH ĐỔI, nói rõ: kiểm-rồi-ghi, nên hai lượt cấp chạy song song vẫn lọt được cả hai. Chấp
+ * nhận vì đây là thao tác tay của master trên một bảng vài chục dòng, không phải đường nóng.
+ */
+async function assertNoManagerOverlap(next: Grant, exceptGrantId?: Types.ObjectId) {
+  if (next.role !== SYSTEM_ROLES.MANAGER || !CATEGORY_AXIS.includes(next.scopeType)) return
+
+  const active = await roleGrantRepository.listCategoryAxisGrantsFiltered({
+    categoryId: next.categoryId!,
+  })
+  const clash = active.find(
+    (doc) =>
+      doc.role === SYSTEM_ROLES.MANAGER &&
+      !doc._id.equals(exceptGrantId ?? new Types.ObjectId()) &&
+      categoryScopesOverlap(toPolicyGrant(doc), next),
+  )
+  if (!clash) return
+
+  // Nêu TÊN người đang giữ: 'ô đã có người' mà không nói ai thì master phải đi mò bảng phủ
+  // sóng để biết cần thu hồi của ai.
+  const holder = await userRepository.findById(clash.userId.toString())
+  throw new ConflictError(
+    `Ô đó đã do ${holder?.name ?? 'một tài khoản khác'} phụ trách — thu hồi hoặc sửa phạm vi của họ trước`,
+  )
+}
+
 export const roleGrantService = {
   /**
    * AI ĐANG PHỤ TRÁCH DANH MỤC NÀO — bảng master mở để biết gọi ai, và để thu hồi.
@@ -188,6 +230,7 @@ export const roleGrantService = {
     if (!canGrant({ userId: actorId, grants: actorGrants }, { userId, grant })) {
       throw new ForbiddenError('Không đủ thẩm quyền để cấp quyền này')
     }
+    await assertNoManagerOverlap(grant)
 
     try {
       const doc = await roleGrantRepository.create({
@@ -278,6 +321,20 @@ export const roleGrantService = {
     doc.categoryId = new Types.ObjectId(input.categoryId)
     doc.provinceCodes = input.provinceCodes
     doc.wardCodes = input.wardCodes
+
+    /*
+     * Hình dạng TRƯỚC, đè nhau SAU — và thứ tự này có nghĩa, không phải tuỳ tiện.
+     *
+     * Một phạm vi méo (`category_ward` không phường nào) thì câu hỏi 'nó có đè ai không' chưa
+     * có nghĩa để mà trả lời, và trả 409 cho một yêu cầu sai cú pháp là chỉ sai đường cho người
+     * sửa. `validate()` chạy đúng `enforceScopeShape` mà `save()` sẽ chạy lại — trong bộ nhớ,
+     * không chạm DB.
+     */
+    await doc.validate().catch(asScopeShapeError)
+
+    // Loại CHÍNH nó ra: câu hỏi là 'sau khi sửa thì ô có đụng ai không', không phải 'bây giờ'
+    // — không loại thì mọi lượt sửa đều tự đụng phạm vi cũ của mình.
+    await assertNoManagerOverlap(toPolicyGrant(doc), doc._id)
     // `save()` chạy `enforceScopeShape`; lỗi hình dạng ra 400 chứ không 500 — xem hàm đó.
     await doc.save().catch(asScopeShapeError)
 

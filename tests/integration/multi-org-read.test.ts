@@ -62,6 +62,16 @@ async function postInternal(who: TestUser, org: string, title: string) {
   return res.body.data._id as string
 }
 
+/** Tin lên BẢNG TIN CHUNG, đã duyệt — `org` để trống là tin không thuộc nhóm nào. */
+async function postMarketplace(who: TestUser, org: string | null, title: string) {
+  const req = request(app).post('/api/v1/listings')
+  const res = await (org ? req.set(orgAuth(who.token, org)) : req.set(bearer(who)))
+    .send({ ...listingPayload(title, categoryId), reach: 'marketplace' })
+    .expect(201)
+  await publishListing(res.body.data._id)
+  return res.body.data._id as string
+}
+
 const titlesSeenBy = async (u: TestUser, headers: Record<string, string> = {}, query = '') => {
   const res = await request(app)
     .get(`/api/v1/listings${query}`)
@@ -111,6 +121,9 @@ beforeAll(async () => {
   await postInternal(adminA, ORG_A, 'Tin nội bộ của A')
   await postInternal(ownerB, ORG_B, 'Tin nội bộ của B')
   await postInternal(ownerC, ORG_C, 'Tin nội bộ của C')
+  // Hai tin CÔNG KHAI — thứ mà bàn quản trị của A tuyệt đối không được nhặt vào.
+  await postMarketplace(ownerB, ORG_B, 'Tin sàn của nhóm B')
+  await postMarketplace(stranger, null, 'Tin sàn không thuộc nhóm nào')
 }, 120_000)
 
 afterAll(async () => {
@@ -195,6 +208,37 @@ describe('Bàn quản trị vẫn chỉ nhìn đúng một nhóm', () => {
 
     expect(titles).toContain('Tin nội bộ của A')
     expect(titles).not.toContain('Tin nội bộ của B')
+  })
+
+  /*
+   * Ca này rộng hơn ca trên MỘT BẬC, và là ca đã lọt lưới: bản trước `narrowToOwnOrg` chỉ xoá
+   * `memberOrgIds` nên vế `publicAxis` vẫn sống, kéo MỌI tin ACTIVE công khai của toàn sàn vào
+   * hàng đợi của A. Đo trên dữ liệu thật: một nhóm có 10 tin, bàn quản trị trả về 122 dòng.
+   *
+   * Bộ test cũ không bắt được vì mọi tin ở đây đều bậc `members` — bậc DUY NHẤT vắng mặt trong
+   * `PUBLICLY_READABLE_REACHES`. Nên hai ca dưới phải dùng tin `marketplace`, không phải tin
+   * nội bộ, nếu không chúng chỉ lặp lại ca trên bằng chữ khác.
+   */
+  it('quản trị A không thấy tin SÀN của nhóm B', async () => {
+    const res = await queue(adminA, ORG_A, '/api/v1/moderation/listings?status=active').expect(200)
+    const titles = res.body.data.map((l: { title: string }) => l.title)
+
+    expect(titles).not.toContain('Tin sàn của nhóm B')
+  })
+
+  it('và không thấy cả tin sàn không thuộc nhóm nào', async () => {
+    const res = await queue(adminA, ORG_A, '/api/v1/moderation/listings?status=active').expect(200)
+    const titles = res.body.data.map((l: { title: string }) => l.title)
+
+    expect(titles).not.toContain('Tin sàn không thuộc nhóm nào')
+  })
+
+  /** Chốt xuôi: thu hẹp không được thu quá tay — tin của chính A vẫn phải còn. */
+  it('nhưng tin của chính nhóm A thì vẫn còn nguyên', async () => {
+    const res = await queue(adminA, ORG_A, '/api/v1/moderation/listings?status=active').expect(200)
+    const titles = res.body.data.map((l: { title: string }) => l.title)
+
+    expect(titles).toContain('Tin nội bộ của A')
   })
 
   it('nhật ký hoạt động của A cũng không lẫn của B', async () => {

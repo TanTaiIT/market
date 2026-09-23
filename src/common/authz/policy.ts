@@ -135,6 +135,48 @@ export function canModerateCategory(grants: Grant[], target: CategoryTarget): bo
 }
 
 /**
+ * Hai grant trục danh mục có ĐÈ LÊN NHAU không — tồn tại một ô (danh mục × tỉnh × phường) mà
+ * cả hai cùng phủ.
+ *
+ * Dùng để giữ luật MỘT Ô MỘT NGƯỜI PHỤ TRÁCH. Không có nó thì hai người cùng là manager của
+ * (Thời trang × Hà Nội), và mỗi tin trong ô đó có hai người cùng quyền duyệt — nghĩa là không
+ * ai chịu trách nhiệm, vì cả hai đều tưởng người kia đã xem.
+ *
+ * Ba ca dễ sai nếu chỉ so `provinceCodes` bằng nhau:
+ *
+ * 1. `provinceCodes` RỖNG là toàn quốc, không phải 'không tỉnh nào' — nó phủ mọi tỉnh của bên
+ *    kia, kể cả tỉnh thêm về sau.
+ * 2. Grant cấp TỈNH phủ trọn mọi phường của tỉnh đó, nên nó đè lên grant cấp PHƯỜNG cùng tỉnh.
+ *    Đây là ca người ta hay bỏ qua vì hai bản ghi trông khác hẳn nhau.
+ * 3. Chỉ khi CẢ HAI ở tầng phường mới cần so danh sách phường.
+ *
+ * Hàm thuần, không hỏi DB: nó trả lời về hình học của phạm vi, còn 'ai đang giữ ô nào' là
+ * việc của service.
+ */
+export function categoryScopesOverlap(a: Grant, b: Grant): boolean {
+  if (!sameId(a.categoryId, b.categoryId)) return false
+
+  const aProvinces = a.provinceCodes ?? []
+  const bProvinces = b.provinceCodes ?? []
+  // Hai bên cùng toàn quốc: giao là toàn quốc, nhưng phép lọc bên dưới lại ra mảng rỗng.
+  if (aProvinces.length === 0 && bProvinces.length === 0) return true
+
+  const shared =
+    aProvinces.length === 0
+      ? bProvinces
+      : bProvinces.length === 0
+        ? aProvinces
+        : aProvinces.filter((code) => bProvinces.includes(code))
+  if (shared.length === 0) return false
+
+  const bothWardTier =
+    a.scopeType === SCOPE_TYPES.CATEGORY_WARD && b.scopeType === SCOPE_TYPES.CATEGORY_WARD
+  if (!bothWardTier) return true
+
+  return (a.wardCodes ?? []).some((ward) => (b.wardCodes ?? []).includes(ward))
+}
+
+/**
  * Tin ở dạng policy đọc được. Cố tình KHÔNG phải `IListingDocument`: policy là tầng dưới cùng,
  * kéo model của một feature vào đây là mở đường cho nó phụ thuộc ngược lên tầng trên.
  */
