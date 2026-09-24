@@ -15,6 +15,9 @@ import {
 import { userRepository } from '../user/user.repository'
 import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
+// Chốt một-người-một-trục. Nhập từ service chứ không chép lại luật: hai bản sao của một luật
+// phân quyền là hai bản sẽ lệch nhau ở lần sửa kế tiếp.
+import { assertSingleAxis } from '../role-grant/role-grant.service'
 import {
   JOINED_VIA,
   MEMBERSHIP_ROLES,
@@ -157,6 +160,15 @@ export const organizationService = {
         `Chưa có tài khoản nào dùng email ${email} — người phụ trách phải đăng ký trước`,
       )
     }
+
+    /*
+     * Chặn TRƯỚC khi đụng vào membership, không phải trước khi tạo grant.
+     *
+     * Khối ngay dưới nâng người này lên `MEMBERSHIP_ROLES.ADMIN` của nhóm. Đặt chốt sau đó thì
+     * một lượt bị từ chối vẫn kịp đổi vai thành viên rồi mới ném — để lại đúng trạng thái nửa
+     * vời mà không ai dọn: admin trong danh bạ nhóm nhưng không có quyền duyệt nào.
+     */
+    await assertSingleAxis(user._id, SCOPE_TYPES.ORG)
 
     const existing = await membershipRepository.findActive(user._id, org._id)
     if (existing) {

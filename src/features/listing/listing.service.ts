@@ -1089,7 +1089,19 @@ export const listingService = {
     const { categoryId, location, attributes, ...rest } = input
     const update: Partial<IListing> = { ...rest }
     if (categoryId) update.category = new Types.ObjectId(categoryId)
-    if (location) update.location = location
+    /*
+     * Ghi ĐÚNG `location.address`, không gán lại cả `location`.
+     *
+     * `update.location = location` sẽ thay trọn subdocument — mà bản vá giờ chỉ mang `address`,
+     * nên tỉnh và phường đang lưu bị xoá sạch. Tin mất khu vực là rơi khỏi mọi bộ lọc tỉnh và
+     * khỏi `/listings/nearby`, im lặng, ngay sau một lượt sửa số nhà.
+     *
+     * Đường dẫn chấm đi vào `$set` của `findByIdAndUpdate`, nên hai field kia đứng nguyên.
+     * Ép kiểu vì `Partial<IListing>` khai theo field lồng, không biết tới cú pháp chấm.
+     */
+    if (location?.address !== undefined) {
+      ;(update as Record<string, unknown>)['location.address'] = location.address
+    }
 
     const targetCategory = categoryId ?? existing.category.toString()
 
@@ -1282,7 +1294,26 @@ export const listingService = {
 
     const update: Partial<IListing> = { status: LISTING_STATUS.PENDING }
     if (input.categoryId) update.category = new Types.ObjectId(input.categoryId)
-    if (input.provinceCode) update.provinceCode = input.provinceCode
+
+    /*
+     * Đổi tỉnh phải kéo theo PHƯỜNG, không thì để lại một ô không tồn tại.
+     *
+     * `rerouteListingSchema` không nhận phường, nên phường cũ ở lại. Cặp (tỉnh mới, phường cũ)
+     * không có thật: `canModerateCategory` ở tầng `category_ward` đòi `wardCodes.includes(ward)`,
+     * mà không manager phường nào của tỉnh mới giữ phường của tỉnh cũ — tin lặng lẽ leo lên
+     * manager cấp tỉnh, hoặc lên master nếu tỉnh đó chưa có ai.
+     *
+     * `null` chứ không đoán một phường: master đang chuyển tin sang tỉnh khác thì họ biết danh
+     * mục và tỉnh, không biết tin nằm ở phường nào bên đó. Ô cấp tỉnh là ô ĐÚNG cho một tin
+     * chưa rõ phường — grant cấp tỉnh phủ trọn mọi phường, nên vẫn luôn có người nhận.
+     *
+     * Giữ nguyên `location`: đó là địa chỉ người bán khai, không phải khoá định tuyến. Master
+     * sửa bàn duyệt, không sửa lời khai của người ta.
+     */
+    if (input.provinceCode && input.provinceCode !== listing.provinceCode) {
+      update.provinceCode = input.provinceCode
+      update.wardCode = null
+    }
 
     const updated = await listingRepository.updateById(id, update)
     return updated!

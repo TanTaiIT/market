@@ -31,6 +31,8 @@
     "check:org-admins": "cross-env NODE_ENV=development tsx scripts/check-org-admins.ts",
     "check:org-admins:prod": "cross-env NODE_ENV=production tsx scripts/check-org-admins.ts",
     "check:cloudinary": "cross-env NODE_ENV=development tsx scripts/check-cloudinary.ts",
+    "check:role-axis": "cross-env NODE_ENV=development tsx scripts/check-role-axis.ts",
+    "check:role-axis:prod": "cross-env NODE_ENV=production tsx scripts/check-role-axis.ts",
     "check:cloudinary:prod": "cross-env NODE_ENV=production tsx scripts/check-cloudinary.ts",
     "prepare": "husky",
     "migrate:trust": "cross-env NODE_ENV=development tsx scripts/migrate-trust-merge.ts",

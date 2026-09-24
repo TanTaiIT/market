@@ -132,6 +132,41 @@ export const SCOPE_TYPES = {
 export type ScopeType = (typeof SCOPE_TYPES)[keyof typeof SCOPE_TYPES]
 
 /**
+ * HAI TRỤC DUYỆT — và một tài khoản chỉ được đứng trên MỘT.
+ *
+ * `canApproveListing` chọn người duyệt theo TRỤC CỦA TIN: `marketplace` về bàn danh mục, hai bậc
+ * trong nhóm về bàn của nhóm. Tin vì thế vẫn luôn đi đúng chỗ kể cả khi một người ôm cả hai
+ * trục — cái mất đi là sự PHÂN ĐỊNH, không phải đường đi của tin.
+ *
+ * Vì sao vẫn cấm: người ngồi cả hai bàn thì không còn ai là bên thứ hai. Họ đăng tin trong nhóm
+ * mình quản rồi tự duyệt ở bàn nhóm, hoặc đẩy chính tin đó lên sàn rồi tự duyệt ở bàn danh mục —
+ * hai cửa vốn dựng ra để kiểm chéo nhau thành một cửa. Thêm nữa, hàng đợi của họ trộn tin của
+ * hai thế giới khác nhau, và mọi câu hỏi vận hành ("ai phụ trách ô này") mất một câu trả lời duy nhất.
+ *
+ * `system` (master) KHÔNG thuộc trục nào: master phủ cả hai theo thiết kế, đó là vai vận hành
+ * hệ thống chứ không phải một chân trong bàn duyệt.
+ */
+export const ORG_AXIS_SCOPES: ScopeType[] = [SCOPE_TYPES.ORG, SCOPE_TYPES.ORG_UNIT]
+export const CATEGORY_AXIS_SCOPES: ScopeType[] = [
+  SCOPE_TYPES.CATEGORY_PROVINCE,
+  SCOPE_TYPES.CATEGORY_WARD,
+]
+
+export type GrantAxis = 'org' | 'category'
+
+/** Trục của một phạm vi. `null` = `system`, đứng ngoài cả hai. */
+export function axisOf(scope: ScopeType): GrantAxis | null {
+  if (ORG_AXIS_SCOPES.includes(scope)) return 'org'
+  if (CATEGORY_AXIS_SCOPES.includes(scope)) return 'category'
+  return null
+}
+
+export const AXIS_LABEL: Record<GrantAxis, string> = {
+  org: 'quản trị nhóm',
+  category: 'phụ trách danh mục',
+}
+
+/**
  * Loại org CHỈ dùng để chọn preset `capabilities` lúc tạo. Logic đọc `capabilities`, không
  * bao giờ đọc `orgType` — `if (orgType === 'school')` rải rác nghĩa là hệ thống chưa được
  * tổng quát hoá, mới chỉ thêm một cột.

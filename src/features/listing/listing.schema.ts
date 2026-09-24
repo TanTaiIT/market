@@ -179,7 +179,31 @@ export const quotaStatusSchema = z
  *
  * Muốn đổi đích đến sau khi đăng thì phải là một route riêng chạy lại `routeListing` và xếp
  * hàng lại — không phải một field trong bản vá này.
+ *
+ * ── CỬA SAU ĐÃ BỊT: `location` ──────────────────────────────────────────────
+ *
+ * Loại `provinceCode` ra là chưa đủ, vì `location.province` đi vào đây bằng cửa khác và nó
+ * chính là NGUỒN mà `resolveProvinceCode` dựng `provinceCode` lúc tạo. Hệ quả trước bản này:
+ *
+ *   đăng tin ở Cà Mau → duyệt xong → PATCH `{"location":{"province":"Hồ Chí Minh",...}}`
+ *   → tin hiện và tìm được ở HCM (`location.province`), nhưng ô duyệt vẫn là Cà Mau
+ *     (`provinceCode` không ai cập nhật), và `touchesReviewedContent` không soi location
+ *     nên tin còn chẳng bị xếp hàng lại.
+ *
+ * Nên bản vá chỉ nhận `address` — số nhà / tên đường, thứ KHÔNG tham gia định tuyến. Tỉnh và
+ * phường đóng băng sau khi đăng, đúng như `reach` và `provinceCode`.
+ *
+ * Cái giá, nói thẳng: chọn nhầm phường thì phải xoá tin đăng lại, mất lượt xem và một suất
+ * quota. Đổi lại là không có đường nào để một tin đã duyệt lặng lẽ đổi địa bàn. Muốn cho sửa
+ * thì đường đúng vẫn là route riêng chạy lại `routeListing` — như ghi chú trên đã nói.
  */
+const updateLocationSchema = z
+  .object({
+    address: z.string().max(255).optional(),
+  })
+  .strict()
+  .openapi('UpdateListingLocation')
+
 export const updateListingSchema = createListingSchema
   .pick({
     title: true,
@@ -190,10 +214,10 @@ export const updateListingSchema = createListingSchema
     condition: true,
     categoryId: true,
     images: true,
-    location: true,
     attributes: true,
   })
   .partial()
+  .extend({ location: updateLocationSchema.optional() })
   .strict()
   .openapi('UpdateListing')
 
