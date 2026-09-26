@@ -3,7 +3,7 @@
   "info": {
     "title": "Chợ Tốt Clone API",
     "version": "1.0.0",
-    "description": "Marketplace/Classifieds REST API (code-first OpenAPI từ Zod).\n\n**Chưa triển khai — mọi method trả HTTP 501:**\n- `/uploads — upload ảnh lên S3`\n- `/search — full-text search`\n- `/reviews — đánh giá người bán`"
+    "description": "Marketplace/Classifieds REST API (code-first OpenAPI từ Zod).\n\n**Chưa triển khai — mọi method trả HTTP 501:**\n- `/search — full-text search (bảng tin đã lọc ?q= bằng regex; Atlas Search để sau)`\n- `/reviews — đánh giá người bán`"
   },
   "servers": [
     {
@@ -77,7 +77,7 @@
           },
           "password": {
             "type": "string",
-            "minLength": 6,
+            "minLength": 8,
             "maxLength": 72
           }
         },
@@ -186,6 +186,25 @@
           "user",
           "tokens"
         ]
+      },
+      "ChangePassword": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "minLength": 1
+          },
+          "newPassword": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 72
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "additionalProperties": false
       },
       "UpdateProfile": {
         "type": "object",
@@ -679,8 +698,9 @@
             "maxLength": 5000
           },
           "price": {
-            "type": "number",
-            "minimum": 0
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999999999999
           },
           "isNegotiable": {
             "type": "boolean"
@@ -1201,8 +1221,9 @@
             "maxLength": 5000
           },
           "price": {
-            "type": "number",
-            "minimum": 0
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999999999999
           },
           "isNegotiable": {
             "type": "boolean"
@@ -4497,7 +4518,7 @@
           },
           "password": {
             "type": "string",
-            "minLength": 6,
+            "minLength": 8,
             "maxLength": 72
           }
         },
@@ -4901,6 +4922,9 @@
           "_id": {
             "type": "string"
           },
+          "userId": {
+            "type": "string"
+          },
           "amount": {
             "type": "number"
           },
@@ -4942,6 +4966,7 @@
         },
         "required": [
           "_id",
+          "userId",
           "amount",
           "type",
           "balanceAfter",
@@ -4954,6 +4979,8 @@
         "properties": {
           "amount": {
             "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000,
             "example": 100
           },
           "note": {
@@ -5703,6 +5730,91 @@
           },
           "400": {
             "description": "Mã không đúng hoặc đã hết hạn",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password/change": {
+      "post": {
+        "operationId": "authChangePassword",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Đổi mật khẩu khi đang đăng nhập",
+        "description": "Đòi mật khẩu hiện tại. Thành công: mật khẩu mới, CẮT mọi phiên khác (`tokenVersion`), và trả cặp token mới cho chính thiết bị này — client phải lưu lại. Tài khoản chỉ có Google (chưa từng đặt mật khẩu) thì 400: đặt mật khẩu lần đầu qua \"Quên mật khẩu\".",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePassword"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã đổi mật khẩu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AuthResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Mật khẩu mới trùng mật khẩu cũ, hoặc tài khoản chưa có mật khẩu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Mật khẩu hiện tại không đúng, hoặc thiếu token",
             "content": {
               "application/json": {
                 "schema": {
@@ -7208,7 +7320,8 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 100
             },
             "required": false,
             "name": "q",
@@ -7439,9 +7552,21 @@
           "Listing"
         ],
         "summary": "Đăng tin mới (vào trạng thái pending chờ duyệt)",
+        "description": "Gửi kèm header `Idempotency-Key` (≤80 ký tự, do client sinh cho mỗi lần soạn tin): bấm lại với cùng khoá trả về đúng tin đã tạo thay vì đăng đôi.",
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "required": false,
+            "name": "idempotency-key",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -7642,7 +7767,8 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 100
             },
             "required": false,
             "name": "q",
@@ -11614,6 +11740,18 @@
             "required": false,
             "name": "version",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "fallback",
+            "in": "query"
           }
         ],
         "responses": {
@@ -12455,6 +12593,18 @@
             },
             "required": false,
             "name": "version",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "fallback",
             "in": "query"
           }
         ],
@@ -16982,7 +17132,7 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",

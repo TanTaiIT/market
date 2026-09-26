@@ -110,6 +110,15 @@ thì nới scope cho **mọi** truy vấn của collection.
 | `ListingProduct` | Catalog gói tin (đẩy tin, nổi bật…) — bảng giá áp toàn nền tảng, org không có catalog riêng | Không có dữ liệu riêng của khách hàng; ghi chỉ qua API master-only `/listing-products` |
 | `Wallet` | Ví Xu thuộc **tài khoản**, mà tài khoản ở v2 là toàn cục (cùng lý do với `UserTrust`). Gắn plugin thì người chưa vào org nào không có ví, và cùng một người đổi org lại thấy số dư khác | Số dư chỉ đổi qua `walletService.apply()`, trong transaction cùng dòng sổ cái; không repository nào khác chạm `balance` |
 | `XuTransaction` | Sổ cái của ví, đi cùng `Wallet` | Append-only, `idempotencyKey` unique; không có đường sửa/xoá |
+| `KycProfile` | Hồ sơ định danh thuộc **tài khoản** (tạm thời, sẽ gỡ) | `userId` unique; chỉ chính chủ và master đọc |
+| `RoleGrant` | Đã nêu ở trên — ghi thêm cho khớp danh sách thật (`grep -L tenantPlugin`) | Xem dòng `RoleGrant` |
+
+> Danh sách thật của "không gắn plugin" = `grep -L tenantPlugin src/features/*/*.model.ts` cộng
+> các model không có `organizationId` trong schema. `Conversation`/`Message`/`SupportThread`/
+> `SocialFeedback`/`EmailVerification` **có** gắn plugin (`organizationId` có thể `null` — trục
+> công khai), nên KHÔNG nằm trong bảng này dù thuộc về người dùng. `Notification` ở §1.2 nói
+> "dualAxis" và ở đây nói "ngoài plugin": bảng này đúng — model đã ra khỏi plugin, xem
+> `notification.model.ts`.
 
 Muốn thêm một collection vào danh sách này → **dừng lại và hỏi**, không tự quyết.
 
