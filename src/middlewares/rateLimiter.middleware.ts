@@ -46,3 +46,12 @@ export const apiLimiter = createRateLimiter({ keyPrefix: 'rl:api', points: 120, 
  * dùng thật chỉ gõ vài lần cho một ô autocomplete.
  */
 export const lookupLimiter = createRateLimiter({ keyPrefix: 'rl:lookup', points: 20, duration: 60 })
+/**
+ * Gửi báo cáo: 10 lượt / giờ / người (audit 2.5). Người thật tố vài tin một ngày là nhiều; trăm
+ * lượt một giờ là report-bombing — một người nhắm một người bán, hoặc một tài khoản phá hàng đợi.
+ */
+export const reportLimiter = createRateLimiter({
+  keyPrefix: 'rl:report',
+  points: 10,
+  duration: 3600,
+})

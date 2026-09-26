@@ -2,7 +2,7 @@ import { Types } from 'mongoose'
 import { KycProfile, IKycProfileDocument, KycStatus } from './kyc.model'
 import { SubmitKycInput } from './kyc.schema'
 import { userRepository } from '../user/user.repository'
-import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
+import { BadRequestError, ConflictError, NotFoundError, DomainRuleError } from '../../common/errors'
 import { logger } from '../../config/logger'
 
 /** DTO chung — KHÔNG mang `idNumber`; nó chỉ đi theo đường duyệt của master. */
@@ -137,7 +137,7 @@ async function setStatus(id: string, status: KycStatus, actorId: string, reason:
  * diện bằng `constructor === Error` chứ không bằng chuỗi — cùng lý do đã ghi ở `role-grant`.
  */
 function asShapeError(err: unknown): never {
-  if (err instanceof Error && err.constructor === Error) throw new BadRequestError(err.message)
+  if (err instanceof DomainRuleError) throw new BadRequestError(err.message)
   throw err
 }
 

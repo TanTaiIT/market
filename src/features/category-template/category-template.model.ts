@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { softDeletePlugin } from '../../common/db/softDelete.plugin'
 import { FIELD_TYPE, FieldType, TEMPLATE_STATUS, TemplateStatus } from '../../common/constants'
 
 /*
@@ -212,18 +213,9 @@ categoryTemplateSchema.index(
   { unique: true, partialFilterExpression: { deletedAt: null } },
 )
 
-function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
-  if (!this.getOptions().withDeleted) {
-    this.where({ deletedAt: null })
-  }
-  next()
-}
-
-fieldDefinitionSchema.pre(/^find/, excludeDeleted)
 // `countDocuments` KHÔNG khớp /^find/ (AGENT §10) — seed đếm để biết đã có bản chưa.
-fieldDefinitionSchema.pre('countDocuments', excludeDeleted)
-categoryTemplateSchema.pre(/^find/, excludeDeleted)
-categoryTemplateSchema.pre('countDocuments', excludeDeleted)
+fieldDefinitionSchema.plugin(softDeletePlugin)
+categoryTemplateSchema.plugin(softDeletePlugin)
 
 export const FieldDefinition: Model<IFieldDefinitionDocument> =
   mongoose.model<IFieldDefinitionDocument>('FieldDefinition', fieldDefinitionSchema)

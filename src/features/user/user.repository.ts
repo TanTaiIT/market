@@ -2,7 +2,6 @@ import { ClientSession, FilterQuery, Types } from 'mongoose'
 import { REFRESH_SESSIONS_MAX } from '../../common/constants'
 import { User, IUserDocument, IUser } from './user.model'
 import { REPORT_TIMEZONE } from '../../common/constants'
-import { runUnscoped } from '../../common/tenant/tenantContext'
 
 /**
  * Tài khoản là toàn cục nên repository này KHÔNG còn nhận `organizationId`. Ranh giới tenant
@@ -106,26 +105,24 @@ export const userRepository = {
   /**
    * Số tài khoản MỚI theo từng cột thời gian, gộp trong múi giờ thị trường.
    *
-   * `runUnscoped` + `deletedAt: null` khai tay: `aggregate` không đi qua hook
-   * `pre(/^find/)` của soft-delete, và `User` mang `tenantPlugin` nên thiếu scope là ném.
+   * `deletedAt: null` khai tay: `aggregate` không đi qua hook `pre(/^find/)` của soft-delete.
+   * `User` KHÔNG mang `tenantPlugin` nên không cần `runUnscoped` (audit 5.9).
    * Chỉ master gọi được (`requireMaster` ở route) và kết quả là con số gộp, không lộ tài khoản nào.
    *
    * Tài khoản đã xoá KHÔNG được đếm: báo cáo này trả lời "sàn lớn thêm bao nhiêu người", mà
    * một người đã rời đi thì không còn là tăng trưởng — đếm họ là tự khen mình bằng số cũ.
    */
   reportSeries(from: Date, to: Date, format: string) {
-    return runUnscoped('report: người dùng mới theo thời gian', () =>
-      User.aggregate<{ _id: string; users: number }>([
-        { $match: { deletedAt: null, createdAt: { $gte: from, $lte: to } } },
-        {
-          $group: {
-            _id: { $dateToString: { format, date: '$createdAt', timezone: REPORT_TIMEZONE } },
-            users: { $sum: 1 },
-          },
+    return User.aggregate<{ _id: string; users: number }>([
+      { $match: { deletedAt: null, createdAt: { $gte: from, $lte: to } } },
+      {
+        $group: {
+          _id: { $dateToString: { format, date: '$createdAt', timezone: REPORT_TIMEZONE } },
+          users: { $sum: 1 },
         },
-        { $sort: { _id: 1 } },
-      ]).exec(),
-    )
+      },
+      { $sort: { _id: 1 } },
+    ]).exec()
   },
 
   /**
@@ -135,9 +132,7 @@ export const userRepository = {
    * từ đầu cửa sổ báo cáo.
    */
   countCreatedBefore(before: Date): Promise<number> {
-    return runUnscoped('report: số người dùng trước mốc bắt đầu', () =>
-      User.countDocuments({ deletedAt: null, createdAt: { $lt: before } }).exec(),
-    )
+    return User.countDocuments({ deletedAt: null, createdAt: { $lt: before } }).exec()
   },
 
   updateById(id: string | Types.ObjectId, update: Partial<IUser>) {

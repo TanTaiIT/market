@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 import {
@@ -9,8 +10,6 @@ import {
   isWardOfProvince,
   PAGINATION,
 } from '../../common/constants'
-
-export const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 /**
  * Khu vực của người dùng. Khai riêng ở đây, KHÔNG import từ `listing.schema.ts`: hai thứ trùng

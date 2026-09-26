@@ -1,4 +1,6 @@
 import { userService } from './user.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { adminUserQuerySchema } from './user.schema'
 import { toMeProfileDto, toPublicProfileDto } from './user.types'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success } from '../../common/utils/apiResponse'
@@ -58,7 +60,7 @@ export const userController = {
   // GET /users/:id  (public profile người bán)
   // GET /users
   listForAdmin: catchAsync(async (req, res) => {
-    const { items, meta } = await userService.listForAdmin(req.query as never)
+    const { items, meta } = await userService.listForAdmin(queryOf(req, adminUserQuerySchema))
     success(res, { message: 'Users', data: items, meta })
   }),
 

@@ -146,11 +146,8 @@ export type ScopeType = (typeof SCOPE_TYPES)[keyof typeof SCOPE_TYPES]
  * `system` (master) KHÔNG thuộc trục nào: master phủ cả hai theo thiết kế, đó là vai vận hành
  * hệ thống chứ không phải một chân trong bàn duyệt.
  */
-export const ORG_AXIS_SCOPES: ScopeType[] = [SCOPE_TYPES.ORG, SCOPE_TYPES.ORG_UNIT]
-export const CATEGORY_AXIS_SCOPES: ScopeType[] = [
-  SCOPE_TYPES.CATEGORY_PROVINCE,
-  SCOPE_TYPES.CATEGORY_WARD,
-]
+const ORG_AXIS_SCOPES: ScopeType[] = [SCOPE_TYPES.ORG, SCOPE_TYPES.ORG_UNIT]
+const CATEGORY_AXIS_SCOPES: ScopeType[] = [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]
 
 export type GrantAxis = 'org' | 'category'
 
@@ -458,6 +455,9 @@ export const MODERATION_TRANSITIONS: Record<ModerationDecision, readonly Listing
  * Cách một báo cáo bị đóng KHÔNG do người duyệt bấm: đối tượng bị xoá/gỡ/ẩn hàng loạt trước khi
  * ai kịp xử. Ghi vào `resolution.action` để phân biệt với `hide_target`/`ignore` của người thật.
  */
+/** `targetType` của một dòng nhật ký duyệt — cùng từ vựng ở mọi call-site (audit 5.10). */
+export const AUDIT_TARGET = { LISTING: 'listing', REPORT: 'report' } as const
+
 export const REPORT_AUTO_RESOLUTION = {
   TARGET_REMOVED: 'target_removed',
 } as const
@@ -472,6 +472,7 @@ export const CASCADE_HIDE_REASON = {
   LEFT_ORG: 'Bạn đã rời nhóm',
   REMOVED_FROM_ORG: 'Bạn đã bị gỡ khỏi nhóm',
   ACCOUNT_DELETED: 'Tài khoản đã xoá',
+  CATEGORY_DISABLED: 'Danh mục đang tạm đóng',
 } as const
 
 /**
@@ -485,6 +486,7 @@ export const CASCADE_HIDE_KIND = {
   ORG_SUSPENDED: 'org_suspended',
   LEFT_ORG: 'left_org',
   REMOVED_FROM_ORG: 'removed_from_org',
+  CATEGORY_DISABLED: 'category_disabled',
 } as const
 export type CascadeHideKind = (typeof CASCADE_HIDE_KIND)[keyof typeof CASCADE_HIDE_KIND]
 
@@ -519,6 +521,8 @@ export type AuditAction = (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION]
  * Ngược lại thì mọi cú bấm từ chối đều trừng phạt, đúng cái bất công vừa sửa.
  */
 export const REJECTION_SEVERITIES = ['quality', 'violation'] as const
+/** Cùng giá trị với `REJECTION_SEVERITIES`, dạng object để call-site hết so chuỗi thô (audit 5.10). */
+export const REJECTION_SEVERITY = { QUALITY: 'quality', VIOLATION: 'violation' } as const
 export type RejectionSeverity = (typeof REJECTION_SEVERITIES)[number]
 
 /**
@@ -610,3 +614,15 @@ export const SOCIAL_FEEDBACK_STATUS = {
 } as const
 export type SocialFeedbackStatus =
   (typeof SOCIAL_FEEDBACK_STATUS)[keyof typeof SOCIAL_FEEDBACK_STATUS]
+
+/** Trần giá tin — chốt sanity, không phải luật giá: 999 tỷ là ngoài mọi món đồ cũ (audit 1.15). */
+export const LISTING_PRICE_MAX = 999_999_999_999
+
+/**
+ * Hộp thư giữ chừng này ngày rồi Mongo tự dọn qua TTL index (audit 4.6) — thông báo là tin của
+ * thời điểm, không phải hồ sơ. Prod: cần `sync-indexes:prod` để index có hiệu lực.
+ */
+export const NOTIFICATION_RETENTION_DAYS = 90
+
+/** Số dòng lịch sử duyệt giữ trên một tin (audit 1.13) — đủ cho một tranh chấp, không phình document. */
+export const MODERATION_HISTORY_MAX = 20

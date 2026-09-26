@@ -1,7 +1,6 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { PRODUCT_EFFECTS } from '../listing/listing.pricing'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const listingProductParamsSchema = z.object({ id: objectId })
 

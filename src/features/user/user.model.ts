@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { softDeletePlugin } from '../../common/db/softDelete.plugin'
 import { hash, verify } from '@node-rs/bcrypt'
 import { GENDER, Gender, VN_PROVINCE_NAMES } from '../../common/constants'
 import type { VnProvinceName } from '../../common/constants/vnProvince'
@@ -204,17 +205,9 @@ userSchema.methods.comparePassword = async function comparePassword(candidate: s
   return verify(candidate, this.password)
 }
 
-// Mặc định loại bản ghi đã soft-delete khỏi mọi query find
-function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
-  if (!this.getOptions().withDeleted) {
-    this.where({ deletedAt: null })
-  }
-  next()
-}
-
-userSchema.pre(/^find/, excludeDeleted)
+// Soft-delete lọc mặc định + `countDocuments` (KHÔNG khớp /^find/) — một plugin cho mọi model (audit 5.10).
 // `countDocuments` KHÔNG khớp /^find/ (AGENT §10) — `countUsable` đếm master còn đăng nhập
 // được, mà thiếu hook này thì đúng tài khoản vừa bị xoá lại được tính là "vẫn còn master".
-userSchema.pre('countDocuments', excludeDeleted)
+userSchema.plugin(softDeletePlugin)
 
 export const User: Model<IUserDocument> = mongoose.model<IUserDocument>('User', userSchema)

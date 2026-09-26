@@ -65,8 +65,8 @@ export const categoryTemplateController = {
 
   // GET /categories/:id/template
   getForCategory: catchAsync(async (req, res) => {
-    const { version } = req.query as TemplateQuery
-    const template = await categoryTemplateService.getForCategory(req.params.id, version)
+    const { version, fallback } = req.query as TemplateQuery
+    const template = await categoryTemplateService.getForCategory(req.params.id, version, fallback)
     success(res, { message: 'Category template', data: template })
   }),
 }

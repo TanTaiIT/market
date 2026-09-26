@@ -70,7 +70,7 @@ export const metricsRepository = {
   },
 
   /**
-   * `User` không gắn plugin, nhưng có `pre('countDocuments', excludeDeleted)` — nên `total` ở
+   * `User` gắn `softDeletePlugin` (lọc cả `countDocuments`) — nên `total` ở
    * đây nghĩa là "tài khoản chưa xoá", không phải mọi dòng trong collection. Đúng thứ cần đếm.
    */
   async users(newWindows: number[]) {

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import mongoose from 'mongoose'
 import { ApiError } from '../common/errors/ApiError'
+import { DomainRuleError } from '../common/errors'
 import { httpStatus } from '../common/constants/httpStatus'
 import { env } from '../config/env'
 import { logger } from '../config/logger'
@@ -24,6 +25,9 @@ export function errorConverter(err: unknown, _req: Request, _res: Response, next
   } else if (err instanceof mongoose.Error.CastError) {
     statusCode = httpStatus.BAD_REQUEST
     message = `Invalid ${err.path}: ${err.value}`
+  } else if (err instanceof DomainRuleError) {
+    // Luật ở tầng model (hình dạng phạm vi grant, hồ sơ KYC…) — lỗi của yêu cầu, không phải sự cố.
+    statusCode = httpStatus.BAD_REQUEST
   } else if (typeof err === 'object' && err !== null && (err as { code?: number }).code === 11000) {
     statusCode = httpStatus.CONFLICT
     const keyValue = (err as { keyValue?: Record<string, unknown> }).keyValue ?? {}
