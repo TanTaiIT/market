@@ -38,15 +38,16 @@ import {
   ModerationQueue,
   VN_PROVINCE_NAMES,
   type RejectionSeverity,
+  REJECTION_SEVERITY,
+  AUDIT_TARGET,
 } from '../../common/constants'
 
 /** Mức từ chối duy nhất có hình phạt — `quality` là sai sót, sửa rồi đăng lại. */
-const PENALIZING_SEVERITY: RejectionSeverity = 'violation'
+const PENALIZING_SEVERITY: RejectionSeverity = REJECTION_SEVERITY.VIOLATION
 import { Grant, canApproveListing } from '../../common/authz/policy'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToOrgAdmins } from '../../sockets/emit'
 import { runUnscoped } from '../../common/tenant/tenantContext'
-import { logger } from '../../config/logger'
 
 /**
  * CHỈ có `id`. Thao tác duyệt chạy trên cả hai trục, nên "người duyệt thuộc nhóm nào" không
@@ -77,10 +78,9 @@ const ACTION_BY_STATUS: Record<string, AuditAction> = {
  * plugin tự lấy org từ scope thì nó lấy nhầm org của NGƯỜI DUYỆT: vết duyệt một tin công khai
  * rơi vào nhật ký của org họ, nơi admin org đó đọc được qua `GET /moderation/activity`.
  *
- * Trục danh mục chưa có chỗ ghi (`AuditLog` là collection có tenant) — ghi log hệ thống rồi đi
- * tiếp, trả `null`. Đây là MỘT đường xử lý cho mọi call-site: trước đây `reroute` tự bỏ qua,
- * `setListingStatus`/`removeListing` thì ghi nhầm, cùng một tình huống mà ba cách khác nhau.
- * Chuyển `AuditLog` sang dual-axis là việc còn nợ (v2-org-permission.plan.md).
+ * Trục danh mục ghi dưới `organizationId: null` (`AuditLog` dual-axis từ audit 1.13); master và
+ * người phụ trách danh mục đọc qua `GET /moderation/activity`. Một đường cho mọi call-site — trước
+ * đây `reroute` tự bỏ qua, `setListingStatus`/`removeListing` thì ghi nhầm sổ.
  */
 export async function recordAudit(
   actor: { id: string; name: string },
@@ -95,15 +95,6 @@ export async function recordAudit(
   },
   subjectOrgId: Types.ObjectId | null,
 ) {
-  if (!subjectOrgId) {
-    logger.info('audit skipped (public axis has no org to file under)', {
-      actorId: actor.id,
-      action: entry.action,
-      summary: entry.summary,
-    })
-    return null
-  }
-
   // Khai `organizationId` TƯỜNG MINH và chạy unscoped: để plugin tự lấy từ scope thì vết
   // duyệt rơi vào nhật ký org của NGƯỜI DUYỆT, không phải org sở hữu tin. Cùng lệch đó khiến
   // master duyệt hộ org khác sẽ ghi nhầm sổ — và với người duyệt không có nhóm thì lệnh ghi
@@ -116,7 +107,8 @@ export async function recordAudit(
       ...entry,
     }),
   )
-  emitToOrgAdmins(subjectOrgId.toString(), 'admin:activity', toAuditEventDto(log))
+  // Trục công khai không có phòng quản trị nào để gõ chuông — master đọc qua `GET /moderation/activity`.
+  if (subjectOrgId) emitToOrgAdmins(subjectOrgId.toString(), 'admin:activity', toAuditEventDto(log))
   return log
 }
 
@@ -424,7 +416,7 @@ export const moderationService = {
           input.status === LISTING_STATUS.REJECTED
             ? `Từ chối "${listing.title}" · ${input.reason}${trustNote(trust)}`
             : `${input.status === LISTING_STATUS.ACTIVE ? 'Ghim' : 'Ẩn'} "${listing.title}"${trustNote(trust)}`,
-        targetType: 'listing',
+        targetType: AUDIT_TARGET.LISTING,
         targetId: listing._id,
         fromStatus: previousStatus,
         toStatus: input.status,
@@ -554,7 +546,7 @@ export const moderationService = {
       {
         action: AUDIT_ACTION.LISTING_REASSIGN,
         summary,
-        targetType: 'listing',
+        targetType: AUDIT_TARGET.LISTING,
         targetId: listing._id,
         fromStatus: before.status,
         toStatus: listing.status,
@@ -611,7 +603,7 @@ export const moderationService = {
           `Gỡ "${listing!.title}" khỏi bảng` +
           (input.reason ? ` · ${input.reason}` : '') +
           trustNote(trust),
-        targetType: 'listing',
+        targetType: AUDIT_TARGET.LISTING,
         targetId: listing!._id,
         fromStatus: existing.status,
       },

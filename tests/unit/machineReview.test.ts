@@ -5,7 +5,9 @@ import {
   MachineSignals,
   bannedPhraseIn,
   medianOf,
+  normalizeForMatch,
   reviewByMachine,
+  screenText,
 } from '../../src/features/moderation/moderation.machine'
 
 const clean: MachineSignals = {
@@ -117,5 +119,35 @@ describe('Người duyệt máy — nhìn bậc uy tín (audit 1.3) và án qu�
 
   it('cụm cấm vẫn thắng: bậc 0 mà dính hàng cấm là từ chối, không phải giữ', () => {
     expect(judge({ trustLevel: 0, title: 'Bán tiền giả' }).verdict).toBe('reject')
+  })
+})
+
+describe('Cổng cụm cấm — chuẩn hoá và mọi ô chữ (audit 1.17)', () => {
+  it('normalizeForMatch: bỏ dấu, hạ chữ thường, gộp khoảng trắng', () => {
+    expect(normalizeForMatch('  MA   Túy  Đá ')).toBe('ma tuy da')
+    expect(normalizeForMatch('Sừng Tê Giác')).toBe('sung te giac')
+  })
+
+  it('cụm cấm viết không dấu vẫn bị bắt, trả về cụm GỐC trong từ điển', () => {
+    expect(bannedPhraseIn('ban kem MA TUY da', ['ma túy'])).toBe('ma túy')
+    expect(judge({ description: 'ban kem ma tuy da cho khach quen' }).verdict).toBe('reject')
+  })
+
+  it('extraText (địa chỉ, thuộc tính) đi qua cổng cụm cấm nhưng không vào phép đo gõ bừa', () => {
+    expect(judge({ extraText: 'Giao tại kho có heroin' }).verdict).toBe('reject')
+    expect(judge({ extraText: 'Số 12 đường Lê Lợi' })).toEqual({ verdict: 'approve' })
+  })
+
+  it('screenText ghép tiêu đề, mô tả, địa chỉ và giá trị CHỮ của thuộc tính', () => {
+    const text = screenText({
+      title: 'A',
+      description: 'B',
+      address: 'C',
+      attributes: { note: 'D', year: 2020, color: null },
+    })
+    expect(text.split('\n')).toEqual(['A', 'B', 'C', 'D'])
+    expect(screenText({ title: 'A', description: 'B', attributes: new Map([['note', 'D']]) })).toBe(
+      'A\nB\n\nD',
+    )
   })
 })

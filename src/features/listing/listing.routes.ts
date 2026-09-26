@@ -366,8 +366,13 @@ registry.registerPath({
   operationId: 'listingCreate',
   tags: ['Listing'],
   summary: 'Đăng tin mới (vào trạng thái pending chờ duyệt)',
+  description:
+    'Gửi kèm header `Idempotency-Key` (≤80 ký tự, do client sinh cho mỗi lần soạn tin): bấm lại với cùng khoá trả về đúng tin đã tạo thay vì đăng đôi.',
   ...protectedRoute,
-  request: { body: { content: { 'application/json': { schema: createListingSchema } } } },
+  request: {
+    headers: z.object({ 'idempotency-key': z.string().max(80).optional() }),
+    body: { content: { 'application/json': { schema: createListingSchema } } },
+  },
   responses: {
     201: jsonResponse('Đã tạo tin', listingCreatedResponse),
     400: errorResponse('Dữ liệu không hợp lệ'),

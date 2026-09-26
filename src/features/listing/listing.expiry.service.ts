@@ -1,6 +1,7 @@
 import { listingRepository } from './listing.repository'
 import { runUnscoped } from '../../common/tenant/tenantContext'
 import { logger } from '../../config/logger'
+import { notificationService } from '../notification/notification.service'
 
 /**
  * Hạ tin quá hạn xuống `expired` — thân job, Agenda gọi định kỳ (`config/agenda.ts`) và test
@@ -41,12 +42,31 @@ export const reconcileCutoff = (from: Date = new Date()) =>
 
 export const listingExpiryService = {
   async sweep(): Promise<number> {
+    const due = await runUnscoped('listing-expiry: liệt kê tin tới hạn', () =>
+      listingRepository.findDue(new Date()),
+    )
+    if (due.length === 0) return 0
+
     const expired = await runUnscoped('listing-expiry: hạ tin quá hạn xuống expired', () =>
-      listingRepository.expireDue(new Date()),
+      listingRepository.expireByIds(due.map((l) => l._id)),
     )
 
+    /*
+     * Báo cho người bán (audit 1.20/4.9): tin rơi khỏi bảng mà không ai nói là họ tưởng app hỏng.
+     * Một dòng mỗi tin — họ gia hạn từng tin, và màn đối soát đã gom sẵn. Tuần tự, không
+     * `Promise.all`: job nền nhường I/O cho request thật.
+     */
+    for (const l of due) {
+      await notificationService.notifyUser({
+        organizationId: l.organizationId ?? null,
+        userId: l.seller,
+        title: 'Tin của bạn đã hết hạn',
+        body: `"${l.title}" đã rời bảng tin sau ${LISTING_TTL_DAYS} ngày — vào "Tin đã đăng" để gia hạn nếu vẫn còn.`,
+      })
+    }
+
     // Chỉ log khi CÓ việc: job này chạy mỗi giờ, log đều đặn "0 tin" chỉ làm loãng log thật.
-    if (expired > 0) logger.info('listing-expiry: đã hạ tin quá hạn', { expired })
+    logger.info('listing-expiry: đã hạ tin quá hạn', { expired })
     return expired
   },
 }

@@ -1,4 +1,10 @@
-import { MACHINE_REVIEW, MachineVerdict, medianOf, reviewByMachine } from './moderation.machine'
+import {
+  MACHINE_REVIEW,
+  MachineVerdict,
+  medianOf,
+  reviewByMachine,
+  screenText,
+} from './moderation.machine'
 import { notifyPoster } from './moderation.service'
 import { bannedPhraseService } from '../banned-phrase/banned-phrase.service'
 import { listingRepository } from '../listing/listing.repository'
@@ -7,7 +13,7 @@ import { QUOTA } from '../listing/listing.quota'
 import { IListingDocument } from '../listing/listing.model'
 import { categoryRepository } from '../category/category.repository'
 import { trustRepository } from '../trust/trust.repository'
-import { LISTING_STATUS } from '../../common/constants'
+import { LISTING_STATUS, REJECTION_SEVERITY } from '../../common/constants'
 import { logger } from '../../config/logger'
 
 interface SweepResult {
@@ -96,6 +102,12 @@ async function judge(
     categoryRequiresReview: category?.requireManualReview ?? false,
     trustLevel: standing.level,
     onProbation: standing.onProbation,
+    extraText: screenText({
+      title: '',
+      description: '',
+      address: listing.location?.address,
+      attributes: listing.attributes,
+    }),
   })
 }
 
@@ -115,6 +127,12 @@ async function apply(listing: IListingDocument, verdict: MachineVerdict): Promis
       // Duyệt sạch bằng máy CÓ tính là một bài sạch — xem đầu `moderation.machine.ts` cho cái giá
       // đã cân. Chỉ khi ghi THẬT: thua race với người duyệt tay thì lượt cộng là của người đó.
       await trustRepository.record(listing.seller, true)
+      await listingRepository.appendModerationHistory(listing._id, {
+        status: LISTING_STATUS.ACTIVE,
+        byName: 'Hệ thống',
+        at,
+        machine: true,
+      })
     }
     return updated !== null
   }
@@ -125,9 +143,24 @@ async function apply(listing: IListingDocument, verdict: MachineVerdict): Promis
       machineReview: { at, verdict: 'rejected' },
       // `moderation.at` là thứ `countRecentRejections` đếm — nhờ nó lượt từ chối máy tự động
       // khoá cửa tự-đăng và bóp quota của người này 7 ngày, không cần đụng tới bậc uy tín.
-      moderation: { reason: verdict.reason, byName: 'Hệ thống', at, severity: 'violation' },
+      moderation: {
+        reason: verdict.reason,
+        byName: 'Hệ thống',
+        at,
+        severity: REJECTION_SEVERITY.VIOLATION,
+      },
     })
-    if (updated) await notifyPoster(updated, LISTING_STATUS.REJECTED, verdict.reason)
+    if (updated) {
+      await notifyPoster(updated, LISTING_STATUS.REJECTED, verdict.reason)
+      await listingRepository.appendModerationHistory(listing._id, {
+        status: LISTING_STATUS.REJECTED,
+        reason: verdict.reason,
+        byName: 'Hệ thống',
+        at,
+        severity: REJECTION_SEVERITY.VIOLATION,
+        machine: true,
+      })
+    }
     return updated !== null
   }
 
@@ -136,5 +169,14 @@ async function apply(listing: IListingDocument, verdict: MachineVerdict): Promis
   const held = await listingRepository.applyMachineVerdict(listing._id, {
     machineReview: { at, verdict: 'held', holds: verdict.holds },
   })
+  if (held) {
+    await listingRepository.appendModerationHistory(listing._id, {
+      status: LISTING_STATUS.PENDING,
+      reason: `Máy giữ lại: ${verdict.holds.join(', ')}`,
+      byName: 'Hệ thống',
+      at,
+      machine: true,
+    })
+  }
   return held !== null
 }

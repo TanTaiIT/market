@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { softDeletePlugin } from '../../common/db/softDelete.plugin'
 
 export interface ICategory {
   name: string
@@ -61,17 +62,10 @@ categorySchema.index({ slug: 1 }, { unique: true, partialFilterExpression: { del
 // Thiếu nó thì index chỉ lo được vế lọc, còn sort vẫn chạy trong bộ nhớ.
 categorySchema.index({ isActive: 1, order: 1, name: 1 })
 
-function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
-  if (!this.getOptions().withDeleted) {
-    this.where({ deletedAt: null })
-  }
-  next()
-}
-
-categorySchema.pre(/^find/, excludeDeleted)
+// Soft-delete lọc mặc định + `countDocuments` (KHÔNG khớp /^find/) — một plugin cho mọi model (audit 5.10).
 // `countDocuments` KHÔNG khớp /^find/ (AGENT §10) — service đếm để chặn trùng tên nên
 // thiếu hook này thì danh mục đã xoá vẫn tính vào.
-categorySchema.pre('countDocuments', excludeDeleted)
+categorySchema.plugin(softDeletePlugin)
 
 export const Category: Model<ICategoryDocument> = mongoose.model<ICategoryDocument>(
   'Category',

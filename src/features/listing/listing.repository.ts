@@ -12,12 +12,22 @@ import {
   PUBLIC_LISTING_STATUSES,
   REPORT_TIMEZONE,
   ListingStatus,
+  REJECTION_SEVERITY,
+  MODERATION_HISTORY_MAX,
 } from '../../common/constants'
 
 import { runUnscoped } from '../../common/tenant/tenantContext'
 
 /** Hai trạng thái đều là 'đang chiếm một slot của hàng đợi duyệt'. */
 const PENDING_STATUSES = [LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIFIED]
+
+/**
+ * Ảnh của tin xoá mềm được giữ thêm chừng này ngày (audit 4.8): xoá mềm là để còn khôi phục, mà
+ * job dọn ảnh coi tin đó như không tồn tại thì sau 2 ngày ảnh mất thật, khôi phục thành tin trắng.
+ */
+const SOFT_DELETE_IMAGE_GRACE_DAYS = 30
+const softDeleteImageGraceCutoff = () =>
+  new Date(Date.now() - SOFT_DELETE_IMAGE_GRACE_DAYS * 24 * 60 * 60 * 1000)
 
 /** `status` không nằm trong query schema công khai — chỉ caller nội bộ mới được ép. */
 export type ListingFilterParams = Partial<ListingQuery> & { status?: ListingStatus }
@@ -86,9 +96,13 @@ export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDo
   if (params.ward) filter['location.ward'] = params.ward
 
   if (params.minPrice != null || params.maxPrice != null) {
+    // Kéo hai đầu thanh giá ngược nhau thì hiểu theo ý người dùng, không 400 (audit 1.15).
+    const both = params.minPrice != null && params.maxPrice != null
+    const lo = both ? Math.min(params.minPrice!, params.maxPrice!) : params.minPrice
+    const hi = both ? Math.max(params.minPrice!, params.maxPrice!) : params.maxPrice
     filter.price = {}
-    if (params.minPrice != null) filter.price.$gte = params.minPrice
-    if (params.maxPrice != null) filter.price.$lte = params.maxPrice
+    if (lo != null) filter.price.$gte = lo
+    if (hi != null) filter.price.$lte = hi
   }
 
   // ponytail: regex thay cho $text vì text index không sống chung được với scope nhiều org
@@ -166,7 +180,7 @@ export const listingRepository = {
         seller: sellerId,
         status: LISTING_STATUS.REJECTED,
         'moderation.at': { $gte: since },
-        'moderation.severity': { $ne: 'quality' },
+        'moderation.severity': { $ne: REJECTION_SEVERITY.QUALITY },
       })
         .sort({ 'moderation.at': -1 })
         .select('moderation.at')
@@ -192,9 +206,9 @@ export const listingRepository = {
           seller: sellerId,
           status: LISTING_STATUS.REJECTED,
           'moderation.at': { $gte: since },
-          'moderation.severity': { $ne: 'quality' },
+          'moderation.severity': { $ne: REJECTION_SEVERITY.QUALITY },
         },
-        { $set: { 'moderation.severity': 'quality' } },
+        { $set: { 'moderation.severity': REJECTION_SEVERITY.QUALITY } },
       ).exec(),
     )
     return res.modifiedCount
@@ -212,7 +226,7 @@ export const listingRepository = {
         'moderation.at': { $gte: since },
         // `$ne` chứ không `$eq: violation`: tin bị từ chối TRƯỚC ngày phân mức không có
         // field này, và ân xá ngược cho chúng là tự xoá lịch sử vi phạm.
-        'moderation.severity': { $ne: 'quality' },
+        'moderation.severity': { $ne: REJECTION_SEVERITY.QUALITY },
       }).exec(),
     )
   },
@@ -301,9 +315,18 @@ export const listingRepository = {
    *
    * Người gọi phải bọc `runUnscoped` — xem `listingExpiryService.sweep`.
    */
-  async expireDue(now: Date): Promise<number> {
+  /** Tin tới hạn — trả về danh sách để job BÁO cho người bán trước khi hạ (audit 1.20/4.9). */
+  findDue(now: Date) {
+    return Listing.find({ status: LISTING_STATUS.ACTIVE, expiresAt: { $lte: now } })
+      .select('_id seller title organizationId')
+      .lean()
+      .exec()
+  },
+
+  async expireByIds(ids: Types.ObjectId[]): Promise<number> {
+    if (ids.length === 0) return 0
     const res = await Listing.updateMany(
-      { status: LISTING_STATUS.ACTIVE, expiresAt: { $lte: now } },
+      { _id: { $in: ids }, status: LISTING_STATUS.ACTIVE },
       { $set: { status: LISTING_STATUS.EXPIRED } },
     ).exec()
     return res.modifiedCount
@@ -470,6 +493,20 @@ export const listingRepository = {
    * cố định. Tin bàn duyệt ẩn vì lý do khác trong lúc nhóm ngưng thì không được hồi sinh theo.
    * Tin quá `expiresAt` trong lúc ẩn sẽ được `listing-expiry` hạ xuống ở lượt quét kế.
    */
+  /** Danh mục tạm đóng: tin đang hiện trong đó ẩn hết, mọi trục — bày hàng ở gian đã dỡ biển (audit 1.20). */
+  hideActiveInCategory(
+    categoryId: Types.ObjectId,
+    moderation: IListing['moderation'],
+  ): Promise<number> {
+    return runUnscoped('danh mục tạm đóng: ẩn tin đang hiện trong danh mục', async () => {
+      const res = await Listing.updateMany(
+        { category: categoryId, status: LISTING_STATUS.ACTIVE },
+        cascadeHidePipeline(moderation),
+      ).exec()
+      return res.modifiedCount
+    })
+  },
+
   /**
    * Đảo ngược ĐÚNG LÔ cascade: về trạng thái đã chụp ở `restoreTo`, sạch `moderation`. Tin bàn
    * duyệt ẩn vì lý do khác (không có dấu) không hồi sinh theo; tin quá `expiresAt` trong lúc ẩn
@@ -514,6 +551,26 @@ export const listingRepository = {
         .lean()
         .exec()
         .then((rows) => new Map(rows.map((r) => [r._id.toString(), r.seller.toString()]))),
+    )
+  },
+
+  /** Nối một dòng vào lịch sử duyệt, giữ `MODERATION_HISTORY_MAX` dòng mới nhất (audit 1.13). */
+  appendModerationHistory(
+    id: Types.ObjectId | string,
+    entry: NonNullable<IListing['moderationHistory']>[number],
+  ) {
+    return runUnscoped('lịch sử duyệt: nối dòng cho tin vừa đổi trạng thái', () =>
+      Listing.updateOne(
+        { _id: id },
+        { $push: { moderationHistory: { $each: [entry], $slice: -MODERATION_HISTORY_MAX } } },
+      ).exec(),
+    )
+  },
+
+  /** Tin đã tạo với cùng `Idempotency-Key` của cùng người bán — trả lại thay vì đăng đôi (audit 1.18). */
+  findBySellerAndKey(sellerId: Types.ObjectId, idempotencyKey: string) {
+    return runUnscoped('đăng tin: tra khoá chống đăng đôi của chính chủ', () =>
+      Listing.findOne({ seller: sellerId, idempotencyKey }).exec(),
     )
   },
 
@@ -912,7 +969,13 @@ export const listingRepository = {
    */
   async allImageRefs(): Promise<string[]> {
     const rows = await runUnscoped('image cleanup: gom URL ảnh của mọi tin', () =>
-      Listing.find().select('images posterAvatar').lean().exec(),
+      Listing.find({
+        $or: [{ deletedAt: null }, { deletedAt: { $gte: softDeleteImageGraceCutoff() } }],
+      })
+        .setOptions({ withDeleted: true })
+        .select('images posterAvatar')
+        .lean()
+        .exec(),
     )
     return rows.flatMap((r) => [...r.images, r.posterAvatar])
   },

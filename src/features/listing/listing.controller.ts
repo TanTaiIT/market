@@ -1,9 +1,10 @@
 import { Request } from 'express'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { listingQuerySchema, nearbyQuerySchema } from './listing.schema'
 import { listingService, ListingAuthor } from './listing.service'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
 import { currentScope } from '../../common/tenant/tenantContext'
-import { trustRepository } from '../trust/trust.repository'
 
 /**
  * Bối cảnh người đăng, dựng một lần từ scope + membership.
@@ -11,27 +12,20 @@ import { trustRepository } from '../trust/trust.repository'
  * `trustLevel` là MỘT bậc dùng chung cho mọi luồng đăng — không còn tra theo trục như v2 gốc.
  * Xem `trust.model.ts` cho quyết định này và cái giá của nó.
  */
-async function listingAuthor(req: Request): Promise<ListingAuthor> {
-  const orgId = currentScope()?.ownOrgId?.toString() ?? null
-  const trust = await trustRepository.standingOf(req.user!.id)
-
-  return {
+const listingAuthor = (req: Request): Promise<ListingAuthor> =>
+  listingService.authorOf({
     id: req.user!.id,
-    organizationId: orgId,
+    organizationId: currentScope()?.ownOrgId?.toString() ?? null,
     isMember: Boolean(req.membership),
     unitId: req.membership?.unitId ?? null,
-    trustLevel: trust.level,
-    cleanApprovals: trust.cleanApprovals,
-    // Chỉ mang án CÒN HIỆU LỰC — với mọi luật đăng tin, án hết hạn là không có án.
-    probation: trust.onProbation ? trust.probation : null,
-  }
-}
+  })
 
 export const listingController = {
   // POST /listings
   create: catchAsync(async (req, res) => {
     const author = await listingAuthor(req)
-    const listing = await listingService.create(req.body, author)
+    // Header tuỳ chọn: client gửi cùng khoá khi bấm lại → nhận lại tin cũ, không đăng đôi (audit 1.18).
+    const listing = await listingService.create(req.body, author, req.get('Idempotency-Key'))
     created(res, {
       message: 'Listing created (pending review)',
       data: listing,
@@ -77,19 +71,22 @@ export const listingController = {
 
   // GET /listings
   list: catchAsync(async (req, res) => {
-    const { items, meta } = await listingService.list(req.query as never)
+    const { items, meta } = await listingService.list(queryOf(req, listingQuerySchema))
     success(res, { message: 'Listings', data: items, meta })
   }),
 
   // GET /listings/mine
   mine: catchAsync(async (req, res) => {
-    const { items, meta } = await listingService.listMine(req.user!.id, req.query as never)
+    const { items, meta } = await listingService.listMine(
+      req.user!.id,
+      queryOf(req, listingQuerySchema),
+    )
     success(res, { message: 'My listings', data: items, meta })
   }),
 
   // GET /listings/nearby
   nearby: catchAsync(async (req, res) => {
-    const { items, meta } = await listingService.nearby(req.query as never)
+    const { items, meta } = await listingService.nearby(queryOf(req, nearbyQuerySchema))
     success(res, { message: 'Nearby listings', data: items, meta })
   }),
 

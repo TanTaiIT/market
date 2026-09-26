@@ -71,6 +71,8 @@ export const AUTO_APPROVAL_REASONS = [
   'trust_too_low',
   // Án quản chế của master (`UserTrust.probation`) — người có quyền vẫn phải qua người khác.
   'probation',
+  // Chủ tin sửa lại sau khi bị từ chối vì sai sót — về hàng chờ để người duyệt xem bản mới.
+  'resubmitted',
   // Hai lý do của CỔNG NỘI DUNG — lớp chạy trước uy tín (moderation.machine.ts):
   // banned = tin thành REJECTED ngay từ cửa; flagged = đủ bậc nhưng bị tước fast-path.
   'content_banned',

@@ -1,7 +1,9 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 import { registry } from '../../config/openapi'
 import {
+  LISTING_PRICE_MAX,
   LISTING_STATUS,
   REPORT_GRANULARITY,
   LISTING_CONDITION,
@@ -10,8 +12,6 @@ import {
   isWardOfProvince,
   PAGINATION,
 } from '../../common/constants'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 /**
  * Địa chỉ hành chính, KHÔNG có toạ độ. App không xin quyền định vị nên toạ độ chỉ có hai
@@ -51,7 +51,7 @@ export const createListingSchema = z
   .object({
     title: z.string().min(5).max(150).openapi({ example: 'Xe máy Honda Wave 2020' }),
     description: z.string().min(10).max(5000),
-    price: z.number().nonnegative(),
+    price: z.number().int().nonnegative().max(LISTING_PRICE_MAX),
     isNegotiable: z.boolean().optional(),
     /** Người bán nhận giao tận nơi. Bỏ trống = không — xem `default` ở model. */
     canDeliver: z.boolean().optional(),
@@ -138,7 +138,7 @@ export const postingStandingSchema = z
  * Một tin cũ mà màn chặn-trước-khi-đăng đem ra hỏi. Rút gọn có chủ đích: chỉ đủ để vẽ một
  * dòng kèm hai nút "đã bán" / "vẫn còn", không phải bản sao của `Listing`.
  */
-export const staleListingSchema = z
+const staleListingSchema = z
   .object({
     _id: objectId,
     title: z.string(),
@@ -210,6 +210,8 @@ const updateLocationSchema = z
     address: z.string().max(255).optional(),
   })
   .strict()
+  // `{}` không sửa gì mà vẫn qua là client tưởng đã lưu (audit 1.19) — bỏ hẳn field nếu không sửa.
+  .refine((loc) => Object.keys(loc).length > 0, 'Bỏ hẳn `location` nếu không sửa địa chỉ')
   .openapi('UpdateListingLocation')
 
 export const updateListingSchema = createListingSchema
@@ -307,7 +309,7 @@ export const listingQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().optional(),
     limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
-    q: z.string().optional(),
+    q: z.string().trim().max(100).optional(),
     category: objectId.optional(),
     seller: objectId.optional(),
     province: z.enum(VN_PROVINCE_NAMES).optional(),
@@ -474,7 +476,7 @@ export const listingResponseSchema = z
  * Lời giải thích cho chính chủ về trạng thái duyệt — đã là CÂU CHỮ, không phải mã.
  * Client hiện nguyên văn; mã hold/reason là chi tiết nội bộ và không nằm trong hợp đồng này.
  */
-export const listingReviewSchema = z
+const listingReviewSchema = z
   .object({
     state: z.enum(['pending', 'rejected', 'hidden']),
     title: z.string(),

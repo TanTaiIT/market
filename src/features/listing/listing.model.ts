@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { softDeletePlugin } from '../../common/db/softDelete.plugin'
 import {
   CASCADE_HIDE_KIND,
   type CascadeHideKind,
@@ -114,8 +115,8 @@ export interface IListing {
   /**
    * Vết của quyết định TỰ ĐĂNG lúc tin được tạo — chụp lại bậc uy tín tại thời điểm đó.
    *
-   * Không ghi vào `AuditLog`: bảng đó gắn `tenantPlugin` và `recordAudit` bỏ qua khi không có
-   * org (`subjectOrgId: null`), nên toàn bộ tin trục danh mục sẽ không có vết nào.
+   * Không ghi vào `AuditLog`: đây là quyết định lúc TẠO của chính người đăng, không phải thao tác
+   * kiểm duyệt của ai — chuỗi duyệt sau đó nằm ở `moderationHistory`.
    */
   autoApproval?: {
     trustLevel: number
@@ -151,6 +152,22 @@ export interface IListing {
     /** Trạng thái trước khi bị ẩn hàng loạt — đường đảo ngược trả về đúng đó. */
     restoreTo?: ListingStatus
   }
+  /**
+   * Lịch sử duyệt (audit 1.13): mọi lượt đổi trạng thái do người hoặc máy, mới nhất ở cuối, giữ
+   * `MODERATION_HISTORY_MAX` dòng. `moderation` chỉ giữ quyết định CUỐI; tranh chấp "tin tôi bị
+   * gỡ oan" cần cả chuỗi, và trục công khai không có sổ nào khác ghi máy đã làm gì.
+   */
+  moderationHistory?: {
+    status: ListingStatus
+    reason?: string
+    byUserId?: Types.ObjectId
+    byName: string
+    at: Date
+    severity?: RejectionSeverity
+    machine?: boolean
+  }[]
+  /** Khoá chống đăng đôi do client gửi qua `Idempotency-Key` (audit 1.18); unique theo người bán. */
+  idempotencyKey?: string
   expiresAt?: Date
   deletedAt: Date | null
   createdAt: Date
@@ -343,6 +360,25 @@ const listingSchema = new Schema<IListingDocument>(
       default: undefined,
     },
 
+    moderationHistory: {
+      type: [
+        new Schema(
+          {
+            status: { type: String, enum: Object.values(LISTING_STATUS), required: true },
+            reason: { type: String, trim: true, maxlength: 300 },
+            byUserId: { type: Schema.Types.ObjectId, ref: 'User' },
+            byName: { type: String, required: true, trim: true, maxlength: 100 },
+            at: { type: Date, required: true },
+            severity: { type: String, enum: [...REJECTION_SEVERITIES] },
+            machine: { type: Boolean },
+          },
+          { _id: false },
+        ),
+      ],
+      default: undefined,
+    },
+    idempotencyKey: { type: String, trim: true, maxlength: 80 },
+
     // Hạn hiển thị. Job `listing-expiry:sweep` hạ status khi tới hạn — KHÔNG phải TTL index,
     // xem ghi chú ở cụm index bên dưới.
     expiresAt: { type: Date },
@@ -495,22 +531,21 @@ listingSchema.index(
  * Index cho chính job đó: nó quét `{ status, expiresAt }` nên khoá sắp theo đúng thứ tự lọc.
  */
 listingSchema.index({ status: 1, expiresAt: 1 })
+// Chống đăng đôi: cùng người bán, cùng khoá client gửi → một tin. Partial để tin không có khoá
+// (phần lớn) không giữ chỗ `null` trong unique index (audit 1.18).
+listingSchema.index(
+  { seller: 1, idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $type: 'string' } } },
+)
 
 // KHÔNG có text index: scope đọc là `$in [...readableOrgIds]`, mà text index bắt buộc
 // equality trên prefix -> vỡ ngay ở route tìm kiếm chính. Xem listing.repository.buildFilter
 // để biết cách `?q=` đang chạy tạm và đường nâng cấp.
 
-function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
-  if (!this.getOptions().withDeleted) {
-    this.where({ deletedAt: null })
-  }
-  next()
-}
-
-listingSchema.pre(/^find/, excludeDeleted)
+// Soft-delete lọc mặc định + `countDocuments` (KHÔNG khớp /^find/) — một plugin cho mọi model (audit 5.10).
 // `countDocuments` KHÔNG khớp /^find/ — thiếu hook này thì total của pagination
 // đếm cả tin đã soft-delete, lệch hẳn với items trả về.
-listingSchema.pre('countDocuments', excludeDeleted)
+listingSchema.plugin(softDeletePlugin)
 
 export const Listing: Model<IListingDocument> = mongoose.model<IListingDocument>(
   'Listing',

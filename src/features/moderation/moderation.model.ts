@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { TenantScope } from '../../common/tenant/tenantContext'
 import {
   AUDIT_ACTION,
   AuditAction,
@@ -15,7 +16,8 @@ import { tenantPlugin } from '../../common/tenant/tenantPlugin'
  * populate lại đối tượng có thể đã bị xoá.
  */
 export interface IAuditLog {
-  organizationId: Types.ObjectId
+  /** `null` = thao tác trên TRỤC CÔNG KHAI (bàn danh mục / master) — audit 1.13. */
+  organizationId: Types.ObjectId | null
   /** `null` = hệ thống tự làm (vd job hết hạn tin). */
   actorId: Types.ObjectId | null
   actorName: string
@@ -57,7 +59,16 @@ const auditLogSchema = new Schema<IAuditLogDocument>(
 )
 
 // Vết kiểm toán không rời khỏi org sở tại.
-auditLogSchema.plugin(tenantPlugin)
+/*
+ * Dual-axis (audit 1.13): dòng của trục công khai mang `organizationId: null`. Vế đọc công khai chỉ
+ * mở cho scope có `publicAxis.mode === 'moderator'` (master, người phụ trách danh mục) — quản trị
+ * nhóm đọc sổ của nhóm mình như trước, không thấy gì của trục kia.
+ */
+auditLogSchema.plugin(tenantPlugin, {
+  dualAxis: true,
+  publicPredicate: (scope: TenantScope) =>
+    scope.publicAxis?.mode === 'moderator' ? { organizationId: null } : null,
+})
 
 auditLogSchema.index({ organizationId: 1, createdAt: -1 })
 // Log tăng vô hạn nếu không dọn. TTL BẮT BUỘC single-field (convention §3) nên nó không mang

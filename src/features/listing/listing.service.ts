@@ -31,6 +31,7 @@ import {
   bannedPhraseIn,
   medianOf,
   reviewByMachine,
+  screenText,
 } from '../moderation/moderation.machine'
 import type { MachineHold } from '../moderation/moderation.machine'
 import { notificationService } from '../notification/notification.service'
@@ -56,6 +57,7 @@ import {
 } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from '../../common/errors'
 import {
+  REJECTION_SEVERITY,
   ACTION_BY_DECISION,
   LISTING_STATUS,
   MASTER_DISPLAY_NAME,
@@ -622,6 +624,24 @@ const REROUTABLE_STATUSES: readonly string[] = [LISTING_STATUS.PENDING, LISTING_
 
 export const listingService = {
   /**
+   * Bối cảnh người đăng — dựng từ danh tính + membership của request, cộng vị thế uy tín (một
+   * bậc dùng chung cho mọi luồng, xem `trust.model.ts`). Ở service chứ không ở controller (audit
+   * 5.7): đọc `UserTrust` là nghiệp vụ, controller chỉ ghép `req`.
+   */
+  async authorOf(
+    base: Pick<ListingAuthor, 'id' | 'organizationId' | 'isMember' | 'unitId'>,
+  ): Promise<ListingAuthor> {
+    const trust = await trustRepository.standingOf(base.id)
+    return {
+      ...base,
+      trustLevel: trust.level,
+      cleanApprovals: trust.cleanApprovals,
+      // Chỉ mang án CÒN HIỆU LỰC — với mọi luật đăng tin, án hết hạn là không có án.
+      probation: trust.onProbation ? trust.probation : null,
+    }
+  },
+
+  /**
    * Đăng tin. Bốn chốt, theo đúng thứ tự này:
    *
    * 1. **Cổng nội dung** (`moderation.machine.ts`) — đứng TRƯỚC mọi phép tính uy tín:
@@ -632,7 +652,7 @@ export const listingService = {
    * 4. Ghi, với `organizationId`/`visibility`/`provinceCode` do bước 2 quyết định, không phải
    *    do client gửi lên.
    */
-  async create(input: CreateListingInput, author: ListingAuthor) {
+  async create(input: CreateListingInput, author: ListingAuthor, idempotencyKey?: string) {
     // Zod chỉ chốt được `categoryId` đúng dạng 24 hex. Không kiểm tra ở đây thì một id hợp lệ
     // về hình thức nhưng không trỏ tới danh mục nào vẫn tạo ra tin — và tin đó rơi khỏi mọi
     // bộ lọc danh mục mà không ai biết vì sao.
@@ -657,6 +677,13 @@ export const listingService = {
     const sellerId = new Types.ObjectId(author.id)
     const categoryId = new Types.ObjectId(input.categoryId)
 
+    // Cùng khoá đã đăng rồi → trả lại tin đó, không tốn quota lần hai (audit 1.18). Client mạng
+    // chập chờn bấm "Ghim" hai lần là ca thật; khoá là tuỳ chọn nên client cũ không đổi gì.
+    if (idempotencyKey) {
+      const already = await listingRepository.findBySellerAndKey(sellerId, idempotencyKey)
+      if (already) return already
+    }
+
     const recentRejections = await listingRepository.countRecentRejections(
       sellerId,
       rejectionWindowStart(),
@@ -666,8 +693,14 @@ export const listingService = {
     // BLOCK (cụm cấm) chạy cho MỌI tin, 0 query. Tin dính không bị chặn ở HTTP mà thành
     // REJECTED ngay từ cửa: `moderation.at` cho `countRecentRejections` đếm, nên dò luật
     // 3 lần trong 7 ngày là REJECTION_BLOCK tự khoá quyền đăng — 400 suông thì dò vô hạn.
+    // Soi MỌI ô chữ tự do, không chỉ tiêu đề/mô tả (audit 1.17) — xem `screenText`.
     const banned = bannedPhraseIn(
-      input.title + '\n' + input.description,
+      screenText({
+        title: input.title,
+        description: input.description,
+        address: input.location?.address,
+        attributes: input.attributes,
+      }),
       await bannedPhraseService.phrases(),
     )
 
@@ -758,7 +791,7 @@ export const listingService = {
         reason: bannedContentReason(banned),
         byName: 'Hệ thống',
         at: new Date(),
-        severity: 'violation',
+        severity: REJECTION_SEVERITY.VIOLATION,
       }
     }
 
@@ -782,11 +815,23 @@ export const listingService = {
      */
     const scopedOrgId = currentScope()?.ownOrgId?.toString() ?? null
     const crossesTenant = routed.organizationId !== null && routed.organizationId !== scopedOrgId
-    const listing = await (crossesTenant
-      ? runUnscoped('đăng tin vào nhóm đích do body chỉ ra, đã qua resolveTargetOrg', () =>
-          listingRepository.create(doc),
-        )
-      : listingRepository.create(doc))
+    if (idempotencyKey) (doc as { idempotencyKey?: string }).idempotencyKey = idempotencyKey
+    let listing: IListingDocument
+    try {
+      listing = await (crossesTenant
+        ? runUnscoped('đăng tin vào nhóm đích do body chỉ ra, đã qua resolveTargetOrg', () =>
+            listingRepository.create(doc),
+          )
+        : listingRepository.create(doc))
+    } catch (err) {
+      // Hai request cùng khoá về cùng lúc: unique index để một bên thắng, bên thua đọc lại.
+      const raced =
+        idempotencyKey && (err as { code?: number }).code === 11000
+          ? await listingRepository.findBySellerAndKey(sellerId, idempotencyKey)
+          : null
+      if (!raced) throw err
+      return raced
+    }
 
     if (banned) {
       // Cùng lời với người duyệt tay từ chối — người đăng không cần biết ai chặn, chỉ cần vì sao.
@@ -1201,7 +1246,12 @@ export const listingService = {
     // chỉ phần gửi lên: tin cũ lọt lưới từ trước ngày có cổng thì không được sửa vặt cho tới
     // khi dọn sạch phần cấm — gửi kèm bản chữ sạch trong cùng patch là qua.
     const banned = bannedPhraseIn(
-      (input.title ?? existing.title) + '\n' + (input.description ?? existing.description),
+      screenText({
+        title: input.title ?? existing.title,
+        description: input.description ?? existing.description,
+        address: input.location?.address ?? existing.location?.address,
+        attributes: input.attributes ?? existing.attributes,
+      }),
       await bannedPhraseService.phrases(),
     )
     if (banned) throw new BadRequestError(bannedContentReason(banned))
@@ -1210,6 +1260,26 @@ export const listingService = {
 
     const { categoryId, location, attributes, ...rest } = input
     const update: Partial<IListing> = { ...rest }
+
+    /*
+     * Tin bị TỪ CHỐI: sửa là ĐĂNG LẠI (audit 1.20). Từ chối vì sai sót (`quality`) thì bản sửa về
+     * hàng chờ để người duyệt xem lại — trước đây không có đường nào, tin nằm `rejected` mãi dù
+     * đã sửa. Từ chối vì VI PHẠM (hoặc dữ liệu cũ chưa phân mức, xử như vi phạm ở mọi nơi khác)
+     * thì không có cửa sửa-để-lên-lại: đó là án, đường đúng là đăng tin mới và ăn lại quota.
+     */
+    if (existing.status === LISTING_STATUS.REJECTED) {
+      if (existing.moderation?.severity !== REJECTION_SEVERITY.QUALITY) {
+        throw new BadRequestError(
+          'Tin bị từ chối vì vi phạm — không sửa để đăng lại được, hãy đăng tin mới',
+        )
+      }
+      update.status = LISTING_STATUS.PENDING
+      update.machineReview = null
+      update.autoApproval = {
+        trustLevel: await trustRepository.levelOf(userId),
+        reason: 'resubmitted',
+      }
+    }
     if (categoryId) update.category = new Types.ObjectId(categoryId)
     /*
      * Ghi ĐÚNG `location.address`, không gán lại cả `location`.
@@ -1243,6 +1313,7 @@ export const listingService = {
         // Giữ nguyên danh mục → ghim template của chính tin này, để form sửa và server xét
         // cùng một bộ field. Đổi danh mục → template cũ vô nghĩa, lấy bản mới nhất.
         categoryId ? undefined : existing.templateRef?.version,
+        categoryId ? undefined : existing.templateRef?.isFallback,
       )
 
       update.attributes = new Map(Object.entries(validated.attributes))
@@ -1336,9 +1407,13 @@ export const listingService = {
 
     // `.exec()` NGAY trong callback: trả về Query chưa chạy là pre hook của plugin nổ sau khi
     // AsyncLocalStorage đã thoát ngữ cảnh → 'Missing tenant context'. Cùng lối `bump` ở dưới.
-    return runUnscoped('sửa tin: ghi sau khi đã chốt chính chủ', () =>
-      listingRepository.updateById(id, update).exec(),
+    // Ghi CÓ CHỐT trạng thái đã đọc (audit 1.18): người duyệt vừa đổi trạng thái giữa lúc chủ tin
+    // sửa thì bản sửa không được đè lên phán quyết đó — 409, tải lại rồi sửa tiếp.
+    const updated = await runUnscoped('sửa tin: ghi sau khi đã chốt chính chủ', () =>
+      listingRepository.updateByIdIfStatus(id, existing.status, update).exec(),
     )
+    if (!updated) throw new ConflictError('Tin vừa được duyệt hoặc xử lý — tải lại rồi sửa tiếp')
+    return updated
   },
 
   async remove(id: string, userId: string) {
@@ -1482,6 +1557,16 @@ export const listingService = {
         .exec(),
     )
     if (!updated) throw new ConflictError('Tin vừa được người khác xử lý — tải lại rồi xem')
+    await listingRepository.appendModerationHistory(id, {
+      status: next.status,
+      reason: next.reason,
+      byUserId: new Types.ObjectId(next.byUserId),
+      byName: next.byName,
+      at: new Date(),
+      ...(next.status === LISTING_STATUS.REJECTED && next.severity
+        ? { severity: next.severity }
+        : {}),
+    })
     return updated
   },
 

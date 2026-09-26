@@ -174,3 +174,50 @@ describe('Cổng nội dung — FLAG tước fast-path', () => {
     })
   }, 60_000)
 })
+
+describe('Cổng nội dung — mọi ô chữ, và không dấu cũng bắt (audit 1.17)', () => {
+  async function fresh(email: string) {
+    const user = await registerUser(app, email, 'Người bậc hai mới')
+    await addMember(user.id, orgId)
+    await setTrustLevel(user.id, 2)
+    return user
+  }
+  const HCM = { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' }
+
+  it('cụm cấm giấu trong ĐỊA CHỈ vẫn bị chặn từ cửa', async () => {
+    const user = await fresh('diachi@gate.local')
+    const res = await post(user, {
+      title: 'Bàn làm việc gỗ sồi',
+      location: { ...HCM, address: 'Giao tại kho, có bán kèm pháo nổ' },
+    }).expect(201)
+
+    expect(res.body.data.status).toBe('rejected')
+    expect((await readTrace(res.body.data._id))?.moderation?.reason).toContain('pháo nổ')
+  }, 60_000)
+
+  it('viết KHÔNG DẤU để lách → vẫn bắt', async () => {
+    const user = await fresh('khongdau@gate.local')
+    const res = await post(user, {
+      title: 'Thanh ly nhanh trong tuan',
+      description: 'Ban kem MA TUY da cho khach quen, gia tot',
+    }).expect(201)
+
+    expect(res.body.data.status).toBe('rejected')
+    expect((await readTrace(res.body.data._id))?.moderation?.reason).toContain('ma túy')
+  }, 60_000)
+
+  it('sửa tin nhét cụm cấm vào địa chỉ → 400, tin giữ nguyên', async () => {
+    const user = await fresh('sua-diachi@gate.local')
+    const created = await post(user, { title: 'Kệ sách gỗ thông năm tầng' }).expect(201)
+    expect(created.body.data.status).toBe('active')
+
+    const res = await request(app)
+      .patch(`/api/v1/listings/${created.body.data._id}`)
+      .set(orgAuth(user.token, ORG_KEY))
+      // Bản vá chỉ nhận `address` — tỉnh/phường tham gia định tuyến, không sửa qua đây.
+      .send({ location: { address: 'Kho tiền giả quận 1' } })
+    expect(res.status).toBe(400)
+    expect(res.body.message).toContain('tiền giả')
+    expect((await readTrace(created.body.data._id))?.status).toBe('active')
+  }, 60_000)
+})

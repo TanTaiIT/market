@@ -105,6 +105,8 @@ export interface MachineSignals {
   /** Bậc uy tín của người đăng lúc chấm — caller lấy từ `trustRepository.standingOf`. */
   trustLevel: number
   onProbation: boolean
+  /** Địa chỉ + thuộc tính chữ — chỉ cho cổng cụm cấm, KHÔNG đưa vào phép đo gõ bừa. */
+  extraText?: string
 }
 
 export type MachineVerdict =
@@ -112,10 +114,47 @@ export type MachineVerdict =
   | { verdict: 'reject'; reason: string }
   | { verdict: 'hold'; holds: MachineHold[] }
 
-/** Cụm cấm đầu tiên xuất hiện trong đoạn text, hoặc `null` nếu sạch. */
+/**
+ * Chuẩn hoá để SO KHỚP cụm cấm (audit 1.17): bỏ dấu, hạ chữ thường, gộp khoảng trắng. "MA TUY",
+ * "ma  túy" và "ma tuý" phải cùng bắt được — người lách luật bỏ dấu trước tiên.
+ */
+export function normalizeForMatch(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * Mọi ô chữ tự do của một tin, ghép cho cổng cụm cấm (audit 1.17): tiêu đề, mô tả, địa chỉ và
+ * giá trị chữ của thuộc tính — cụm cấm nhét vào "ghi chú thêm" của thuộc tính từng lọt.
+ */
+export function screenText(parts: {
+  title: string
+  description: string
+  address?: string | null
+  attributes?: Record<string, unknown> | Map<string, unknown> | null
+}): string {
+  const values =
+    parts.attributes instanceof Map
+      ? [...parts.attributes.values()]
+      : Object.values(parts.attributes ?? {})
+  return [
+    parts.title,
+    parts.description,
+    parts.address ?? '',
+    ...values.filter((v): v is string => typeof v === 'string'),
+  ].join('\n')
+}
+
+/** Cụm cấm đầu tiên xuất hiện trong đoạn text (so sau khi chuẩn hoá cả hai bên), hoặc `null`. */
 export function bannedPhraseIn(text: string, phrases: readonly string[]): string | null {
-  const haystack = text.toLowerCase()
-  return phrases.find((phrase) => haystack.includes(phrase)) ?? null
+  const haystack = normalizeForMatch(text)
+  return phrases.find((phrase) => haystack.includes(normalizeForMatch(phrase))) ?? null
 }
 
 /** Một câu chữ duy nhất cho lượt từ chối vì hàng cấm — cổng lúc đăng và máy quét nói y nhau. */
@@ -125,7 +164,10 @@ export function bannedContentReason(phrase: string): string {
 
 export function reviewByMachine(signals: MachineSignals): MachineVerdict {
   // Từ chối xét trước và độc quyền: tin chứa hàng cấm thì các nghi ngờ khác không còn nghĩa.
-  const banned = bannedPhraseIn(`${signals.title}\n${signals.description}`, signals.bannedPhrases)
+  const banned = bannedPhraseIn(
+    `${signals.title}\n${signals.description}\n${signals.extraText ?? ''}`,
+    signals.bannedPhrases,
+  )
   if (banned) {
     return { verdict: 'reject', reason: bannedContentReason(banned) }
   }
