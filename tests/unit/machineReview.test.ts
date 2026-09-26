@@ -17,6 +17,8 @@ const clean: MachineSignals = {
   hasRecentRejection: false,
   hasDuplicateTitle: false,
   categoryRequiresReview: false,
+  trustLevel: 2,
+  onProbation: false,
 }
 
 const judge = (patch: Partial<MachineSignals> = {}) => reviewByMachine({ ...clean, ...patch })
@@ -94,5 +96,26 @@ describe('Người duyệt máy — dụng cụ', () => {
   it('medianOf cần đủ mẫu tối thiểu, thiếu thì trả null', () => {
     expect(medianOf([1, 2, 3, 4])).toBeNull()
     expect(medianOf([500, 100, 300, 200, 400])).toBe(300)
+  })
+})
+
+describe('Người duyệt máy — nhìn bậc uy tín (audit 1.3) và án quản chế (1.12)', () => {
+  it('bậc 0 thì giữ cho người thật: người đã vi phạm không được máy duyệt hộ', () => {
+    expect(judge({ trustLevel: 0 })).toEqual({ verdict: 'hold', holds: ['trust_too_low'] })
+  })
+
+  it('từ bậc MIN_TRUST_LEVEL máy duyệt được — đường leo lại không phải chờ người duyệt rảnh', () => {
+    expect(judge({ trustLevel: MACHINE_REVIEW.MIN_TRUST_LEVEL })).toEqual({ verdict: 'approve' })
+  })
+
+  it('đang bị quản chế thì máy không duyệt, bất kể bậc', () => {
+    expect(judge({ trustLevel: 2, onProbation: true })).toEqual({
+      verdict: 'hold',
+      holds: ['probation'],
+    })
+  })
+
+  it('cụm cấm vẫn thắng: bậc 0 mà dính hàng cấm là từ chối, không phải giữ', () => {
+    expect(judge({ trustLevel: 0, title: 'Bán tiền giả' }).verdict).toBe('reject')
   })
 })

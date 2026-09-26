@@ -1,6 +1,7 @@
 import { Types } from 'mongoose'
 import { userRepository } from './user.repository'
-import type { RestoreTrustInput } from './user.schema'
+import type { RestoreTrustInput, SetProbationInput } from './user.schema'
+import type { IUserDocument } from './user.model'
 import {
   AdminUserQuery,
   ClearRejectionsInput,
@@ -22,7 +23,7 @@ import { QUOTA } from '../listing/listing.quota'
 import { notificationService } from '../notification/notification.service'
 import { REPORT_TIMEZONE, SCOPE_TYPES, SYSTEM_ROLES, VnProvinceName } from '../../common/constants'
 import { BUCKET_FORMAT, bucketsBetween, resolveRange } from '../../common/report/timeBuckets'
-import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { logger } from '../../config/logger'
 import { disconnectUser } from '../../sockets/emit'
@@ -34,6 +35,14 @@ import { disconnectUser } from '../../sockets/emit'
  * mới là ranh giới chống rò rỉ, không phải bộ lọc org. Dữ liệu riêng của org (vai trò, nhóm con)
  * nằm ở `memberships`, không lộ qua đây.
  */
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** DTO bàn quản trị với đủ vị thế uy tín — một lượt đọc `UserTrust` cho cả bậc lẫn án quản chế. */
+async function adminDto(user: IUserDocument) {
+  const standing = await trustRepository.standingOf(user._id)
+  return toAdminUserDto(user, standing.level, standing.onProbation ? standing.probation : null)
+}
+
 export const userService = {
   async getById(id: string) {
     const user = await userRepository.findById(id)
@@ -114,10 +123,18 @@ export const userService = {
       pagination,
     )
 
-    const trustLevels = await trustRepository.levelsOf(items.map((u) => u._id))
+    const ids = items.map((u) => u._id)
+    const [trustLevels, probations] = await Promise.all([
+      trustRepository.levelsOf(ids),
+      trustRepository.probationsOf(ids),
+    ])
     return {
       items: items.map((u) =>
-        toAdminUserDto(u, trustLevels.get(u._id.toString()) ?? INITIAL_TRUST.level),
+        toAdminUserDto(
+          u,
+          trustLevels.get(u._id.toString()) ?? INITIAL_TRUST.level,
+          probations.get(u._id.toString()) ?? null,
+        ),
       ),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
@@ -188,7 +205,7 @@ export const userService = {
     })
 
     const updated = await this.getById(id)
-    return toAdminUserDto(updated, await trustRepository.levelOf(id))
+    return adminDto(updated)
   },
 
   /**
@@ -261,7 +278,59 @@ export const userService = {
       body: `${input.reason} — tin của bạn lại lên bảng ngay như trước.`,
     })
 
-    return toAdminUserDto(target, restored.level)
+    return adminDto(target)
+  },
+
+  /**
+   * QUẢN CHẾ — quyền MASTER (quyết định 1.12). Nhẹ hơn thu hồi quyền quản trị: người này vẫn duyệt
+   * tin của người khác, chỉ tin CỦA HỌ là phải qua mắt người khác và không tự đăng. Dùng khi một
+   * quản trị nhóm tự duyệt tin của mình sai quy định — thu quyền cả nhóm vì một người là quá tay.
+   */
+  async setProbation(id: string, input: SetProbationInput, actorId: string) {
+    const target = await userRepository.findById(id)
+    if (!target) throw new NotFoundError('User not found')
+    // Master là danh tính hệ thống — không có bàn nào đứng trên để quản chế nó.
+    if (await roleGrantRepository.isMasterUser(target._id)) {
+      throw new ForbiddenError('Không quản chế được tài khoản master')
+    }
+
+    const until = input.days ? new Date(Date.now() + input.days * DAY_MS) : null
+    await trustRepository.setProbation(target._id, {
+      reason: input.reason,
+      byUserId: new Types.ObjectId(actorId),
+      at: new Date(),
+      until,
+    })
+    logger.info('probation set by master', { actorId, userId: id, reason: input.reason, until })
+
+    await notificationService.notifyUser({
+      organizationId: null,
+      userId: target._id,
+      title: 'Tài khoản của bạn đang bị quản chế',
+      body: until
+        ? `${input.reason} — đến ${until.toISOString().slice(0, 10)}, tin của bạn sẽ do người khác duyệt.`
+        : `${input.reason} — cho tới khi được gỡ, tin của bạn sẽ do người khác duyệt.`,
+    })
+
+    return adminDto(target)
+  },
+
+  async liftProbation(id: string, actorId: string) {
+    const target = await userRepository.findById(id)
+    if (!target) throw new NotFoundError('User not found')
+
+    const lifted = await trustRepository.liftProbation(target._id)
+    if (!lifted) throw new ConflictError('Tài khoản không trong diện quản chế')
+    logger.info('probation lifted by master', { actorId, userId: id })
+
+    await notificationService.notifyUser({
+      organizationId: null,
+      userId: target._id,
+      title: 'Bạn đã được gỡ quản chế',
+      body: 'Tin của bạn lại lên bảng theo bậc uy tín như trước.',
+    })
+
+    return adminDto(target)
   },
 
   /**

@@ -19,6 +19,12 @@ export const membershipController = {
     success(res, { message: 'Members', data: items, meta })
   }),
 
+  // POST /memberships/leave
+  leave: catchAsync(async (req, res) => {
+    await membershipService.leave(req.user!.id)
+    success(res, { message: 'Đã rời nhóm', data: null })
+  }),
+
   // DELETE /memberships/:userId
   remove: catchAsync(async (req, res) => {
     await membershipService.remove(req.params.userId, {

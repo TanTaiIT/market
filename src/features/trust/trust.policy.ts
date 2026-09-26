@@ -84,3 +84,15 @@ export function nextTrust(current: TrustState, approved: boolean): TrustState {
     cleanApprovals,
   }
 }
+
+/**
+ * Án quản chế còn hiệu lực không — hàm thuần, hết hạn là hết, không cần job dọn.
+ * `until: null` là vô thời hạn: master gỡ tay bằng `DELETE /users/:id/probation`.
+ */
+export function probationActive(
+  probation: { until: Date | null } | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (!probation) return false
+  return probation.until === null || probation.until.getTime() > now.getTime()
+}

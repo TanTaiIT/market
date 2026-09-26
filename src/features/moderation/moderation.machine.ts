@@ -7,11 +7,17 @@
  * - `reject`  — DUY NHẤT khi dính cụm từ cấm, vì đó là phép kiểm ít oan sai nhất;
  * - `hold`    — mọi nghi ngờ còn lại: để nguyên trong hàng đợi cho người thật, kèm lý do.
  *
- * Máy duyệt KHÔNG cộng uy tín (quyết định thiết kế): `cleanApprovals` phải nghĩa là "người
- * thật đã nhìn". Nếu máy cũng cộng, farm bậc 2 chỉ cần đăng tin nhạt vào khung giờ vắng người
- * duyệt — rồi dùng bậc đó tự đăng tin bẩn. Đối xứng lại, máy từ chối cũng KHÔNG trừ bậc: oan
- * sai của máy không được phép phá bậc người ta cày bằng tin thật. Cái giá của lượt từ chối máy
- * nằm ở `countRecentRejections` — nó tự khoá cửa tự-đăng và bóp quota 7 ngày, đủ đau.
+ * Máy NHÌN bậc uy tín (đổi 2026-09-26, audit 1.3): dưới `MIN_TRUST_LEVEL` là giữ cho người thật,
+ * vì bậc thấp nghĩa là "đã vi phạm" (mặc định là trần, xem `INITIAL_TRUST`) — để máy duyệt hộ thì
+ * hình phạt chỉ còn là vài phút chờ. Từ bậc 1 máy duyệt được, và lượt duyệt đó CÓ cộng
+ * `cleanApprovals`: người tụt một bậc leo lại được bằng tin sạch mà không phải chờ người duyệt
+ * rảnh. Cái giá đã cân: farm bậc bằng tin nhạt vẫn đội trần tin đang sống (`TRUST_LIVE_LIMITS`),
+ * vẫn qua mọi phép kiểm của máy, và một lần vi phạm là mất bậc. Bậc 0 thì KHÔNG có đường máy —
+ * năm tin đầu leo lại phải là người thật nhìn.
+ *
+ * Máy từ chối vẫn KHÔNG trừ bậc: oan sai của máy không được phép phá bậc người ta cày bằng tin
+ * thật. Cái giá của lượt từ chối máy nằm ở `countRecentRejections` — nó tự khoá cửa tự-đăng và
+ * bóp quota 7 ngày, đủ đau.
  */
 
 import { looksMashed } from './gibberish'
@@ -29,6 +35,8 @@ export const MACHINE_REVIEW = {
   PRICE_OUTLIER_RATIO: 10,
   /** Cửa sổ soi tin trùng của cùng người bán. */
   DUPLICATE_WINDOW_DAYS: 7,
+  /** Dưới bậc này máy không duyệt hộ — xem đầu file. */
+  MIN_TRUST_LEVEL: 1,
 } as const
 
 /**
@@ -72,6 +80,10 @@ export const MACHINE_HOLDS = [
   'duplicate_title',
   'recent_rejection',
   'category_manual_review',
+  /** Bậc dưới `MIN_TRUST_LEVEL` — người đã vi phạm phải qua người thật. */
+  'trust_too_low',
+  /** Án quản chế của master (`UserTrust.probation`). */
+  'probation',
 ] as const
 export type MachineHold = (typeof MACHINE_HOLDS)[number]
 
@@ -90,6 +102,9 @@ export interface MachineSignals {
   hasRecentRejection: boolean
   hasDuplicateTitle: boolean
   categoryRequiresReview: boolean
+  /** Bậc uy tín của người đăng lúc chấm — caller lấy từ `trustRepository.standingOf`. */
+  trustLevel: number
+  onProbation: boolean
 }
 
 export type MachineVerdict =
@@ -124,6 +139,8 @@ ${signals.description}`)
   )
     holds.push('gibberish')
   if (signals.categoryRequiresReview) holds.push('category_manual_review')
+  if (signals.onProbation) holds.push('probation')
+  if (signals.trustLevel < MACHINE_REVIEW.MIN_TRUST_LEVEL) holds.push('trust_too_low')
   if (signals.hasRecentRejection) holds.push('recent_rejection')
   if (signals.hasDuplicateTitle) holds.push('duplicate_title')
   if (signals.price > MACHINE_REVIEW.MAX_AUTO_PRICE) holds.push('price_over_cap')

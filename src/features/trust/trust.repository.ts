@@ -1,6 +1,6 @@
 import { Types } from 'mongoose'
-import { UserTrust } from './trust.model'
-import { TrustState, INITIAL_TRUST, nextTrust } from './trust.policy'
+import { TrustProbation, UserTrust } from './trust.model'
+import { TrustState, INITIAL_TRUST, nextTrust, probationActive } from './trust.policy'
 import { logger } from '../../config/logger'
 
 type Id = string | Types.ObjectId
@@ -20,6 +20,12 @@ const DUPLICATE_KEY = 11000
 async function readState(userId: Id): Promise<TrustState | null> {
   const doc = await UserTrust.findOne({ userId }).select('level cleanApprovals').lean().exec()
   return doc ? { level: doc.level, cleanApprovals: doc.cleanApprovals } : null
+}
+
+/** Vị thế đầy đủ: bậc + chuỗi sạch + án quản chế. `onProbation` là án CÒN HIỆU LỰC. */
+export interface TrustStanding extends TrustState {
+  probation: TrustProbation | null
+  onProbation: boolean
 }
 
 const same = (a: TrustState, b: TrustState) =>
@@ -105,6 +111,65 @@ export const trustRepository = {
     // mà quản trị vừa bấm. Nhưng phải để lại vết — im lặng ở đây là mất dữ liệu không ai biết.
     logger.warn('trust update dropped after CAS retries', { userId: String(userId), approved })
     return (await readState(userId)) ?? INITIAL_TRUST
+  },
+
+  /**
+   * Vị thế đầy đủ cho đường ĐĂNG TIN và máy duyệt — một lượt đọc cho cả bậc lẫn án quản chế, vì
+   * hai thứ đó cùng quyết một câu "tin này có tự lên không".
+   */
+  async standingOf(userId: Id): Promise<TrustStanding> {
+    const doc = await UserTrust.findOne({ userId })
+      .select('level cleanApprovals probation')
+      .lean()
+      .exec()
+    if (!doc) return { ...INITIAL_TRUST, probation: null, onProbation: false }
+    const probation = doc.probation ?? null
+    return {
+      level: doc.level,
+      cleanApprovals: doc.cleanApprovals,
+      probation,
+      onProbation: probationActive(probation),
+    }
+  },
+
+  async isOnProbation(userId: Id): Promise<boolean> {
+    const doc = await UserTrust.findOne({ userId }).select('probation').lean().exec()
+    return probationActive(doc?.probation)
+  },
+
+  /** Án CÒN HIỆU LỰC của nhiều người một lượt — cho bảng người dùng của master, tránh N+1. */
+  async probationsOf(userIds: Types.ObjectId[]): Promise<Map<string, TrustProbation>> {
+    if (userIds.length === 0) return new Map()
+    const rows = await UserTrust.find({ userId: { $in: userIds }, probation: { $ne: null } })
+      .select('userId probation')
+      .lean()
+      .exec()
+    return new Map(
+      rows
+        .filter((row) => probationActive(row.probation))
+        .map((row) => [row.userId.toString(), row.probation!]),
+    )
+  },
+
+  /**
+   * Đặt án — quyết định của MASTER, ghi đè thẳng như `restore`. Upsert vì người ở trần chưa có
+   * bản ghi; `$setOnInsert` giữ họ ở đúng trần đó thay vì rơi về default 0 của schema.
+   */
+  async setProbation(userId: Id, probation: TrustProbation): Promise<void> {
+    await UserTrust.updateOne(
+      { userId },
+      { $set: { probation }, $setOnInsert: { ...INITIAL_TRUST } },
+      { upsert: true },
+    ).exec()
+  },
+
+  /** `false` = không có án nào để gỡ — caller phân biệt được với "gỡ xong". */
+  async liftProbation(userId: Id): Promise<boolean> {
+    const res = await UserTrust.updateOne(
+      { userId, probation: { $ne: null } },
+      { $set: { probation: null } },
+    ).exec()
+    return res.modifiedCount > 0
   },
 
   /**

@@ -290,6 +290,20 @@ export const PUBLIC_LISTING_STATUSES: ListingStatus[] = [
 ]
 
 /**
+ * Tin ĐANG SỐNG của một người: đang hiện hoặc đang chờ lên. Đây là tập mà trần theo bậc uy tín
+ * đếm, mà khoá tài khoản / rời nhóm phải ẩn, và mà báo cáo còn nghĩa để xử — ba chỗ từng tự
+ * liệt kê ba mảng giống nhau.
+ */
+export const LIVE_LISTING_STATUSES: ListingStatus[] = [
+  LISTING_STATUS.ACTIVE,
+  LISTING_STATUS.PENDING,
+  LISTING_STATUS.PENDING_UNVERIFIED,
+]
+
+/** Hai bậc TRONG NHÓM — nội dung nhóm đứng tên, khác tin sàn chỉ mang badge nhóm. */
+export const IN_ORG_REACHES: ListingReach[] = [LISTING_REACH.MEMBERS, LISTING_REACH.GROUP_OPEN]
+
+/**
  * Bậc phủ sóng mà NGƯỜI LẠ đọc được. Đặt ngay cạnh `PUBLIC_LISTING_STATUSES` là có chủ ý: hai
  * mảng này cùng nhau là câu trả lời ĐẦY ĐỦ cho "một người không quan hệ gì với nhóm thấy được
  * gì", và tách chúng ra hai đầu file là cách để sửa một cái mà quên cái kia.
@@ -446,6 +460,17 @@ export const MODERATION_TRANSITIONS: Record<ModerationDecision, readonly Listing
  */
 export const REPORT_AUTO_RESOLUTION = {
   TARGET_REMOVED: 'target_removed',
+} as const
+
+/**
+ * Lý do ẩn tin do HỆ THỐNG cascade — chuỗi cố định, vì đường phục hồi
+ * (`restoreHiddenInOrgByReason`) nhận ra lô tin mình đã ẩn bằng đúng chuỗi này. Người đăng đọc
+ * được nó qua `review` của tin, nên viết bằng ngôn ngữ của họ.
+ */
+export const CASCADE_HIDE_REASON = {
+  ORG_SUSPENDED: 'Nhóm đang bị tạm ngưng',
+  LEFT_ORG: 'Bạn đã rời nhóm',
+  REMOVED_FROM_ORG: 'Bạn đã bị gỡ khỏi nhóm',
 } as const
 
 // Vết kiểm toán của thao tác quản trị. Tên dạng `<đối tượng>.<hành động>` để grep ra nhóm.

@@ -5,6 +5,7 @@ import {
   autoApprovalReason,
   checkQuota,
   isAutoApprove,
+  liveLimitFor,
   pendingLimitFor,
   touchesReviewedContent,
 } from '../../src/features/listing/listing.quota'
@@ -14,6 +15,7 @@ const base: QuotaInput = {
   isOutsider: false,
   recentRejections: 0,
   pendingCount: 0,
+  liveCount: 0,
 }
 
 const check = (patch: Partial<QuotaInput> = {}) => checkQuota({ ...base, ...patch })
@@ -161,5 +163,55 @@ describe('Sửa gì thì phải duyệt lại', () => {
 
   it('thêm hay bớt ảnh là sửa', () => {
     expect(touchesReviewedContent(live, { images: [live.images[0]] })).toBe(true)
+  })
+})
+
+describe('Trần tin đang sống theo bậc uy tín (audit 1.3)', () => {
+  it('bậc 0/1/2 lần lượt 10/30/100, vượt bảng lấy bậc cuối', () => {
+    expect(liveLimitFor(0)).toBe(10)
+    expect(liveLimitFor(1)).toBe(30)
+    expect(liveLimitFor(2)).toBe(100)
+    expect(liveLimitFor(9)).toBe(100)
+  })
+
+  it('đầy trần thì chặn với `live_full` dù còn slot chờ, và trả cả hai con số', () => {
+    const res = check({ trustLevel: 2, liveCount: 100 })
+    expect(res.allowed).toBe(false)
+    expect(res.reason).toBe('live_full')
+    expect(res.live).toEqual({ count: 100, limit: 100 })
+  })
+
+  it('án từ chối đứng trước trần: đủ 3 lần bị từ chối thì lý do là bị khoá, không phải đầy', () => {
+    expect(check({ recentRejections: QUOTA.REJECTION_BLOCK, liveCount: 999 }).reason).toBe(
+      'blocked_by_rejections',
+    )
+  })
+
+  it('dưới trần thì quota chờ quyết như cũ, và `live` luôn có mặt', () => {
+    const res = check({ trustLevel: 2, liveCount: 99 })
+    expect(res.allowed).toBe(true)
+    expect(res.live).toEqual({ count: 99, limit: 100 })
+  })
+})
+
+describe('Quản chế (audit 1.12)', () => {
+  it('có án thì không tự đăng dù ở bậc trần và sạch tiểu sử', () => {
+    expect(isAutoApprove(2, 0)).toBe(true)
+    expect(isAutoApprove(2, 0, true)).toBe(false)
+  })
+
+  it('lý do ghi lại là `probation`, đứng sau người-ngoài và trước mọi lý do uy tín', () => {
+    const held = {
+      autoApproved: false,
+      trustLevel: 2,
+      recentRejections: 1,
+      categoryRequiresReview: true,
+      isOutsider: false,
+    }
+    expect(autoApprovalReason({ ...held, onProbation: true })).toBe('probation')
+    expect(autoApprovalReason({ ...held, onProbation: true, isOutsider: true })).toBe(
+      'outsider_post',
+    )
+    expect(autoApprovalReason({ ...held, onProbation: false })).toBe('recent_rejection')
   })
 })

@@ -129,6 +129,8 @@ export const postingStandingSchema = z
         until: z.string().datetime(),
       })
       .nullable(),
+    /** Án quản chế của master — `null` khi không có. Có án thì `canSelfPublish` luôn `false`. */
+    probation: z.object({ reason: z.string(), until: z.string().datetime().nullable() }).nullable(),
   })
   .openapi('PostingStanding')
 
@@ -155,7 +157,10 @@ export const quotaStatusSchema = z
     limit: z.number(),
     pending: z.number(),
     remaining: z.number(),
-    reason: z.enum(['blocked_by_rejections', 'quota_full']).optional(),
+    live: z.object({ count: z.number(), limit: z.number() }).openapi({
+      description: 'Tin đang hiện + chờ duyệt trên mọi trục, so với trần theo bậc uy tín',
+    }),
+    reason: z.enum(['blocked_by_rejections', 'quota_full', 'live_full']).optional(),
     fee: postingFeeSchema,
     standing: postingStandingSchema,
     needsReconcile: z.array(staleListingSchema).openapi({

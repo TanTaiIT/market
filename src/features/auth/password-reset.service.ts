@@ -2,6 +2,7 @@ import { CODE_PURPOSE } from './email-verification.model'
 import { sendPasswordResetCode } from './email.sender'
 import { consumeCode, dropCode, issueCode, issueTicket } from './verification-code.service'
 import { userRepository } from '../user/user.repository'
+import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { BadRequestError } from '../../common/errors'
 import { logger } from '../../config/logger'
 
@@ -41,6 +42,18 @@ export const passwordResetService = {
     const user = await userRepository.findByEmail(email)
     if (!user || !user.isActive) {
       logger.info('password reset requested for unusable account', { email })
+      return
+    }
+
+    /*
+     * Master KHÔNG đi cửa công khai (quyết định 3.9): tài khoản này với tay tới mọi org, nên một
+     * hộp thư bị chiếm không được phép biến thành quyền master. Im lặng y hệt địa chỉ lạ — nói
+     * "đây là master" cũng là câu trả lời cho máy dò. Đổi mật khẩu master đi qua
+     * `npm run reset-master-password` với `MASTER_PASSWORD` mới, tức là cần quyền vào nơi deploy,
+     * đúng mức nghiêm trọng của việc đó.
+     */
+    if (await roleGrantRepository.isMasterUser(user._id)) {
+      logger.warn('password reset refused for master account', { userId: user._id.toString() })
       return
     }
 

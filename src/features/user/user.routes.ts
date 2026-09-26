@@ -6,6 +6,7 @@ import {
   adminUserSchema,
   clearRejectionsSchema,
   restoreTrustSchema,
+  setProbationSchema,
   setUserStatusSchema,
   updateProfileSchema,
   userParamsSchema,
@@ -88,6 +89,20 @@ router.post(
   requireMaster,
   validate({ params: userParamsSchema, body: restoreTrustSchema }),
   userController.restoreTrust,
+)
+router.post(
+  '/:id/probation',
+  authenticate,
+  requireMaster,
+  validate({ params: userParamsSchema, body: setProbationSchema }),
+  userController.setProbation,
+)
+router.delete(
+  '/:id/probation',
+  authenticate,
+  requireMaster,
+  validate({ params: userParamsSchema }),
+  userController.liftProbation,
 )
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
@@ -239,6 +254,46 @@ registry.registerPath({
     403: errorResponse('Cần quyền master'),
     404: errorResponse('Không tìm thấy người dùng'),
     409: errorResponse('Uy tín đang ở bậc trần'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/users/{id}/probation',
+  operationId: 'userSetProbation',
+  tags: ['User'],
+  summary: 'Đặt quản chế (master)',
+  description:
+    'Quản trị nhóm vẫn tự duyệt được tin của mình; đặt quản chế thì tin CỦA người này phải do ' +
+    'người khác duyệt, không tự đăng, máy không duyệt. Bậc uy tín và quyền duyệt tin người khác ' +
+    'giữ nguyên. Bỏ trống `days` = vô thời hạn, gỡ bằng `DELETE`.',
+  ...protectedRoute,
+  request: {
+    params: userParamsSchema,
+    body: { content: { 'application/json': { schema: setProbationSchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã đặt quản chế', envelope(adminUserSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền master, hoặc mục tiêu là master'),
+    404: errorResponse('Không tìm thấy người dùng'),
+  },
+})
+
+registry.registerPath({
+  method: 'delete',
+  path: '/users/{id}/probation',
+  operationId: 'userLiftProbation',
+  tags: ['User'],
+  summary: 'Gỡ quản chế (master)',
+  ...protectedRoute,
+  request: { params: userParamsSchema },
+  responses: {
+    200: jsonResponse('Đã gỡ quản chế', envelope(adminUserSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền master'),
+    404: errorResponse('Không tìm thấy người dùng'),
+    409: errorResponse('Tài khoản không trong diện quản chế'),
   },
 })
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { TrustProbation } from '../trust/trust.model'
 import { IUserDocument } from './user.model'
 import { meProfileSchema, publicProfileSchema } from './user.schema'
 
@@ -29,7 +30,12 @@ export function toPublicProfileDto(user: IUserDocument): PublicProfileDto {
  * hiện tại" chỉ có MỘT hình dạng dù đến từ lúc đăng nhập hay lúc mở lại app.
  */
 /** Dòng bảng người dùng của master — xem `adminUserSchema` về việc vì sao có email. */
-export function toAdminUserDto(user: IUserDocument, trustLevel: number) {
+export function toAdminUserDto(
+  user: IUserDocument,
+  trustLevel: number,
+  /** Án CÒN HIỆU LỰC; caller đã lọc, ở đây không xét `until`. */
+  probation: TrustProbation | null = null,
+) {
   return {
     id: user._id.toString(),
     name: user.name,
@@ -38,6 +44,13 @@ export function toAdminUserDto(user: IUserDocument, trustLevel: number) {
     isActive: user.isActive,
     isEmailVerified: Boolean(user.emailVerifiedAt),
     trustLevel,
+    probation: probation
+      ? {
+          reason: probation.reason,
+          at: probation.at.toISOString(),
+          until: probation.until ? probation.until.toISOString() : null,
+        }
+      : null,
     lastLoginAt: user.lastLoginAt ? user.lastLoginAt.toISOString() : null,
     createdAt: user.createdAt.toISOString(),
   }

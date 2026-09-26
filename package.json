@@ -43,6 +43,8 @@
     "migrate:trust-default": "cross-env NODE_ENV=development tsx scripts/migrate-trust-default.ts",
     "reset:keep-master": "cross-env NODE_ENV=development tsx scripts/reset-keep-master.ts",
     "migrate:master": "cross-env NODE_ENV=development tsx scripts/migrate-master.ts",
+    "reset-master-password": "cross-env NODE_ENV=development tsx scripts/reset-master-password.ts",
+    "reset-master-password:prod": "cross-env NODE_ENV=production tsx scripts/reset-master-password.ts",
     "migrate:ward-axis": "cross-env NODE_ENV=development tsx scripts/migrate-ward-axis.ts",
     "migrate:listing-expiry": "cross-env NODE_ENV=development tsx scripts/migrate-listing-expiry.ts",
     "migrate:listing-expiry:prod": "cross-env NODE_ENV=production tsx scripts/migrate-listing-expiry.ts",

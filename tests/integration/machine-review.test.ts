@@ -17,6 +17,7 @@ import {
   startTestDb,
 } from '../helpers/fixtures'
 import { machineReviewService } from '../../src/features/moderation/moderation.machine.service'
+import { CLEAN_APPROVALS_PER_LEVEL } from '../../src/features/trust/trust.policy'
 
 let app: Application
 let mongod: MongoMemoryReplSet
@@ -35,9 +36,10 @@ beforeAll(async () => {
   master = await makeMaster(app)
   await seedBannedPhrases(master.id)
   seller = await registerUser(app, 'seller@machine.local', 'Người bán')
-  // Mặc định giờ là BẬC TRẦN (`INITIAL_TRUST`) — tài khoản mới tự đăng thẳng lên bảng. Hạ bậc
-  // người bán để tin rơi vào hàng đợi, đúng tình huống các ca dưới đây mô tả.
-  await setTrustLevel(seller.id, 0)
+  // Mặc định giờ là BẬC TRẦN (`INITIAL_TRUST`) — tài khoản mới tự đăng thẳng lên bảng. Hạ xuống
+  // bậc 1 để tin rơi vào hàng đợi mà máy vẫn được duyệt; bậc 0 là máy giữ cho người thật (ca riêng
+  // ở describe cuối).
+  await setTrustLevel(seller.id, 1)
 
   // `ownerEmail` đã kèm membership cho seller — không addMember thêm kẻo trùng key.
   const org = await createOrg(app, master.token, {
@@ -82,8 +84,24 @@ async function trustOf(userId: string) {
   return trustRepository.levelOf(userId)
 }
 
+async function cleanApprovalsOf(userId: string) {
+  const { trustRepository } = await import('../../src/features/trust/trust.repository')
+  return (await trustRepository.stateOf(userId)).cleanApprovals
+}
+
+function payload(title: string) {
+  return {
+    title,
+    description: 'Mô tả đủ dài cho zod schema đi qua',
+    price: 150000,
+    categoryId,
+    images: ['https://res.cloudinary.com/demo/image/upload/v1/sample.jpg'],
+    location: { province: 'Hồ Chí Minh', ward: 'Phường Bến Thành' },
+  }
+}
+
 describe('Người duyệt máy — vòng đời qua job', () => {
-  it('tin sạch được máy đưa lên bảng, có báo cho người đăng, KHÔNG cộng uy tín', async () => {
+  it('tin sạch được máy đưa lên bảng, có báo cho người đăng, và CỘNG một bài sạch', async () => {
     const id = await post({ title: 'Đèn học chống cận có kẹp bàn' })
     expect((await readListing(id))?.status).toBe('pending')
 
@@ -102,8 +120,10 @@ describe('Người duyệt máy — vòng đời qua job', () => {
       inbox.body.data.some((n: { title: string }) => n.title === 'Tin của bạn đã được duyệt'),
     ).toBe(true)
 
-    // Điều kiện thiết kế: máy duyệt không phải "người thật đã nhìn" — bậc uy tín đứng im.
-    expect(await trustOf(seller.id)).toBe(0)
+    // Đổi 2026-09-26 (audit 1.3): duyệt sạch bằng máy CÓ tính. Bậc chưa lên (cần 5 bài), nhưng
+    // chuỗi sạch nhích một — `setTrustLevel(1)` đặt chuỗi = 5, nên giờ là 6.
+    expect(await trustOf(seller.id)).toBe(1)
+    expect(await cleanApprovalsOf(seller.id)).toBe(CLEAN_APPROVALS_PER_LEVEL + 1)
   }, 60_000)
 
   it('tin chứa cụm cấm bị máy từ chối kèm lý do, và cũng KHÔNG trừ bậc uy tín', async () => {
@@ -127,7 +147,7 @@ describe('Người duyệt máy — vòng đời qua job', () => {
     // `moderation.at` phải có — `countRecentRejections` đếm bằng field này, chính nó là hình
     // phạt thật của lượt từ chối máy (khoá tự-đăng + bóp quota), thay cho việc trừ bậc.
     expect(doc?.moderation?.at).toBeTruthy()
-    expect(await trustOf(seller.id)).toBe(0)
+    expect(await trustOf(seller.id)).toBe(1)
 
     const inbox = await request(app)
       .get('/api/v1/notifications')
@@ -197,6 +217,51 @@ describe('Người duyệt máy — vòng đời qua job', () => {
     await machineReviewService.sweep()
 
     expect((await readListing(id))?.status).toBe('pending_unverified')
+  }, 60_000)
+})
+
+describe('Người duyệt máy — nhìn bậc uy tín và án quản chế', () => {
+  it('bậc 0 thì máy GIỮ lại kèm `trust_too_low` — người đã vi phạm phải qua người thật', async () => {
+    const low = await registerUser(app, 'low@machine.local', 'Người bậc 0')
+    await setTrustLevel(low.id, 0)
+    await addMember(low.id, orgId)
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(orgAuth(low.token, ORG_KEY))
+      .send(payload('Tin của người bậc 0'))
+      .expect(201)
+    expect(res.body.data.status).toBe('pending')
+
+    await machineReviewService.sweep()
+
+    const doc = await readListing(res.body.data._id)
+    expect(doc?.status).toBe('pending')
+    expect(doc?.machineReview?.holds).toContain('trust_too_low')
+    expect(await trustOf(low.id)).toBe(0)
+  }, 60_000)
+
+  it('đang bị quản chế thì máy giữ kèm `probation`, dù ở bậc trần', async () => {
+    const watched = await registerUser(app, 'watched@machine.local', 'Người bị quản chế')
+    await addMember(watched.id, orgId)
+    const { trustRepository } = await import('../../src/features/trust/trust.repository')
+    await trustRepository.setProbation(watched.id, {
+      reason: 'test',
+      byUserId: new mongoose.Types.ObjectId(master.id),
+      at: new Date(),
+      until: null,
+    })
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(orgAuth(watched.token, ORG_KEY))
+      .send(payload('Tin của người bị quản chế'))
+      .expect(201)
+    expect(res.body.data.status).toBe('pending')
+
+    await machineReviewService.sweep()
+
+    const doc = await readListing(res.body.data._id)
+    expect(doc?.status).toBe('pending')
+    expect(doc?.machineReview?.holds).toContain('probation')
   }, 60_000)
 })
 

@@ -8,6 +8,7 @@ import {
 import { validate } from '../../middlewares/validate.middleware'
 import {
   authenticate,
+  requireMembership,
   requireMembershipOrOrgModerator,
   requireOrg,
   requireOrgAdmin,
@@ -38,6 +39,10 @@ router.get(
   validate({ query: membershipQuerySchema }),
   membershipController.list,
 )
+
+// Rời nhóm — của CHÍNH MÌNH, nên chỉ cần là thành viên. Đứng trước `DELETE /:userId` về ngữ nghĩa:
+// tự gỡ mình ở đường kia là 400 và trỏ về đây.
+router.post('/leave', authenticate, requireOrg, requireMembership, membershipController.leave)
 
 /*
  * GHI — quản trị nhóm (`requireOrgAdmin`), không phải người duyệt tin.
@@ -99,5 +104,24 @@ registry.registerPath({
     403: errorResponse('Cần quyền quản trị tổ chức, hoặc mục tiêu cũng là quản trị'),
     404: errorResponse('Người này không còn trong nhóm'),
     409: errorResponse('Đây là quản trị duy nhất của tổ chức'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/memberships/leave',
+  operationId: 'membershipLeave',
+  tags: ['Membership'],
+  summary: 'Rời tổ chức đang hoạt động',
+  description:
+    'Lưu trữ tư cách thành viên của chính mình, thu hồi mọi quyền trong tổ chức đó, và ẩn tin ' +
+    'trong nhóm mình đã đăng (tin lên sàn giữ nguyên). Quản trị DUY NHẤT của tổ chức không rời ' +
+    'được — trao quyền cho người khác trước.',
+  security: [{ [bearerAuth.name]: [] }],
+  responses: {
+    200: jsonResponse('Đã rời nhóm', envelope(z.null())),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Không phải thành viên của tổ chức này'),
+    409: errorResponse('Là quản trị duy nhất của tổ chức'),
   },
 })

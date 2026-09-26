@@ -521,6 +521,29 @@
           "trustLevel": {
             "type": "number"
           },
+          "probation": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "until": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "reason",
+              "at",
+              "until"
+            ]
+          },
           "lastLoginAt": {
             "type": "string",
             "nullable": true,
@@ -539,9 +562,30 @@
           "isActive",
           "isEmailVerified",
           "trustLevel",
+          "probation",
           "lastLoginAt",
           "createdAt"
         ]
+      },
+      "SetProbation": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "example": "Tự duyệt tin sai quy định nhóm 3 lần trong tuần"
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
       },
       "UserReport": {
         "type": "object",
@@ -848,12 +892,31 @@
               "rejections",
               "until"
             ]
+          },
+          "probation": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "until": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "reason",
+              "until"
+            ]
           }
         },
         "required": [
           "canSelfPublish",
           "cleanApprovalsNeeded",
-          "penalty"
+          "penalty",
+          "probation"
         ]
       },
       "StaleListing": {
@@ -911,11 +974,28 @@
           "remaining": {
             "type": "number"
           },
+          "live": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "number"
+              },
+              "limit": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "count",
+              "limit"
+            ],
+            "description": "Tin đang hiện + chờ duyệt trên mọi trục, so với trần theo bậc uy tín"
+          },
           "reason": {
             "type": "string",
             "enum": [
               "blocked_by_rejections",
-              "quota_full"
+              "quota_full",
+              "live_full"
             ]
           },
           "fee": {
@@ -937,6 +1017,7 @@
           "limit",
           "pending",
           "remaining",
+          "live",
           "fee",
           "standing",
           "needsReconcile"
@@ -6408,6 +6489,196 @@
         }
       }
     },
+    "/users/{id}/probation": {
+      "post": {
+        "operationId": "userSetProbation",
+        "tags": [
+          "User"
+        ],
+        "summary": "Đặt quản chế (master)",
+        "description": "Quản trị nhóm vẫn tự duyệt được tin của mình; đặt quản chế thì tin CỦA người này phải do người khác duyệt, không tự đăng, máy không duyệt. Bậc uy tín và quyền duyệt tin người khác giữ nguyên. Bỏ trống `days` = vô thời hạn, gỡ bằng `DELETE`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProbation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã đặt quản chế",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminUser"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master, hoặc mục tiêu là master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "userLiftProbation",
+        "tags": [
+          "User"
+        ],
+        "summary": "Gỡ quản chế (master)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã gỡ quản chế",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminUser"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tài khoản không trong diện quản chế",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/users/{id}/status": {
       "patch": {
         "operationId": "userSetStatus",
@@ -10316,6 +10587,82 @@
           },
           "409": {
             "description": "Đây là quản trị duy nhất của tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memberships/leave": {
+      "post": {
+        "operationId": "membershipLeave",
+        "tags": [
+          "Membership"
+        ],
+        "summary": "Rời tổ chức đang hoạt động",
+        "description": "Lưu trữ tư cách thành viên của chính mình, thu hồi mọi quyền trong tổ chức đó, và ẩn tin trong nhóm mình đã đăng (tin lên sàn giữ nguyên). Quản trị DUY NHẤT của tổ chức không rời được — trao quyền cho người khác trước.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã rời nhóm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không phải thành viên của tổ chức này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Là quản trị duy nhất của tổ chức",
             "content": {
               "application/json": {
                 "schema": {

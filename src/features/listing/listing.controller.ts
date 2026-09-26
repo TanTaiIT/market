@@ -13,7 +13,7 @@ import { trustRepository } from '../trust/trust.repository'
  */
 async function listingAuthor(req: Request): Promise<ListingAuthor> {
   const orgId = currentScope()?.ownOrgId?.toString() ?? null
-  const trust = await trustRepository.stateOf(req.user!.id)
+  const trust = await trustRepository.standingOf(req.user!.id)
 
   return {
     id: req.user!.id,
@@ -22,6 +22,8 @@ async function listingAuthor(req: Request): Promise<ListingAuthor> {
     unitId: req.membership?.unitId ?? null,
     trustLevel: trust.level,
     cleanApprovals: trust.cleanApprovals,
+    // Chỉ mang án CÒN HIỆU LỰC — với mọi luật đăng tin, án hết hạn là không có án.
+    probation: trust.onProbation ? trust.probation : null,
   }
 }
 

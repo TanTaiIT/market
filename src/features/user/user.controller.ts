@@ -17,6 +17,18 @@ export const userController = {
     success(res, { message: 'Trust restored', data })
   }),
 
+  // POST /users/:id/probation
+  setProbation: catchAsync(async (req, res) => {
+    const data = await userService.setProbation(req.params.id, req.body, req.user!.id)
+    success(res, { message: 'Đã đặt quản chế', data })
+  }),
+
+  // DELETE /users/:id/probation
+  liftProbation: catchAsync(async (req, res) => {
+    const data = await userService.liftProbation(req.params.id, req.user!.id)
+    success(res, { message: 'Đã gỡ quản chế', data })
+  }),
+
   // GET /users/me
   getMe: catchAsync(async (req, res) => {
     const user = await userService.getById(req.user!.id)

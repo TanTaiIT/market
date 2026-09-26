@@ -3,7 +3,9 @@ import { Listing, IListing, IListingDocument } from './listing.model'
 import { AttrQuery, ListingQuery } from './listing.schema'
 import { PaginationParams } from '../../common/utils/pagination'
 import {
+  IN_ORG_REACHES,
   LISTING_STATUS,
+  LIVE_LISTING_STATUSES,
   MODERATABLE_STATUSES,
   LISTING_REACH,
   PUBLIC_LISTING_STATUSES,
@@ -359,9 +361,7 @@ export const listingRepository = {
     return runUnscoped('lock account: liệt kê tin còn sống để đóng báo cáo', () =>
       Listing.find({
         seller: sellerId,
-        status: {
-          $in: [LISTING_STATUS.ACTIVE, LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIFIED],
-        },
+        status: { $in: LIVE_LISTING_STATUSES },
       })
         .select('_id')
         .lean()
@@ -375,13 +375,102 @@ export const listingRepository = {
       Listing.updateMany(
         {
           seller: sellerId,
-          status: {
-            $in: [LISTING_STATUS.ACTIVE, LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIFIED],
-          },
+          status: { $in: LIVE_LISTING_STATUSES },
         },
         { status: LISTING_STATUS.HIDDEN, moderation },
       ).exec(),
     )
+  },
+
+  /**
+   * Tin đang sống của một người trên MỌI trục — trần theo bậc uy tín là trần cho CON NGƯỜI, không
+   * cho một nhóm hay một danh mục. Chỉ ra một con số nên bỏ scope là hợp lệ, cùng lý do
+   * `countPendingInOrg`.
+   */
+  countLiveBySeller(sellerId: Types.ObjectId): Promise<number> {
+    return runUnscoped('quota: đếm tin đang sống của người này trên mọi trục', () =>
+      Listing.countDocuments({ seller: sellerId, status: { $in: LIVE_LISTING_STATUSES } }).exec(),
+    )
+  },
+
+  // ── RỜI / BỊ GỠ KHỎI NHÓM · NHÓM BỊ TẠM NGƯNG ──────────────────────────────
+  // Cascade chạy từ membership/organization service — không có scope của người bị ảnh hưởng,
+  // và nhánh GHI của plugin chỉ khớp `ownOrgId` của người bấm, nên phải unscoped (xem
+  // `demoteGroupOpen` cho cùng cái bẫy "updateMany khớp 0 dòng, không lỗi, không log").
+
+  /** `_id` tin còn sống mà người này đăng TRONG một nhóm (hai bậc trong nhóm, không tính tin sàn). */
+  liveInternalIdsBySellerInOrg(
+    sellerId: Types.ObjectId,
+    organizationId: Types.ObjectId,
+  ): Promise<Types.ObjectId[]> {
+    return runUnscoped('rời nhóm: liệt kê tin trong nhóm còn sống để đóng báo cáo', () =>
+      Listing.find({
+        seller: sellerId,
+        organizationId,
+        reach: { $in: IN_ORG_REACHES },
+        status: { $in: LIVE_LISTING_STATUSES },
+      })
+        .select('_id')
+        .lean()
+        .exec()
+        .then((rows) => rows.map((r) => r._id)),
+    )
+  },
+
+  hideAllBySellerInOrg(
+    sellerId: Types.ObjectId,
+    organizationId: Types.ObjectId,
+    moderation: IListing['moderation'],
+  ) {
+    return runUnscoped('rời nhóm: ẩn tin trong nhóm của người không còn trong nhóm', () =>
+      Listing.updateMany(
+        {
+          seller: sellerId,
+          organizationId,
+          reach: { $in: IN_ORG_REACHES },
+          status: { $in: LIVE_LISTING_STATUSES },
+        },
+        { status: LISTING_STATUS.HIDDEN, moderation },
+      ).exec(),
+    )
+  },
+
+  /**
+   * Nhóm bị tạm ngưng: tin trong nhóm ĐANG HIỆN ẩn hết. Chỉ `ACTIVE`, không đụng tin chờ — tin
+   * chờ vốn không ai thấy, và giữ nguyên trạng thái là thứ cho phép mở lại nhóm mà không phải
+   * đoán tin nào từng chờ, tin nào từng hiện.
+   */
+  hideActiveInOrg(
+    organizationId: Types.ObjectId,
+    moderation: IListing['moderation'],
+  ): Promise<number> {
+    return runUnscoped('nhóm tạm ngưng: ẩn tin trong nhóm đang hiện', async () => {
+      const res = await Listing.updateMany(
+        { organizationId, reach: { $in: IN_ORG_REACHES }, status: LISTING_STATUS.ACTIVE },
+        { status: LISTING_STATUS.HIDDEN, moderation },
+      ).exec()
+      return res.modifiedCount
+    })
+  },
+
+  /**
+   * Mở lại nhóm: trả về bảng ĐÚNG LÔ tin mà lượt tạm ngưng đã ẩn — nhận ra bằng `moderation.reason`
+   * cố định. Tin bàn duyệt ẩn vì lý do khác trong lúc nhóm ngưng thì không được hồi sinh theo.
+   * Tin quá `expiresAt` trong lúc ẩn sẽ được `listing-expiry` hạ xuống ở lượt quét kế.
+   */
+  restoreHiddenInOrgByReason(organizationId: Types.ObjectId, reason: string): Promise<number> {
+    return runUnscoped('nhóm mở lại: trả tin đã ẩn vì tạm ngưng về bảng', async () => {
+      const res = await Listing.updateMany(
+        {
+          organizationId,
+          reach: { $in: IN_ORG_REACHES },
+          status: LISTING_STATUS.HIDDEN,
+          'moderation.reason': reason,
+        },
+        { $set: { status: LISTING_STATUS.ACTIVE }, $unset: { moderation: 1 } },
+      ).exec()
+      return res.modifiedCount
+    })
   },
 
   // ── MACHINE REVIEW (job) ────────────────────────────────────────────────────

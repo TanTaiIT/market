@@ -20,6 +20,8 @@ import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { assertSingleAxis, roleGrantService } from '../role-grant/role-grant.service'
 import { canGrant } from '../../common/authz/policy'
 import {
+  CASCADE_HIDE_REASON,
+  MASTER_DISPLAY_NAME,
   ORG_CAPABILITY_PRESETS,
   ORG_TYPES,
   SCOPE_TYPES,
@@ -438,9 +440,34 @@ export const organizationService = {
     return org
   },
 
+  /**
+   * Đổi trạng thái nhóm, KÈM cascade tin (audit 1.14): tạm ngưng thì tin trong nhóm đang hiện ẩn
+   * hết — `group_open` là bậc NGƯỜI LẠ đọc được và feed của thành viên vẫn đọc `members`, nên
+   * chặn cửa vào org (`findActiveById`) thôi là chưa đủ. Mở lại thì trả đúng lô đó về bảng.
+   */
   async setStatus(organizationId: string, status: TenantStatus) {
+    const before = await organizationRepository.findById(organizationId)
+    if (!before) throw new NotFoundError('Organization not found')
+    const orgObjectId = new Types.ObjectId(organizationId)
+
+    // Ẩn TRƯỚC khi đổi trạng thái: hỏng giữa chừng thì nhóm vẫn đang hoạt động, bấm lại là làm nốt.
+    if (status === TENANT_STATUS.SUSPENDED && before.status !== TENANT_STATUS.SUSPENDED) {
+      await listingRepository.hideActiveInOrg(orgObjectId, {
+        reason: CASCADE_HIDE_REASON.ORG_SUSPENDED,
+        byName: MASTER_DISPLAY_NAME,
+        at: new Date(),
+      })
+    }
+
     const org = await organizationRepository.updateById(organizationId, { status })
     if (!org) throw new NotFoundError('Organization not found')
+
+    if (status === TENANT_STATUS.ACTIVE && before.status === TENANT_STATUS.SUSPENDED) {
+      await listingRepository.restoreHiddenInOrgByReason(
+        orgObjectId,
+        CASCADE_HIDE_REASON.ORG_SUSPENDED,
+      )
+    }
     return org
   },
 }

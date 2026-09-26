@@ -212,6 +212,8 @@ describe('Lên bảng là bắt đầu lại hạn hiển thị', () => {
   })
 
   it('máy duyệt cũng đặt lại hạn', async () => {
+    // Máy chỉ duyệt từ bậc 1 (audit 1.3): nâng tạm novice lên bậc 1, trả về 0 ở cuối ca.
+    await setTrustLevel(novice.id, 1)
     const created = await post(novice, 'Đèn bàn LED')
     expect(created.status).toBe('pending')
     await setDoc(created._id, { expiresAt: YESTERDAY() })
@@ -221,5 +223,6 @@ describe('Lên bảng là bắt đầu lại hạn hiển thị', () => {
     const doc = await docOf(created._id)
     expect(doc?.status).toBe('active')
     expect(doc!.expiresAt!.getTime()).toBeGreaterThan(Date.now())
+    await setTrustLevel(novice.id, 0)
   })
 })

@@ -33,7 +33,7 @@ Cột **Trạng thái**: `✅` đã sửa trong đợt này · `⏳` chưa sửa
 |---|---|---|---|---|
 | 1.1 | HIGH | Sửa tin ACTIVE không chạy lại lớp flag máy (giá cao/outlier/gibberish); chỉ cụm cấm được kiểm | `listing.service.ts:1144-1168`, `listing.repository.ts:355-362` | ✅ `update()` gọi `fastPathFlagged` (bản đã ghép, `excludeId` = chính tin) khi fast-path uy tín mở; có hold → PENDING + `content_flagged` + `holds`. Test `owner-edit-review` |
 | 1.2 | HIGH | `expired` → PATCH nội dung → `renew` → ACTIVE, không qua lớp duyệt nào | `listing.service.ts:904-917, 1144` | ✅ khối duyệt lại áp cho cả `expired`; tin về PENDING thì `renew` tự chặn (400). Người đủ bậc sửa sạch vẫn gia hạn được, như xoá đi đăng lại |
-| 1.3 | HIGH | Không trần tin ACTIVE/người; trust mặc định = ngưỡng tự đăng; máy duyệt không nhìn `trustLevel`; dedupe chỉ trùng tiêu đề chính xác | `trust.policy.ts:96-99`, `listing.quota.ts:44,111-148`, `moderation.machine.service.ts:216-242` | 🤔 |
+| 1.3 | HIGH | Không trần tin ACTIVE/người; trust mặc định = ngưỡng tự đăng; máy duyệt không nhìn `trustLevel`; dedupe chỉ trùng tiêu đề chính xác | `trust.policy.ts:96-99`, `listing.quota.ts:44,111-148`, `moderation.machine.service.ts:216-242` | ✅ (quyết định 2026-09-26) Trần tin ĐANG SỐNG theo bậc `TRUST_LIVE_LIMITS = [10, 30, 100]` — áp ở đăng mới, gia hạn tin hết hạn, màn quota (`live`, reason `live_full`). Máy duyệt nhìn `trustLevel`: dưới `MIN_TRUST_LEVEL = 1` giữ cho người thật (`trust_too_low`); từ bậc 1 máy duyệt được và lượt duyệt sạch CÓ cộng `cleanApprovals` (máy từ chối vẫn không trừ). Trust mặc định = trần giữ nguyên (quyết định sản phẩm cũ). Dedupe fuzzy chưa làm. Test: `listingQuota` +6, `machineReview` +4, `machine-review` +2, `listing-live-cap` (4 ca) |
 | 1.4 | MEDIUM | `setModerationStatus` không state machine: `sold→active`, re-approve ACTIVE cộng `cleanApprovals` mỗi lần, race 2 moderator | `listing.service.ts:1222-1272`, `moderation.service.ts:327-375` | ✅ `MODERATION_TRANSITIONS` (constants) + `updateByIdIfStatus` CAS → 409 khi tin đổi tay; cùng trạng thái = no-op ở cả hai lớp (không uy tín, báo, nhật ký). Test `moderation-transitions` (9 ca); 2 test cũ trong `trust-fairness` từng dựa vào lỗ re-approve đã sửa |
 | 1.5 | MEDIUM | Duyệt không đặt lại `expiresAt` → tin chờ >30 ngày vừa duyệt đã bị sweep | `listing.service.ts:1257-1270`, `moderation.machine.service.ts:100-104` | ✅ mọi lượt → ACTIVE qua `setModerationStatus` (kể cả mở lại tin ẩn) và máy duyệt đặt `expiresAt = listingExpiresAt()` |
 | 1.6 | MEDIUM | `rerouteListing`: ghi có scope → 500 với tin marketplace mang org; `status: PENDING` vô điều kiện; giữ `wardCode` cũ khi đổi tỉnh; đổi category không re-validate attrs | `listing.service.ts:1278-1289`, `moderation.service.ts:472-505` | ⏳ |
@@ -42,9 +42,9 @@ Cột **Trạng thái**: `✅` đã sửa trong đợt này · `⏳` chưa sửa
 | 1.9 | MEDIUM | Không có đường mở lại tin sau khi tài khoản được mở khoá (docblock hứa) | `listing.service.ts:1054-1058` | ⏳ |
 | 1.10 | MEDIUM | `removeListing` trừ uy tín vô điều kiện, không cần lý do | `moderation.service.ts:535` | ✅ (cùng 2.1) — `reason` vẫn tuỳ chọn để không vỡ client VueSer; bắt buộc thì phải sửa client trước |
 | 1.11 | MEDIUM | Ghim template theo số `version` không theo `templateRef.id` → fallback và template riêng trùng số | `listing.service.ts:1104-1112`, `category-template.service.ts:621-627` | ⏳ |
-| 1.12 | MEDIUM | Tự duyệt tin của chính mình hợp lệ (chỉ không cộng uy tín) | `moderation.service.ts:123-132` | 🤔 |
+| 1.12 | MEDIUM | Tự duyệt tin của chính mình hợp lệ (chỉ không cộng uy tín) | `moderation.service.ts:123-132` | ✅ (quyết định 2026-09-26) GIỮ cho tự duyệt (không cộng uy tín như trước), thêm cơ chế QUẢN CHẾ của master: `UserTrust.probation` + `POST/DELETE /users/:id/probation`. Đang quản chế: không tự đăng (`probation` reason), máy không duyệt (`probation` hold), không tự duyệt tin của mình (403 ở `setModerationStatus`), vẫn duyệt tin người khác, bậc không đổi. Test `probation` (9 ca) |
 | 1.13 | MEDIUM | Audit trail: `moderation` chỉ giữ quyết định cuối; trục công khai không persist; máy không audit | `moderation.service.ts:82-89`, `moderation.machine.service.ts:245-275` | ⏳ (đã ghi ở v2 plan) |
-| 1.14 | MEDIUM | Suspend org không cascade tin; rời org không hạ tin `members` | `organization.service.ts:424-426`, `tenantPlugin.ts:112-115` | 🤔 |
+| 1.14 | MEDIUM | Suspend org không cascade tin; rời org không hạ tin `members` | `organization.service.ts:424-426`, `tenantPlugin.ts:112-115` | ✅ Suspend org → `hideActiveInOrg` ẩn tin trong nhóm ĐANG HIỆN (reason `CASCADE_HIDE_REASON.ORG_SUSPENDED`), mở lại → `restoreHiddenInOrgByReason` trả đúng lô đó; tin chờ và tin sàn giữ nguyên. Rời nhóm / bị gỡ → `listingService.detachFromOrg` ẩn tin trong nhóm + đóng báo cáo. Còn nợ nhỏ: tin sàn mang badge nhóm của người đã rời vẫn mang badge. Test `organization-suspend` (4), `membership-leave` (4) |
 | 1.15 | LOW | `q` không `.max()`; `price` không `.int()`/trần; `minPrice > maxPrice` không chặn | `listing.schema.ts:54,278,317` | ⏳ |
 | 1.16 | LOW | Ảnh chỉ chốt host Cloudinary, không chốt cloud name | `common/utils/imageUrl.ts` | ⏳ |
 | 1.17 | LOW | Cụm cấm `includes` thô, không fold dấu, không quét `attributes`/`address` | `moderation.machine.ts:101-104` | ⏳ |
@@ -76,14 +76,14 @@ Cột **Trạng thái**: `✅` đã sửa trong đợt này · `⏳` chưa sửa
 | 3.3 | MEDIUM | `grantAdmin` không gọi `canGrant` (master tự cấp); `POST /role-grants` scope org không tạo membership; revoke không hạ `membership.role` | `organization.service.ts:150-209`, `role-grant.service.ts:225-265` | ✅ `grantAdmin` qua `canGrant` (master tự cấp → 403); `membershipRepository.ensureAdmin` dùng chung cho cả `grantAdmin` lẫn `POST /role-grants` scope org; revoke org → `demoteAdmin`. Test `admin-grant-membership` (6 ca) |
 | 3.4 | MEDIUM | `deleteAccount` không cascade: tin (SĐT snapshot), `KycProfile`, invite, join-request; không bump tokenVersion | `user.service.ts:289-332` | ⏳ cascade (bump tokenVersion + ngắt socket: ✅ ở 0.7) |
 | 3.5 | MEDIUM | `googleId` unique không partial `deletedAt` → Google account đã xoá login lại = 500 | `user.model.ts:95` | ✅ index `googleId` partial `{googleId: {$type: string}, deletedAt: null}`. **Prod dry-run 2026-09-26** (máy Windows này cần `DNS_SERVERS=1.1.1.1,8.8.8.8` mới resolve được SRV Atlas): `users` đã khớp — không còn index sparse cũ để gỡ; còn **16 index chưa tạo** ở `auditlogs/bannedphrases/categories/favorites/joinrequests/listings` (0 xoá). `--apply` chờ người chạy. Test `auth-google` thêm ca xoá rồi đăng nhập lại |
-| 3.6 | MEDIUM | Join/invite không cần verified email; nhóm công khai vào tức thì | `join-request.routes.ts:31-37`, `invite.routes.ts:34-39` | 🤔 |
+| 3.6 | MEDIUM | Join/invite không cần verified email; nhóm công khai vào tức thì | `join-request.routes.ts:31-37`, `invite.routes.ts:34-39` | ✋ KHÔNG SỬA (quyết định 2026-09-26): vào nhóm không cần verified email — đây là chủ ý sản phẩm |
 | 3.7 | MEDIUM | Refresh token không rotate/không phát hiện reuse | `auth.service.ts:131-153` | ⏳ (đã ghi ở multi-tenant.implementation §7.1) |
 | 3.8 | MEDIUM | Không có đổi mật khẩu khi đang đăng nhập; forgot nuốt lỗi khi mail tắt | `user.routes.ts`, `password-reset.service.ts:40-55` | ⏳ |
-| 3.9 | MEDIUM | Master 1 tài khoản, không 2FA, reset qua cửa công khai | `migrate-master.ts:13-17`, `auth.routes.ts:75-92` | 🤔 |
+| 3.9 | MEDIUM | Master 1 tài khoản, không 2FA, reset qua cửa công khai | `migrate-master.ts:13-17`, `auth.routes.ts:75-92` | ✅ (một phần, quyết định 2026-09-26) Master không đi cửa `POST /auth/password/forgot`: im lặng như địa chỉ lạ, không phát mã. Đường thay thế: `npm run reset-master-password[:prod]` với `MASTER_PASSWORD` mới (bump `tokenVersion`, cần `CONFIRM_DB` ở prod). 2FA để sau. Test `password-reset` +1, `migrate-master` +1 |
 | 3.10 | MEDIUM | Tên Google không qua `impersonatesMaster` | `auth.service.ts:107-113` | ⏳ |
 | 3.11 | MEDIUM | KYC PII plaintext, không audit đọc, không limiter submit, master duyệt hồ sơ chính mình | `kyc.model.ts:67`, `kyc.service.ts:91-126`, `kyc.routes.ts:64` | ⏳ |
 | 3.12 | LOW | Password min 6; timing oracle ở reset; race register → 500 thay vì 409 | `auth.schema.ts:18`, `password-reset.service.ts:66-72`, `auth.service.ts:29-31` | ⏳ |
-| 3.13 | LOW | Không endpoint "rời nhóm" dù code trỏ tới | `membership.service.ts:69`, `membership.routes.ts:97` | ⏳ |
+| 3.13 | LOW | Không endpoint "rời nhóm" dù code trỏ tới | `membership.service.ts:69`, `membership.routes.ts:97` | ✅ `POST /memberships/leave` (`requireMembership`): lưu trữ membership, thu hồi grant trong org, ẩn tin trong nhóm (`detachFromOrg`); quản trị duy nhất → 409. Test `membership-leave` |
 | 3.14 | LOW | Socket không phản ánh thu hồi quyền/thành viên | `sockets/index.ts:46-79` | ⏳ (lock → disconnect: ✅ ở 0.7) |
 | 3.15 | LOW | `cancel` join-request lộ status trước khi kiểm chủ; cấp admin cho tài khoản inactive không chặn; `migrate-master` nói index role_grants không partial nhưng model có | `join-request.service.ts:178-181`, `organization.service.ts:154`, `migrate-master.ts:90-96` | ⏳ |
 
@@ -94,7 +94,7 @@ Cột **Trạng thái**: `✅` đã sửa trong đợt này · `⏳` chưa sửa
 | 4.1 | MEDIUM | Idempotency key ví không scope theo user → trùng uuid trả tx người khác | `wallet.service.ts:45-46,138-143` | ✅ khoá `adjust:<userId>:<uuid>`; `sameIntent` → 409 khi cùng khoá mà khác người, số tiền hoặc loại. Test `wallet` (+2 ca) |
 | 4.2 | MEDIUM | Không job đối soát sổ cái; unique index prod phụ thuộc `sync-indexes:prod` tay; replica set không assert lúc boot | `wallet.repository.ts:54-60`, `database.ts:80` | ⏳ |
 | 4.3 | LOW | Ledger append-only chỉ bằng kỷ luật; DTO raw doc; `amount` không trần | `wallet.model.ts:95-119`, `wallet.controller.ts:19,29`, `wallet.schema.ts:17` | ⏳ |
-| 4.4 | MEDIUM | Chat không block/mute; hội thoại ẩn tự sống lại | `chat.repository.ts:77-90` | 🤔 |
+| 4.4 | MEDIUM | Chat không block/mute; hội thoại ẩn tự sống lại | `chat.repository.ts:77-90` | ✋ HOÃN (quyết định 2026-09-26): block/mute là tính năng sản phẩm, để sau. Đã đọc lại `chat.repository.touch`: hội thoại "sống lại" khi người kia nhắn là CHỦ Ý (docblock `IParticipant.hidden`), `clearedAt` giữ nguyên nên lịch sử đã xoá không hiện lại — không có bug để sửa. Mở lại cùng lúc với block/mute |
 | 4.5 | LOW | Chat không cổng cụm cấm; double-tap → 500; mở chat với SOLD; text raw | `chat.service.ts:65-66,89,168-179` | ⏳ |
 | 4.6 | LOW | Notification: unit ping cả org qua socket; không retention; không push; `POST` không limiter | `notification.service.ts:130`, `notification.model.ts` | ⏳ |
 | 4.7 | MEDIUM | Avatar user không ràng Cloudinary → tracking pixel qua snapshot | `user.schema.ts:60` | ✅ `avatar: cloudinaryImageUrl.or(z.literal(''))` — cùng luật với ảnh tin/ảnh nhóm. Test `user-profile` thêm 3 ca |
@@ -105,7 +105,7 @@ Cột **Trạng thái**: `✅` đã sửa trong đợt này · `⏳` chưa sửa
 
 | # | Sev | Vấn đề | Evidence | Trạng thái |
 |---|---|---|---|---|
-| 5.1 | HIGH | `runUnscoped` 46 site, 34 trong listing, hầu hết trên request path — convention §6.4 nói ngược | `listing.service.ts`, `listing.repository.ts`, `report.repository.ts` | 🤔 kiến trúc |
+| 5.1 | HIGH | `runUnscoped` 46 site, 34 trong listing, hầu hết trên request path — convention §6.4 nói ngược | `listing.service.ts`, `listing.repository.ts`, `report.repository.ts` | ✅ (quyết định 2026-09-26) Sửa CONVENTION cho khớp thực tế thay vì viết lại 34 site: `multi-tenant.convention.md` §6.1 — hai ca hợp lệ trên request path (xét thẩm quyền theo trục qua `assertCanActOnListing`/`assertCanResolve`; chính chủ khoá `seller` từ token) + cascade unscoped ở repository. Ngoài hai ca đó vẫn cấm |
 | 5.2 | HIGH | `GET /listings/quota` không `validate({query})` — route duy nhất/138 | `listing.routes.ts:67`, `listing.controller.ts:45` | ✅ (0.12) |
 | 5.3 | HIGH | Module `kyc` lệch template: không controller/repository/types, enum trong model, `'pending'/'approved'` hardcode, pagination riêng `.max(100)` | `kyc.routes.ts:17-53`, `kyc.service.ts:38-147`, `kyc.schema.ts:69` | ⏳ |
 | 5.4 | MEDIUM | `.oxlintrc.json` tắt `no-console` + `no-explicit-any` → rule 8/9 không gate | `.oxlintrc.json:10,13` | ⏳ |
@@ -115,7 +115,7 @@ Cột **Trạng thái**: `✅` đã sửa trong đợt này · `⏳` chưa sửa
 | 5.8 | MEDIUM | `pre('validate')` ném `Error` thường + nhận diện `constructor === Error` | `kyc.model.ts:91,94`, `role-grant.model.ts:136,138` | ⏳ |
 | 5.9 | MEDIUM | `role-grant.repository.listActiveByUser` không `.lean()` trên hot path mọi request; `user.repository:116,137` `runUnscoped` thừa (User không có plugin) | — | ⏳ |
 | 5.10 | MEDIUM | Duplicate: `excludeDeleted` ×6, regex ObjectId ×21, `'quality'/'violation'` ×7 (không có `REJECTION_SEVERITY` object), `targetType: 'listing'` ×3 | — | ⏳ |
-| 5.11 | MEDIUM | `listing.repository.ts:61` filter `organizationId` viết tay (rule 12b) | — | 🤔 (cùng 5.1) |
+| 5.11 | MEDIUM | `listing.repository.ts:61` filter `organizationId` viết tay (rule 12b) | — | ✅ Ghi thành ngoại lệ được duyệt trong convention (§0.2, §6.1, §7): `buildFilter.orgId` chỉ THU HẸP bên trong scope, plugin vẫn `$and` lên trên |
 | 5.12 | LOW | Dead exports (~9), `org-unit` zombie, ~40 export chỉ dùng nội bộ, `support.schema/kyc.schema` `.max(100)` trái `PAGINATION.MAX_LIMIT` | — | ⏳ |
 | 5.13 | LOW | God file: `listing.service.ts` 1392, `listing.repository.ts` 749, `moderation.service.ts` 550 | — | ⏳ |
 
@@ -144,7 +144,7 @@ Cột **Trạng thái**: `✅` đã sửa trong đợt này · `⏳` chưa sửa
 | 7.8 | MEDIUM | Logger không redaction (rule §2); log raw `email`; access log ghi `?code=` | `logger.ts`, `password-reset.service.ts:43,53`, `app.ts:72` | ⏳ |
 | 7.9 | MEDIUM | Test: 65 lần boot replset (301s); state phụ thuộc thứ tự; limiter bypass ở test; không test 3 ngoại lệ index; không coverage | `tests/helpers/fixtures.ts:30-51`, `vitest.config.ts` | ⏳ |
 | 7.10 | LOW | Socket event/job không có request context; không `LOG_LEVEL`; `compression` áp cả `/auth` | — | ⏳ |
-| 7.11 | LOW | Single-instance: `RateLimiterMemory`, socket adapter in-memory, org cache 30s, banned-phrase cache 60s — đã ghi chú | — | 🤔 |
+| 7.11 | LOW | Single-instance: `RateLimiterMemory`, socket adapter in-memory, org cache 30s, banned-phrase cache 60s — đã ghi chú | — | ✋ CHẤP NHẬN (quyết định 2026-09-26): hiện chỉ chạy 1 instance. Khi lên ≥2 instance: `RateLimiterMemory` → Redis, socket adapter → Redis, hai cache 30s/60s → Redis hoặc chấp nhận trễ |
 
 ## 8. Backlog dự án tự khai (docs/architecture) — vẫn mở
 

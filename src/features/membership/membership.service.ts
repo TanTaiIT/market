@@ -10,7 +10,16 @@ import { roleGrantService, usableOrgAdmins } from '../role-grant/role-grant.serv
 import { canAdminOrg, isMaster, type Grant } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
+import { listingService } from '../listing/listing.service'
+import { CASCADE_HIDE_REASON, MASTER_DISPLAY_NAME } from '../../common/constants'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
+
+/** Tên đi vào snapshot `moderation.byName` — master là danh tính hệ thống, không lộ tên thật. */
+async function displayNameOf(actor: { id: string; grants: Grant[] }): Promise<string> {
+  if (isMaster(actor.grants)) return MASTER_DISPLAY_NAME
+  const user = await userRepository.findById(actor.id)
+  return user?.name ?? 'Quản trị'
+}
 
 export const membershipService = {
   /**
@@ -110,6 +119,46 @@ export const membershipService = {
       organizationId,
       new Types.ObjectId(actor.id),
     )
+    // Người không còn trong nhóm thì không còn tin trong nhóm — cùng luật với `leave` (audit 1.14).
+    await listingService.detachFromOrg(new Types.ObjectId(targetUserId), organizationId, {
+      reason: CASCADE_HIDE_REASON.REMOVED_FROM_ORG,
+      byUserId: actor.id,
+      byName: await displayNameOf(actor),
+    })
     return removed
+  },
+
+  /**
+   * RỜI NHÓM — đường riêng cho chính mình (audit 3.13), tách khỏi `remove` vì hậu quả khác hẳn:
+   * mất ngay mọi quyền trong nhóm, và tin trong nhóm của mình ẩn đi.
+   *
+   * Cùng chốt admin-cuối-cùng với `remove`/`revoke`: nhóm không được rơi vào không người phụ
+   * trách chỉ vì một người bấm "rời".
+   */
+  async leave(actorId: string) {
+    const organizationId = requireOwnOrgId('membership.leave')
+
+    const grants = await roleGrantService.grantsOf(actorId)
+    if (canAdminOrg(grants, organizationId.toString())) {
+      const others = await usableOrgAdmins(organizationId, { userId: actorId })
+      if (others === 0) {
+        throw new ConflictError(
+          'Bạn là quản trị duy nhất của nhóm — trao quyền cho người khác trước khi rời',
+        )
+      }
+    }
+
+    const left = await membershipRepository.archiveOne(actorId, organizationId)
+    if (!left) throw new NotFoundError('Bạn không ở trong nhóm này')
+
+    const self = new Types.ObjectId(actorId)
+    await roleGrantRepository.revokeAllForUserInOrg(actorId, organizationId, self)
+    const user = await userRepository.findById(actorId)
+    await listingService.detachFromOrg(self, organizationId, {
+      reason: CASCADE_HIDE_REASON.LEFT_ORG,
+      byUserId: actorId,
+      byName: user?.name ?? 'Thành viên',
+    })
+    return left
   },
 }

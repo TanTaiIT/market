@@ -52,6 +52,13 @@ const HOLD_TEXT: Record<MachineHold, { message: string; hint?: string }> = {
   category_manual_review: {
     message: 'Danh mục này luôn qua người duyệt, không phụ thuộc uy tín.',
   },
+  trust_too_low: {
+    message: 'Tài khoản đang ở bậc uy tín thấp, nên máy không tự duyệt — người duyệt sẽ xem.',
+    hint: 'Mỗi tin được duyệt sạch nâng dần bậc; đủ bậc thì máy duyệt lại được, rồi tự đăng.',
+  },
+  probation: {
+    message: 'Tài khoản đang trong diện quản chế, mọi tin phải qua người duyệt.',
+  },
   gibberish: {
     message: 'Tiêu đề hoặc mô tả trông như gõ ngẫu nhiên, nên tin cần người duyệt xem qua.',
     hint: 'Viết rõ tên món đồ và vài dòng mô tả thật — tin sẽ lên bảng nhanh hơn nhiều.',
@@ -66,6 +73,7 @@ const REASON_TEXT: Partial<Record<AutoApprovalReason, { message: string; hint?: 
   },
   recent_rejection: HOLD_TEXT.recent_rejection,
   category_manual_review: HOLD_TEXT.category_manual_review,
+  probation: HOLD_TEXT.probation,
   outsider_post: {
     message: 'Bạn chưa là thành viên của nhóm này, nên quản trị nhóm sẽ xem tin trước.',
     hint: 'Xin vào nhóm để những tin sau lên bảng theo bậc uy tín của bạn.',

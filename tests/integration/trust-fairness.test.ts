@@ -153,6 +153,7 @@ describe('Uy tín — người bán thấy được vị thế của mình', () 
       canSelfPublish: true,
       cleanApprovalsNeeded: 0,
       penalty: null,
+      probation: null,
     })
     // Cố tình KHÔNG lộ con số bậc — bậc chặn trần nên nó không nói thêm được gì.
     expect(res.body.data.standing).not.toHaveProperty('trustLevel')
@@ -345,6 +346,7 @@ describe('Vị thế — "còn mấy tin nữa" phải đếm cả phần đã �
       canSelfPublish: true,
       cleanApprovalsNeeded: 0,
       penalty: null,
+      probation: null,
     })
   }, 90_000)
 })
