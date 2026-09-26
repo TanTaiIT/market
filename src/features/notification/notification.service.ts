@@ -295,20 +295,37 @@ export const notificationService = {
     const existing = await notificationRepository.findById(id)
     if (!existing) throw new NotFoundError('Notification not found')
 
+    /*
+     * Người bấm phải nằm trong ĐỐI TƯỢNG NHẬN — cùng luật `paginateInbox` dùng để liệt kê: đích
+     * danh thì đúng người, phát chung thì đang là thành viên nhóm đó (đúng nhóm con nếu có) và
+     * vào nhóm trước khi thông báo ra đời.
+     *
+     * Bản trước chỉ `findById` rồi trả DTO. ObjectId đoán được (timestamp + counter), nên bất kỳ
+     * ai đăng nhập cũng đọc được `title`/`body` thông báo riêng của người khác — số dư ví, lý do
+     * khoá tài khoản, lý do từ chối tin. 404 chứ không 403: không xác nhận thông báo đó tồn tại.
+     */
+    const membership = existing.organizationId
+      ? await membershipRepository.findActive(userId, existing.organizationId)
+      : null
+    const inAudience = existing.userId
+      ? existing.userId.equals(viewerId)
+      : membership !== null &&
+        membership.joinedAt <= existing.createdAt &&
+        (!existing.unitId ||
+          (membership.unitId !== null && existing.unitId.equals(membership.unitId)))
+    if (!inAudience) throw new NotFoundError('Notification not found')
+
     if (existing.actorId && existing.organizationId) {
       await membershipRepository.markNotificationsSeen(
         viewerId,
         existing.organizationId,
         existing.createdAt,
       )
-      // Đọc lại mốc vừa ghi thay vì tự dựng: người bấm có thể KHÔNG còn là thành viên nhóm đó
-      // (vừa rời nhóm), lúc ấy `updateOne` không khớp gì và mốc phải giữ nguyên `null`.
-      const membership = await membershipRepository.findActive(userId, existing.organizationId)
+      // `membership` ở trên là bản TRƯỚC khi đẩy mốc — đọc lại để trả đúng mốc vừa ghi.
+      const fresh = await membershipRepository.findActive(userId, existing.organizationId)
       return toNotificationDto(existing, {
         id: userId,
-        seenAt: new Map([
-          [existing.organizationId.toString(), membership?.notificationsSeenAt ?? null],
-        ]),
+        seenAt: new Map([[existing.organizationId.toString(), fresh?.notificationsSeenAt ?? null]]),
       })
     }
 

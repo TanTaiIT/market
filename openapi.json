@@ -4525,6 +4525,21 @@
         ],
         "additionalProperties": false
       },
+      "RestoreTrust": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "example": "Gỡ nhầm tin: đã xác minh người bán không vi phạm"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      },
       "ListingProduct": {
         "type": "object",
         "properties": {
@@ -4655,6 +4670,17 @@
           "folder",
           "uploadPreset"
         ]
+      },
+      "RemoveListing": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        },
+        "additionalProperties": false
       },
       "BannedPhrase": {
         "type": "object",
@@ -6318,6 +6344,112 @@
         }
       }
     },
+    "/users/{id}/restore-trust": {
+      "post": {
+        "operationId": "userRestoreTrust",
+        "tags": [
+          "User"
+        ],
+        "summary": "Phục hồi bậc uy tín về trần (master)",
+        "description": "Bậc uy tín chỉ leo lại bằng 5 tin liên tiếp do người duyệt thông qua, mà máy duyệt xử gần hết tin của người bậc thấp nên một lượt gỡ nhầm là mất bậc vĩnh viễn. Endpoint này trả bậc về trần. KHÔNG đụng cửa sổ phạt 7 ngày — đó là việc của `clear-rejections`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreTrust"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã phục hồi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminUser"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Uy tín đang ở bậc trần",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/users/{id}/status": {
       "patch": {
         "operationId": "userSetStatus",
@@ -7931,6 +8063,17 @@
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "categoryId",
+            "in": "query"
           }
         ],
         "responses": {
@@ -14050,6 +14193,7 @@
           "Moderation"
         ],
         "summary": "Gỡ tin khỏi bảng (soft delete)",
+        "description": "`reason` tuỳ chọn, đi thẳng vào thông báo cho người bán. Chỉ trừ uy tín khi tin đã từng lên bảng và người gỡ có quyền duyệt trên trục của tin — quản trị nhóm gỡ tin sàn mang tên nhóm thì tin rời sàn nhưng không ghi án.",
         "security": [
           {
             "bearerAuth": []
@@ -14066,6 +14210,15 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveListing"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Đã gỡ",

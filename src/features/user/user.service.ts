@@ -1,5 +1,6 @@
 import { Types } from 'mongoose'
 import { userRepository } from './user.repository'
+import type { RestoreTrustInput } from './user.schema'
 import {
   AdminUserQuery,
   ClearRejectionsInput,
@@ -14,7 +15,7 @@ import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { usableMastersExcluding, usableOrgAdmins } from '../role-grant/role-grant.service'
 import { organizationRepository } from '../organization/organization.repository'
 import { trustRepository } from '../trust/trust.repository'
-import { INITIAL_TRUST } from '../trust/trust.policy'
+import { INITIAL_TRUST, MAX_TRUST_LEVEL } from '../trust/trust.policy'
 import { listingService } from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { QUOTA } from '../listing/listing.quota'
@@ -24,6 +25,7 @@ import { BUCKET_FORMAT, bucketsBetween, resolveRange } from '../../common/report
 import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { logger } from '../../config/logger'
+import { disconnectUser } from '../../sockets/emit'
 
 /**
  * Tài khoản là toàn cục nên các thao tác ở đây KHÔNG còn scope theo org.
@@ -128,10 +130,12 @@ export const userService = {
    * và cả trục công khai, đúng loại vượt phạm vi mà tenant model đang chặn. Org muốn xử người
    * trong nhóm mình thì công cụ đúng là membership, không phải cái công tắc này.
    *
-   * Hiệu lực: đăng nhập và refresh chặn NGAY (`auth.service` đã kiểm `isActive`); access token
-   * đang sống thì chạy nốt tối đa `JWT_EXPIRES_IN` (15 phút) — cùng đánh đổi mà multi-tenant
-   * convention §5.5 đã chốt cho suspend org: token ngắn chính là cơ chế, đừng thêm một lượt
-   * đọc DB vào mọi request chỉ để rút ngắn cái đuôi này.
+   * Hiệu lực: NGAY với mọi lượt GHI. Đăng nhập/refresh chặn ở `auth.service` (`isActive` +
+   * `tokenVersion` vừa tăng), request ghi đang cầm access token còn hạn chặn ở `resolveTenant`
+   * (`isUsable`), socket bị ngắt tại chỗ. Đường ĐỌC cố ý để mở tới khi access token hết hạn:
+   * lý do khoá nằm trong hộp thư (xem `notifyUser` bên dưới), và đó là cách duy nhất họ biết vì
+   * sao. Bản trước để cả ghi chạy nốt 15 phút với lý do "đừng thêm một lượt đọc DB vào mọi
+   * request" — lý do đó hết đúng từ khi `resolveTenant` vốn đã tra membership mỗi request.
    */
   async setStatus(id: string, input: SetUserStatusInput, actorId: string) {
     if (id === actorId) {
@@ -158,6 +162,11 @@ export const userService = {
     await userRepository.updateById(id, { isActive: input.isActive })
 
     if (!input.isActive) {
+      // Cắt phiên: refresh token chết theo `tokenVersion`, socket ngắt tại chỗ. Access token còn
+      // hạn thì `resolveTenant` chặn ở request kế tiếp — xem docblock.
+      await userRepository.bumpTokenVersion(id)
+      disconnectUser(id)
+
       // Khoá một spammer mà để nguyên tin của họ trên bảng thì mới xử được cái tài khoản, chưa
       // xử được cái spam. Ẩn hết — kể cả tin đang chờ duyệt, để chúng thôi chiếm hàng đợi.
       const hidden = await listingService.hideAllFromSeller(target._id, {
@@ -216,6 +225,43 @@ export const userService = {
     })
 
     return { cleared }
+  },
+
+  /**
+   * Phục hồi bậc uy tín về trần — quyền MASTER, đối xứng với `clearRejections`.
+   *
+   * Vì sao cần: bậc chỉ leo lại bằng 5 tin liên tiếp do NGƯỜI duyệt thông qua, mà máy duyệt (không
+   * cộng điểm) xử gần hết tin của người bậc thấp sau khi án 7 ngày trôi qua. Nghĩa là một lượt gỡ
+   * nhầm là án chung thân, và trước endpoint này cách sửa duy nhất là xoá bản ghi trong DB.
+   *
+   * CHỈ trả bậc, KHÔNG đụng cửa sổ phạt: người có án vi phạm trong 7 ngày vẫn chưa tự đăng
+   * được cho tới khi master `clearRejections` — hai lệnh là hai câu hỏi khác nhau ("người này
+   * có đáng tin không" / "án này có oan không"), gộp lại là một nút tha bổng.
+   */
+  async restoreTrust(id: string, input: RestoreTrustInput, actorId: string) {
+    const target = await userRepository.findById(id)
+    if (!target) throw new NotFoundError('User not found')
+
+    const current = await trustRepository.stateOf(target._id)
+    if (current.level >= MAX_TRUST_LEVEL) throw new ConflictError('Uy tín đang ở bậc trần')
+
+    const restored = await trustRepository.restore(target._id)
+    logger.info('trust restored by master', {
+      actorId,
+      userId: id,
+      from: current.level,
+      to: restored.level,
+      reason: input.reason,
+    })
+
+    await notificationService.notifyUser({
+      organizationId: null,
+      userId: target._id,
+      title: 'Uy tín của bạn đã được phục hồi',
+      body: `${input.reason} — tin của bạn lại lên bảng ngay như trước.`,
+    })
+
+    return toAdminUserDto(target, restored.level)
   },
 
   /**
@@ -324,7 +370,11 @@ export const userService = {
     await Promise.all([
       roleGrantRepository.revokeAllForUser(id),
       membershipRepository.archiveAllForUser(id),
+      // Phiên chết cùng tài khoản: refresh token qua `tokenVersion`, socket ngắt tại chỗ. Hỏng ở
+      // bước sau thì chỉ còn một tài khoản đã bị đăng xuất — chạy lại được.
+      userRepository.bumpTokenVersion(id),
     ])
+    disconnectUser(id)
 
     const user = await userRepository.softDelete(id)
     if (!user) throw new NotFoundError('User not found')

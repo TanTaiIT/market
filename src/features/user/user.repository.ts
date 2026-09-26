@@ -156,6 +156,17 @@ export const userRepository = {
     return User.updateOne({ _id: id }, { $inc: { tokenVersion: 1 } }).exec()
   },
 
+  /**
+   * Tài khoản còn dùng được không — `false` khi bị khoá hoặc đã xoá mềm. Chạy trên MỌI request
+   * có token (`resolveTenant`) và ở handshake socket, nên phải là truy vấn rẻ nhất có thể: một
+   * `exists` theo `_id`.
+   */
+  isUsable(id: string | Types.ObjectId): Promise<boolean> {
+    return User.exists({ _id: id, isActive: true, deletedAt: null })
+      .exec()
+      .then((hit) => hit !== null)
+  },
+
   countUsable(ids: Types.ObjectId[]): Promise<number> {
     if (ids.length === 0) return Promise.resolve(0)
     return User.countDocuments({ _id: { $in: ids }, isActive: true }).exec()

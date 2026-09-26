@@ -4,12 +4,17 @@ import { reportRepository } from './report.repository'
 import { CreateReportInput, ReportQuery, ResolveReportInput } from './report.schema'
 import { IReport, IReportDocument } from './report.model'
 import { assertCanActOnListing, listingService } from '../listing/listing.service'
-import { trustRepository } from '../trust/trust.repository'
 import type { TrustState } from '../trust/trust.policy'
 import { userRepository } from '../user/user.repository'
-import { recordAudit } from '../moderation/moderation.service'
+import {
+  applyTakedownPenalty,
+  notifyPoster,
+  recordAudit,
+  trustNote,
+} from '../moderation/moderation.service'
 import {
   AUDIT_ACTION,
+  LISTING_REACH,
   LISTING_STATUS,
   MASTER_DISPLAY_NAME,
   MODERATION_ACTION,
@@ -62,6 +67,11 @@ type ReportTarget = Pick<
  * - tin công khai → `null` + toạ độ ô (`category`, `provinceCode`, `wardCode`): người phụ trách ô
  *   xử, master là fallback — đúng luật của hàng đợi duyệt (`assertCanActOnListing`).
  *
+ * "Công khai" xét theo `reach`, KHÔNG theo `organizationId`: tin sàn do thành viên đăng vẫn mang
+ * badge nhóm, mà bản trước dùng badge đó làm trục nên báo cáo rơi vào hàng đợi của nhóm — người
+ * phụ trách ô không bao giờ thấy, và nhóm thì gỡ được nhưng không ghi được án (cửa gỡ). Tin sàn
+ * của thành viên vì thế gần như miễn hậu kiểm. Nhóm cầm id vẫn gỡ được qua `canTakedownListing`.
+ *
  * Báo cáo về NGƯỜI không có trục tự nhiên: đóng dấu org người tố đang đứng (như trước), không
  * có org thì lên trục công khai và chỉ master xử (xem `assertCanResolve`).
  *
@@ -73,10 +83,10 @@ type ReportTarget = Pick<
 async function targetOf(input: CreateReportInput, reporterId: string): Promise<ReportTarget> {
   if (input.targetType === REPORT_TARGET.LISTING) {
     const listing = await listingService.getForViewer(input.targetId, reporterId)
-    const isPublic = !listing.organizationId
+    const isPublic = listing.reach === LISTING_REACH.MARKETPLACE
     return {
       targetTitle: listing.title,
-      organizationId: listing.organizationId ?? null,
+      organizationId: isPublic ? null : (listing.organizationId ?? null),
       category: isPublic ? listing.category : null,
       provinceCode: isPublic ? listing.provinceCode : null,
       wardCode: isPublic ? listing.wardCode : null,
@@ -190,6 +200,9 @@ export const reportService = {
     let trust: TrustState | null = null
 
     if (hideTarget) {
+      // Trạng thái TRƯỚC khi ẩn — `applyTakedownPenalty` cần nó để biết tin đã từng lên bảng chưa.
+      const before = await listingService.getForModeration(report.targetId.toString())
+
       // `grants` là bắt buộc: `setModerationStatus` tự chốt phạm vi duyệt theo TRỤC của tin —
       // cùng phép kiểm `assertCanResolve` vừa làm, giữ lại vì đây là hàm public có caller khác.
       const hidden = await listingService.setModerationStatus(
@@ -204,17 +217,23 @@ export const reportService = {
       )
 
       /*
-       * Uy tín trừ ở ĐÂY chứ không ở `applyTrustEffect`.
+       * Uy tín trừ ở ĐÂY chứ không ở `applyTrustEffect` (hàm đó cố tình bỏ qua `hidden`: ẩn tin
+       * là thao tác vận hành). Ẩn vì một báo cáo ĐÃ ĐƯỢC XÁC MINH thì khác — tin đã lọt qua
+       * kiểm duyệt, tới tay người mua, rồi mới bị chính họ tố giác.
        *
-       * `applyTrustEffect` cố tình bỏ qua trạng thái `hidden`: ẩn tin là thao tác vận hành,
-       * có thể vì lý do ngoài lỗi người đăng. Nhưng ẩn vì một báo cáo ĐÃ ĐƯỢC XÁC MINH thì
-       * khác hẳn — đó là kết luận "người này làm sai", và là loại vi phạm nguy hiểm nhất:
-       * tin đã lọt qua kiểm duyệt, đã tới tay người mua, rồi mới bị chính họ tố giác.
+       * Nhưng đi qua `applyTakedownPenalty` chứ không `record` thẳng: cửa `hide_target` mở cho cả
+       * quản trị nhóm với tin sàn mang badge nhóm (`canTakedownListing`), mà án uy tín trên toàn
+       * sàn thì chỉ người có quyền DUYỆT trục đó mới ghi được. Bản trước để nhóm tự báo cáo rồi
+       * tự gỡ là hạ bậc bất kỳ ai từng đăng dưới tên nhóm.
        *
        * Không sợ trừ hai lần: `resolveAllForTarget` đóng mọi báo cáo còn mở của cùng một tin
        * trong một lượt, và lượt gọi thứ hai bị chặn ngay ở `status !== OPEN` phía trên.
        */
-      trust = await trustRepository.record(hidden.seller, false)
+      trust = await applyTakedownPenalty(hidden, actor, before.status)
+
+      // Người bán phải biết tin mình vừa biến mất vì sao — nhất là khi họ vừa bị trừ bậc. Bản
+      // trước đi thẳng `setModerationStatus` nên bỏ qua `notifyPoster` mà bàn duyệt vẫn gọi.
+      await notifyPoster(hidden, LISTING_STATUS.HIDDEN, `Bị báo cáo: ${report.kind}`)
     }
 
     await reportRepository.resolveAllForTarget(report.targetId, report.organizationId, {
@@ -231,8 +250,10 @@ export const reportService = {
       { id: actor.id, name: byName },
       {
         action: hideTarget ? AUDIT_ACTION.REPORT_RESOLVE : AUDIT_ACTION.REPORT_DISMISS,
+        // Đuôi uy tín chỉ xuất hiện khi lượt gỡ THẬT SỰ ghi án — in "bậc 0" cho lượt không phạt
+        // là nói với quản trị nhóm rằng họ vừa hạ bậc ai đó, trong khi họ không có quyền đó.
         summary: hideTarget
-          ? `Gỡ "${report.targetTitle}" sau báo cáo · uy tín bậc ${trust?.level ?? 0}`
+          ? `Gỡ "${report.targetTitle}" sau báo cáo${trustNote(trust)}`
           : `Bỏ qua báo cáo về "${report.targetTitle}"`,
         targetType: 'report',
         targetId: report._id,

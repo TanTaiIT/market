@@ -106,4 +106,15 @@ export const trustRepository = {
     logger.warn('trust update dropped after CAS retries', { userId: String(userId), approved })
     return (await readState(userId)) ?? INITIAL_TRUST
   },
+
+  /**
+   * Đặt lại về mặc định — hành động của MASTER (`userService.restoreTrust`), không phải một lượt
+   * duyệt. Ghi đè thẳng, không CAS: đây là quyết định con người, không lượt duyệt nào chen giữa
+   * được thắng nó. Upsert để người chưa có bản ghi (không thể xảy ra vì họ đã ở trần, nhưng
+   * caller không phải nhớ điều đó) cũng an toàn.
+   */
+  async restore(userId: Id): Promise<TrustState> {
+    await UserTrust.updateOne({ userId }, { $set: { ...INITIAL_TRUST } }, { upsert: true }).exec()
+    return INITIAL_TRUST
+  },
 }

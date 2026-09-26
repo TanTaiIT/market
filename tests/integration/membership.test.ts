@@ -214,3 +214,26 @@ describe('Quản trị nhóm quản lý thành viên', () => {
       .expect(403)
   }, 60_000)
 })
+
+describe('Vào lại nhóm sau khi bị gỡ', () => {
+  it('gỡ rồi xin vào lại nhóm công khai → 201, không phải 500 vì trùng khoá', async () => {
+    const { joinCodeOf } = await import('../helpers/fixtures')
+    const rejoiner = await registerUser(app, 'rejoin@roster.local', 'Người vào lại')
+    await addMember(rejoiner.id, orgId)
+
+    await request(app)
+      .delete(`/api/v1/memberships/${rejoiner.id}`)
+      .set(orgAuth(owner.token, ORG))
+      .expect(200)
+
+    const res = await request(app)
+      .post('/api/v1/join-requests')
+      .set({ Authorization: `Bearer ${rejoiner.token}` })
+      .send({ code: await joinCodeOf(ORG), claimedName: 'Người vào lại' })
+    expect(res.status).toBe(201)
+    expect(res.body.data.status).toBe('approved')
+
+    const roster = await members(owner.token, ORG).expect(200)
+    expect(roster.body.data.map((m: { userId: string }) => m.userId)).toContain(rejoiner.id)
+  }, 60_000)
+})

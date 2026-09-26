@@ -146,6 +146,9 @@ export const staleListingSchema = z
   })
   .openapi('StaleListing')
 
+/** `GET /listings/quota` — danh mục để tính quota trục công khai; bỏ trống là quota nội bộ. */
+export const quotaQuerySchema = z.object({ categoryId: objectId.optional() })
+
 export const quotaStatusSchema = z
   .object({
     allowed: z.boolean(),

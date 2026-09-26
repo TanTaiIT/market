@@ -1,9 +1,8 @@
-import mongoose from 'mongoose'
 import { Agenda } from 'agenda'
 import { MongoBackend } from '@agendajs/mongo-backend'
-import type { Db } from 'mongodb'
 import { env } from './env'
 import { logger } from './logger'
+import { reportJobError } from './sentry'
 import { machineReviewService } from '../features/moderation/moderation.machine.service'
 import { listingExpiryService } from '../features/listing/listing.expiry.service'
 import { unverifiedCleanupService } from '../features/auth/unverified-cleanup.service'
@@ -32,19 +31,44 @@ const JOBS = {
 
 let agenda: Agenda | null = null
 
-export async function startAgenda(): Promise<void> {
-  // Dùng LẠI connection của Mongoose thay vì mở client thứ hai từ env.MONGO_URI: một pool duy
-  // nhất, và test (vốn connect vào mongodb-memory-server SAU khi env đã đóng băng) trỏ đúng DB.
-  const db = mongoose.connection.db
-  if (!db) throw new Error('startAgenda phải chạy sau khi Mongo đã connect')
-
+/**
+ * `address` có tham số vì test trỏ vào mongodb-memory-server, mà `env` đã đóng băng trước khi
+ * server ảo có URI. Server thật không truyền gì.
+ */
+export async function startAgenda(address: string = env.MONGO_URI): Promise<void> {
   agenda = new Agenda({
-    // Cast qua Db của driver rời: mongoose bundle driver riêng nên hai bộ type không nhận nhau,
-    // dù runtime là cùng một class.
-    backend: new MongoBackend({ mongo: db as unknown as Db, collection: 'agendaJobs' }),
+    /*
+     * Kết nối RIÊNG bằng driver của chính backend — KHÔNG mượn `mongoose.connection.db`.
+     *
+     * Bản trước dùng chung để có "một pool duy nhất", với giả định hai bộ type chỉ khác nhau
+     * trên giấy còn runtime là cùng một class. Giả định đó sai: mongoose đóng gói `mongodb@6`
+     * (bson 6) trong `node_modules` riêng của nó, còn `@agendajs/mongo-backend` kéo `mongodb@7`
+     * (bson 7). Agenda tạo ObjectId bằng bson 7 rồi ghi qua driver của mongoose, bson 6 từ chối:
+     * `BSONVersionError` ở MỌI lượt quét hàng đợi, 30 giây một lần — tức không job nào từng
+     * chạy, và không ai thấy vì trước đây không có listener `error`. Hai pool nhỏ rẻ hơn hẳn
+     * một scheduler chết im.
+     *
+     * Muốn quay lại một pool thì phải khai `mongodb` ở gốc `package.json` đúng bản mongoose
+     * dùng để npm dedupe — đó là thay đổi package, không phải thay đổi ở đây.
+     */
+    backend: new MongoBackend({ address, collection: 'agendaJobs' }),
     processEvery: '30 seconds',
     // Một sweep tại một thời điểm — hai sweep song song chấm trùng batch rồi thi nhau ghi.
     maxConcurrency: 1,
+  })
+
+  /*
+   * Job hỏng phải LÊN TIẾNG. Agenda nuốt lỗi của handler vào `attrs.failReason` rồi đi tiếp;
+   * không ai nghe `fail` thì `listing-expiry:sweep` chết mỗi giờ mà tin quá hạn vẫn ACTIVE, và
+   * Sentry chỉ biết lỗi HTTP (`errorHandler`) — job chạy ngoài mọi request.
+   */
+  agenda.on('fail', (err: Error, job: { attrs: { name: string } }) => {
+    logger.error('agenda job failed', { job: job.attrs.name, err })
+    reportJobError(err, job.attrs.name)
+  })
+  agenda.on('error', (err: Error) => {
+    logger.error('agenda backend error', { err })
+    reportJobError(err, 'agenda')
   })
 
   // lockLifetime dài hơn hẳn một lượt quét (batch 50, toàn query có index): process chết giữa
@@ -112,8 +136,8 @@ export async function startAgenda(): Promise<void> {
 export async function stopAgenda(): Promise<void> {
   if (!agenda) return
   // `stop` nhả lock của job đang chạy để lần boot sau nhận việc ngay, không chờ lockLifetime.
-  // Không có client riêng để đóng — connection là của Mongoose, `disconnectDB` lo phần đó
-  // (server.ts gọi stopAgenda TRƯỚC disconnectDB, đúng thứ tự phụ thuộc).
-  await agenda.stop()
+  // `true` = đóng luôn client riêng của backend (xem `startAgenda`) — không còn mượn connection
+  // của Mongoose, nên `disconnectDB` không đóng hộ được nữa.
+  await agenda.stop(true)
   agenda = null
 }

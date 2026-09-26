@@ -38,7 +38,8 @@ async function joinPublicNow(
   // Membership TRƯỚC, bản ghi đơn sau — cùng thứ tự và cùng lý do như `approve`: đứt gánh giữa
   // chừng theo thứ tự này để lại "đã là thành viên, đơn còn chờ" (bấm lại là xong), còn thứ tự
   // ngược lại để lại "đơn đã duyệt mà không có membership" — người dùng kẹt và không ai thấy.
-  await membershipRepository.create({
+  // `activate` chứ không `create`: người từng rời/bị gỡ vào lại nhóm công khai phải đi được.
+  await membershipRepository.activate({
     userId: new Types.ObjectId(actorId),
     organizationId,
     role: MEMBERSHIP_ROLES.MEMBER,
@@ -228,7 +229,7 @@ export const joinRequestService = {
     // duyệt nhưng không có membership" — người dùng bị kẹt và không ai nhìn ra.
     const existing = await membershipRepository.findActive(doc.userId, organizationId)
     if (!existing) {
-      await membershipRepository.create({
+      await membershipRepository.activate({
         userId: doc.userId,
         organizationId,
         role: MEMBERSHIP_ROLES.MEMBER,

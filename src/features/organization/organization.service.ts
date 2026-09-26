@@ -163,7 +163,7 @@ export const organizationService = {
       existing.role = MEMBERSHIP_ROLES.ADMIN
       await existing.save()
     } else {
-      await membershipRepository.create({
+      await membershipRepository.activate({
         userId: user._id,
         organizationId: org._id,
         role: MEMBERSHIP_ROLES.ADMIN,

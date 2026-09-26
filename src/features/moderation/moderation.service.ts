@@ -1,8 +1,18 @@
 import { Types } from 'mongoose'
 import { moderationRepository } from './moderation.repository'
-import { ActivityQuery, ModListingQuery, SetListingStatusInput } from './moderation.schema'
+import {
+  ActivityQuery,
+  ModListingQuery,
+  RemoveListingInput,
+  SetListingStatusInput,
+} from './moderation.schema'
 import { toAuditEventDto } from './moderation.types'
-import { assertCanActOnListing, listingService } from '../listing/listing.service'
+import {
+  assertCanActOnListing,
+  listingService,
+  targetOf,
+  toModerationListing,
+} from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { IListingDocument } from '../listing/listing.model'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
@@ -22,11 +32,16 @@ import {
   MASTER_DISPLAY_NAME,
   MODERATION_ACTION,
   MODERATION_QUEUE,
+  PUBLIC_LISTING_STATUSES,
   SCOPE_TYPES,
   ModerationQueue,
   VN_PROVINCE_NAMES,
+  type RejectionSeverity,
 } from '../../common/constants'
-import { Grant } from '../../common/authz/policy'
+
+/** Mức từ chối duy nhất có hình phạt — `quality` là sai sót, sửa rồi đăng lại. */
+const PENALIZING_SEVERITY: RejectionSeverity = 'violation'
+import { Grant, canApproveListing } from '../../common/authz/policy'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToOrgAdmins } from '../../sockets/emit'
 import { runUnscoped } from '../../common/tenant/tenantContext'
@@ -114,11 +129,19 @@ export async function recordAudit(
 async function applyTrustEffect(
   listing: IListingDocument,
   status: ListingStatus,
-  context: { actorId: string; previousStatus: ListingStatus },
+  context: { actorId: string; previousStatus: ListingStatus; severity?: RejectionSeverity },
 ): Promise<TrustState | null> {
   const approved = status === LISTING_STATUS.ACTIVE
   const rejected = status === LISTING_STATUS.REJECTED
   if (!approved && !rejected) return null
+
+  /*
+   * Từ chối vì SAI SÓT không phải phán quyết về con người. `REJECTION_SEVERITIES` hứa `quality`
+   * "KHÔNG đụng uy tín", và cửa sổ phạt 7 ngày đã giữ lời từ trước — nhưng chỗ này thì không:
+   * mọi lượt từ chối đều `record(false)`, nên cú bấm MẶC ĐỊNH của người duyệt cũng hạ bậc, đúng
+   * cái bất công mà `severity` sinh ra để sửa. Không có `severity` (caller cũ) tính như mặc định.
+   */
+  if (rejected && context.severity !== PENALIZING_SEVERITY) return null
 
   /*
    * TỰ duyệt tin của chính mình KHÔNG tính. Đây là lỗ farm uy tín, và nó rẻ đến mức không thể
@@ -155,7 +178,7 @@ async function applyTrustEffect(
  * bảng hay không. Không hiện ra đây thì quản trị chỉ thấy "đã từ chối" mà không biết hậu quả
  * thật của cú bấm vừa rồi. Rỗng khi lượt này không đụng tới uy tín (ẩn/hiện lại tin).
  */
-const trustNote = (trust: TrustState | null) => (trust ? ` · uy tín bậc ${trust.level}` : '')
+export const trustNote = (trust: TrustState | null) => (trust ? ` · uy tín bậc ${trust.level}` : '')
 
 /**
  * Báo cho NGƯỜI ĐĂNG kết quả duyệt tin của họ.
@@ -212,13 +235,45 @@ export async function notifyPoster(
   }
 }
 
-/** Gỡ hẳn tin khỏi bảng: nặng hơn ẩn, và cũng là thứ người bán cần biết ngay nhất. */
-async function notifyRemoved(listing: IListingDocument): Promise<void> {
+/**
+ * Trừ uy tín cho một lượt GỠ đã xác minh — `removeListing` và `report.resolve(hide_target)`.
+ *
+ * Chữ của `ACTION_BY_DECISION` nói takedown không ghi án, vì cửa gỡ RỘNG hơn cửa duyệt:
+ * `canTakedownListing` cho quản trị nhóm rút tin sàn mang tên nhóm — đó là quyền *từ chối cho
+ * mượn tên*, không phải quyền phán "vi phạm quy định sàn". Nhưng "tin đã lọt qua hệ thống, tới
+ * tay người mua rồi mới bị phát hiện" là vi phạm nặng nhất, bỏ hẳn án là bậc uy tín chỉ còn đo
+ * được khâu tiền kiểm. Nên KHÔNG bỏ, chỉ ghi án khi đủ ba điều:
+ *
+ * 1. Tin từng tới tay người mua — trạng thái TRƯỚC khi gỡ nằm trong `PUBLIC_LISTING_STATUSES`.
+ *    Gỡ tin đang chờ là dọn hàng đợi, không phải hậu kiểm.
+ * 2. Người gỡ có quyền DUYỆT trên trục của tin (`canApproveListing`), tức đúng người có thẩm
+ *    quyền phán vi phạm cho tin đó. Quản trị nhóm gỡ tin sàn mang badge thì tin rời sàn, nhưng
+ *    án lên hồ sơ toàn sàn không thuộc về họ — trước bản này họ tự báo cáo rồi bấm gỡ là hạ
+ *    được bậc của bất kỳ thành viên nào ở một trục họ không có quyền.
+ * 3. Không tự xử tin của chính mình — cùng chốt với `applyTrustEffect`. Hàng đợi người ngoài
+ *    (`pending_unverified`) trung tính theo chốt 1 luôn: tin đó chưa từng lên bảng.
+ */
+export async function applyTakedownPenalty(
+  listing: IListingDocument,
+  actor: { id: string; grants: Grant[] },
+  previousStatus: ListingStatus,
+): Promise<TrustState | null> {
+  if (!PUBLIC_LISTING_STATUSES.includes(previousStatus)) return null
+  if (!canApproveListing(actor.grants, targetOf(listing))) return null
+  if (listing.seller.toString() === actor.id) return null
+  return trustRepository.record(listing.seller, false)
+}
+
+/**
+ * Gỡ hẳn tin khỏi bảng: nặng hơn ẩn, và cũng là thứ người bán cần biết ngay nhất. Có lý do thì
+ * nói ra — "không còn trên bảng tin" suông là câu người bán không biết phải sửa gì.
+ */
+async function notifyRemoved(listing: IListingDocument, reason?: string): Promise<void> {
   await notificationService.notifyUser({
     organizationId: listing.organizationId,
     userId: listing.seller,
     title: 'Tin của bạn đã bị gỡ',
-    body: `"${listing.title}" không còn trên bảng tin.`,
+    body: reason ? `"${listing.title}" — ${reason}` : `"${listing.title}" không còn trên bảng tin.`,
   })
 }
 
@@ -310,7 +365,7 @@ export const moderationService = {
       pagination,
     )
     return {
-      items,
+      items: items.map(toModerationListing),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },
@@ -351,6 +406,7 @@ export const moderationService = {
     const trust = await applyTrustEffect(listing, input.status, {
       actorId: actor.id,
       previousStatus,
+      severity: input.severity,
     })
 
     const action = ACTION_BY_STATUS[input.status]
@@ -371,7 +427,7 @@ export const moderationService = {
     )
 
     await notifyPoster(listing, input.status, input.reason)
-    return listing
+    return toModerationListing(listing)
   },
 
   /**
@@ -386,7 +442,7 @@ export const moderationService = {
       pagination,
     )
     return {
-      items,
+      items: items.map(toModerationListing),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },
@@ -501,7 +557,7 @@ export const moderationService = {
       orgId,
     )
 
-    return listing
+    return toModerationListing(listing)
   },
 
   /**
@@ -516,32 +572,36 @@ export const moderationService = {
     // họ phải mở được màn chi tiết của chính tin đó. Chốt bằng cửa hẹp hơn là 403 ngay ở bước
     // nhìn, và tính năng gỡ thành vô dụng.
     assertCanActOnListing(listing, grants, MODERATION_ACTION.TAKEDOWN)
-    return listing
+    return toModerationListing(listing)
   },
 
-  async removeListing(id: string, actor: ModeratorActor & { grants: Grant[] }) {
-    assertCanActOnListing(
-      await listingService.getForModeration(id),
-      actor.grants,
-      MODERATION_ACTION.TAKEDOWN,
-    )
+  async removeListing(
+    id: string,
+    actor: ModeratorActor & { grants: Grant[] },
+    input: RemoveListingInput = {},
+  ) {
+    const existing = await listingService.getForModeration(id)
+    assertCanActOnListing(existing, actor.grants, MODERATION_ACTION.TAKEDOWN)
 
     const name = await actorName(actor)
     const listing = await listingService.removeByModerator(id, actor.grants)
 
-    // Gỡ tin tính như một lần bị từ chối. Nặng hơn thì đúng hơn — tin này đã LỌT qua hệ thống
-    // và đã tới tay người mua, khác hẳn tin bị chặn từ hàng đợi — nhưng thang bậc hiện tại chỉ
-    // có một nấc giáng. Phân mức độ vi phạm là việc của hệ điểm mới, không phải chỗ này.
-    const trust = await trustRepository.record(listing!.seller, false)
-    await notifyRemoved(listing!)
+    // Gỡ tin đã lên bảng tính như một lần bị từ chối vì vi phạm — nhưng chỉ khi người gỡ có
+    // quyền phán trên trục của tin và tin đã từng tới tay người mua. Xem `applyTakedownPenalty`.
+    const trust = await applyTakedownPenalty(listing!, actor, existing.status)
+    await notifyRemoved(listing!, input.reason)
 
     await recordAudit(
       { ...actor, name },
       {
         action: AUDIT_ACTION.LISTING_REMOVE,
-        summary: `Gỡ "${listing!.title}" khỏi bảng${trustNote(trust)}`,
+        summary:
+          `Gỡ "${listing!.title}" khỏi bảng` +
+          (input.reason ? ` · ${input.reason}` : '') +
+          trustNote(trust),
         targetType: 'listing',
         targetId: listing!._id,
+        fromStatus: existing.status,
       },
       listing!.organizationId,
     )

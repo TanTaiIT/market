@@ -2,6 +2,7 @@ import { MACHINE_REVIEW, MachineVerdict, medianOf, reviewByMachine } from './mod
 import { notifyPoster } from './moderation.service'
 import { bannedPhraseService } from '../banned-phrase/banned-phrase.service'
 import { listingRepository } from '../listing/listing.repository'
+import { listingExpiresAt } from '../listing/listing.expiry.service'
 import { QUOTA } from '../listing/listing.quota'
 import { IListingDocument } from '../listing/listing.model'
 import { categoryRepository } from '../category/category.repository'
@@ -100,6 +101,8 @@ async function apply(listing: IListingDocument, verdict: MachineVerdict): Promis
   if (verdict.verdict === 'approve') {
     const updated = await listingRepository.applyMachineVerdict(listing._id, {
       status: LISTING_STATUS.ACTIVE,
+      // 30 ngày tính từ lúc LÊN BẢNG — cùng lý do với `setModerationStatus`.
+      expiresAt: listingExpiresAt(),
       machineReview: { at, verdict: 'approved' },
     })
     if (updated) await notifyPoster(updated, LISTING_STATUS.ACTIVE)

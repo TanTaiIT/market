@@ -1,6 +1,7 @@
 import { ClientSession, Types } from 'mongoose'
 import { Membership, IMembership, IMembershipDocument } from './membership.model'
 import { MEMBERSHIP_STATUS, REPORT_TIMEZONE } from '../../common/constants'
+import type { JoinedVia, MembershipRole } from '../../common/constants'
 import { PaginationParams } from '../../common/utils/pagination'
 
 type Id = string | Types.ObjectId
@@ -44,6 +45,42 @@ export const membershipRepository = {
 
   create(data: Partial<IMembership>, session?: ClientSession) {
     return Membership.create([data], { session }).then(([doc]) => doc)
+  },
+
+  /**
+   * Vào nhóm — lần đầu hay VÀO LẠI đều đi qua đây.
+   *
+   * `archiveOne` giữ nguyên document khi gỡ người (lịch sử là của tổ chức), mà cặp
+   * `{userId, organizationId}` là unique KHÔNG partial: `create` cho người từng bị gỡ nổ E11000
+   * → 500 ở cả bốn đường vào nhóm (đơn công khai, duyệt đơn, nhận lời mời, master trao quyền).
+   * Upsert theo cặp khoá thì bản ghi cũ sống lại với `joinedAt` mới — vào lại là một lần vào
+   * mới, thông báo của quãng họ vắng mặt không phải của họ (`paginateInbox` lọc theo `joinedAt`).
+   *
+   * Caller vẫn `findActive` trước: người ĐANG ở trong nhóm không được reset `joinedAt`.
+   */
+  activate(data: {
+    userId: Types.ObjectId
+    organizationId: Types.ObjectId
+    role: MembershipRole
+    unitId?: Types.ObjectId | null
+    joinedVia: JoinedVia
+  }): Promise<IMembershipDocument> {
+    return Membership.findOneAndUpdate(
+      { userId: data.userId, organizationId: data.organizationId },
+      {
+        $set: {
+          status: MEMBERSHIP_STATUS.ACTIVE,
+          archivedAt: null,
+          joinedAt: new Date(),
+          role: data.role,
+          unitId: data.unitId ?? null,
+          joinedVia: data.joinedVia,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    )
+      .exec()
+      .then((doc) => doc!)
   },
 
   /** Chốt "người này có thuộc org đó không" — gọi trên mọi request có org scope. */

@@ -1,7 +1,7 @@
 import { Types } from 'mongoose'
 import { Request } from 'express'
 import { catchAsync } from '../common/utils/catchAsync'
-import { ForbiddenError } from '../common/errors'
+import { ForbiddenError, UnauthorizedError } from '../common/errors'
 import { TenantScope, publicOnlyScope, runWithTenant } from '../common/tenant/tenantContext'
 import { canModerateAnyInOrg } from '../common/authz/policy'
 import { verifyAccessToken } from '../common/utils/jwt'
@@ -10,6 +10,7 @@ import {
   OrgSummary,
 } from '../features/organization/organization.repository'
 import { membershipRepository } from '../features/membership/membership.repository'
+import { userRepository } from '../features/user/user.repository'
 import { roleGrantService } from '../features/role-grant/role-grant.service'
 import { enrichRequestContext } from '../common/observability/requestContext'
 
@@ -99,10 +100,25 @@ export const resolveTenant = catchAsync(async (req, _res, next) => {
    *
    * Một lượt tra có index trên `userId`, trả về vài bản ghi; và nó THAY cho lượt tra cũ vốn
    * chạy ở nhánh không-header, chứ không cộng thêm.
+   *
+   * Cùng lượt: tài khoản còn dùng được không. Bản trước chỉ kiểm `isActive` ở login/refresh,
+   * nên người vừa bị khoá vẫn đăng tin, nhắn tin thêm tối đa 15 phút — mà lượt tra DB theo
+   * request thì ở đây VỐN ĐÃ CÓ, thêm một `exists` theo `_id` chạy song song không đổi số vòng.
+   *
+   * Chặn theo METHOD, không chặn tất: khoá là cấm PHÁT NỘI DUNG (đăng tin, nhắn tin, gửi đơn),
+   * không cấm đọc. Lý do khoá nằm trong hộp thư của chính họ (`userService.setStatus`) — chặn
+   * cả GET là giấu đi câu trả lời cho "vì sao tôi bị khoá". Đọc kéo dài tối đa tới khi access
+   * token hết hạn, vì refresh đã chết theo `tokenVersion`. 401 chứ không coi như khách ở nhánh
+   * ghi: client phải đăng xuất, và `login` sẽ nói lý do.
    */
-  const memberOrgIds = actorId
-    ? (await membershipRepository.listActiveByUser(actorId)).map((m) => m.organizationId)
-    : []
+  const [memberships, usable] = await Promise.all([
+    actorId ? membershipRepository.listActiveByUser(actorId) : Promise.resolve([]),
+    actorId ? userRepository.isUsable(actorId) : Promise.resolve(true),
+  ])
+  if (!usable && req.method !== 'GET' && req.method !== 'HEAD') {
+    throw new UnauthorizedError('Account is disabled')
+  }
+  const memberOrgIds = memberships.map((m) => m.organizationId)
 
   const org = await resolveOrganization(req, memberOrgIds)
 

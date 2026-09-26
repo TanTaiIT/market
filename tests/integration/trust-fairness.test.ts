@@ -202,6 +202,21 @@ describe('Uy tín — mức độ từ chối quyết định cái giá', () => 
     expect(q.body.data.limit).toBe(3) // hạn mức bậc 0 nguyên vẹn
   }, 60_000)
 
+  it('từ chối vì SAI SÓT ở bậc 1: bậc lẫn chuỗi sạch giữ nguyên — ca trên đo ở bậc 0 nên không phân biệt được', async () => {
+    const seller = await freshMember('quality-lv1@fair.local')
+    // Bậc 1 với 5 bài sạch đã tích — đúng thứ một lượt `record(false)` sẽ xoá nếu luật sai.
+    await setTrustLevel(seller.id, 1)
+    const created = await postInOrg(seller, ORG_A, 'Tin ảnh mờ bậc 1').expect(201)
+    expect(created.body.data.status).toBe('pending')
+
+    await decide(ownerA, ORG_A, created.body.data._id, 'rejected', 'Ảnh chưa rõ').expect(200)
+
+    expect(await trustOf(seller.id)).toMatchObject({ level: 1, cleanApprovals: 5 })
+    const q = await request(app).get('/api/v1/listings/quota').set(bearer(seller)).expect(200)
+    expect(q.body.data.standing.penalty).toBeNull()
+    expect(q.body.data.limit).toBe(5) // hạn mức bậc 1 nguyên vẹn
+  }, 60_000)
+
   it('từ chối vì VI PHẠM: trừ bậc và vào cửa sổ phạt', async () => {
     const seller = await freshMember('violation@fair.local')
     // Cho họ một bài sạch trước để có bậc mà trừ.

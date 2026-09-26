@@ -202,6 +202,21 @@ export const clearRejectionsSchema = z
 
 export type ClearRejectionsInput = z.infer<typeof clearRejectionsSchema>
 
+/** `POST /users/:id/restore-trust` — cùng khuôn `clear-rejections`: lý do bắt buộc, đi vào thông báo. */
+export const restoreTrustSchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(3)
+      .max(300)
+      .openapi({ example: 'Gỡ nhầm tin: đã xác minh người bán không vi phạm' }),
+  })
+  .strict()
+  .openapi('RestoreTrust')
+
+export type RestoreTrustInput = z.infer<typeof restoreTrustSchema>
+
 /**
  * Một dòng của bảng người dùng. Có `email` — khác hẳn `PublicProfile`: đây là màn của master,
  * và khoá/mở đúng người cần đối chiếu được bằng định danh thật chứ không chỉ cái tên hiển thị.

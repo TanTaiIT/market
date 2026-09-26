@@ -61,6 +61,16 @@ export const activityQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
 
+/**
+ * `DELETE /moderation/listings/:id`. `reason` tuỳ chọn — client hiện gửi DELETE không body — nhưng
+ * có thì đi thẳng vào thông báo cho người bán và dòng nhật ký, nên bàn duyệt NÊN gửi.
+ */
+export const removeListingSchema = z
+  .object({ reason: z.string().trim().min(1).max(300).optional() })
+  .strict()
+  .openapi('RemoveListing')
+export type RemoveListingInput = z.infer<typeof removeListingSchema>
+
 export const setListingStatusSchema = z
   .object({
     status: z.enum([LISTING_STATUS.ACTIVE, LISTING_STATUS.REJECTED, LISTING_STATUS.HIDDEN]),

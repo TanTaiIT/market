@@ -185,7 +185,7 @@ export const inviteService = {
 
     const existing = await membershipRepository.findActive(userId, invite.organizationId)
     if (!existing) {
-      await membershipRepository.create({
+      await membershipRepository.activate({
         userId: new Types.ObjectId(userId),
         organizationId: invite.organizationId,
         role: MEMBERSHIP_ROLES.MEMBER,

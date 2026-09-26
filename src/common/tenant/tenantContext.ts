@@ -116,6 +116,21 @@ export function narrowToOwnOrg(scope: TenantScope): TenantScope {
 }
 
 /**
+ * Thu scope về ĐÚNG TRỤC DANH MỤC cho bàn duyệt của trục đó — bản đối xứng của `narrowToOwnOrg`.
+ *
+ * `readableOrgIds` phải về rỗng, và đây là chỗ từng rò: `resolveTenant` mở nhánh org cho BẤT KỲ
+ * thành viên nào gửi `X-Org-Id` (hoặc chỉ thuộc đúng một nhóm), rồi `tenantPlugin` ghép nhánh đó
+ * với nhánh công khai bằng `$or`. Một giáo viên được cấp ô "Sách vở × Hà Nội" mở hàng đợi danh
+ * mục là thấy luôn tin `pending`/`hidden`/`rejected` NỘI BỘ của trường mình — kèm
+ * `moderation.reason` — dù bàn đó không nói gì về trường. `memberOrgIds` rỗng cùng lý do.
+ *
+ * `ownOrgId` giữ nguyên: nó chỉ chi phối đường GHI của trục org, không mở thêm đường đọc nào.
+ */
+export function narrowToPublicAxis(scope: TenantScope, axis: PublicAxisScope): TenantScope {
+  return { ...scope, readableOrgIds: [], memberOrgIds: [], publicAxis: axis }
+}
+
+/**
  * Dùng cho code chạy NGOÀI request: seed, migration, background job.
  * Tên cố tình xấu và `reason` bắt buộc để `grep -rn "runUnscoped"` liệt kê đủ mọi chỗ
  * có quyền chạm dữ liệu xuyên tenant, kèm lý do ngay tại call site.

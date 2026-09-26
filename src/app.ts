@@ -39,6 +39,10 @@ async function pingDb(): Promise<boolean> {
 export function createApp(): Application {
   const app = express()
 
+  // `req.ip` — và mọi rate limit theo IP — đọc `X-Forwarded-For` tới hop này. Để `0` sau
+  // Render/LB là toàn bộ người dùng chung một IP; lý do đầy đủ ở `env.TRUST_PROXY`.
+  app.set('trust proxy', env.TRUST_PROXY)
+
   /*
    * ĐỨNG TRƯỚC MỌI THỨ. Thứ gì chạy trước nó thì log ra không có `requestId` — đúng những
    * dòng đầu tiên cần đến khi một request chết ngay ở cửa (CORS, body quá lớn, JSON hỏng).

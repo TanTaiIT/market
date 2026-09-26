@@ -208,7 +208,8 @@ describe('Người duyệt máy — vòng đời qua job', () => {
 describe('Agenda — nối scheduler', () => {
   it('startAgenda đăng ký được job rồi stopAgenda nhả lock, không nổ', async () => {
     const { startAgenda, stopAgenda } = await import('../../src/config/agenda')
-    await startAgenda()
+    // Trỏ vào server ảo: `env.MONGO_URI` đã đóng băng từ lúc import, trước khi có URI này.
+    await startAgenda(mongod.getUri())
 
     const jobs = await mongoose.connection
       .db!.collection('agendaJobs')

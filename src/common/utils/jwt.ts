@@ -1,5 +1,7 @@
-import jwt, { SignOptions } from 'jsonwebtoken'
+import jwt, { JsonWebTokenError, SignOptions } from 'jsonwebtoken'
 import { env } from '../../config/env'
+
+export type TokenType = 'access' | 'refresh'
 
 /**
  * Payload chỉ còn `sub`.
@@ -16,6 +18,11 @@ import { env } from '../../config/env'
 export interface JwtPayload {
   sub: string
   /**
+   * Loại token, ghi từ lúc phát. Token phát trước khi có trường này không mang nó — nên `verify*`
+   * còn dựa vào `ver` (chỉ refresh token có) để phân biệt, không bắt buộc `typ`.
+   */
+  typ?: TokenType
+  /**
    * Phiên bản phiên, CHỈ có trong refresh token.
    *
    * Refresh token là bearer stateless sống 30 ngày: server không lưu gì nên không có gì để
@@ -31,19 +38,41 @@ export interface JwtPayload {
 }
 
 export function signAccessToken(payload: JwtPayload): string {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN } as SignOptions)
+  return jwt.sign({ ...payload, typ: 'access' }, env.JWT_SECRET, {
+    expiresIn: env.JWT_EXPIRES_IN,
+  } as SignOptions)
 }
 
 export function signRefreshToken(payload: JwtPayload): string {
-  return jwt.sign(payload, env.JWT_REFRESH_SECRET, {
+  return jwt.sign({ ...payload, typ: 'refresh' }, env.JWT_REFRESH_SECRET, {
     expiresIn: env.JWT_REFRESH_EXPIRES_IN,
   } as SignOptions)
 }
 
+/**
+ * Access token KHÔNG được là refresh token đội lốt.
+ *
+ * Hai secret khác nhau là chốt thứ nhất, nhưng nó chỉ đúng khi cấu hình đúng — file example từng
+ * để hai giá trị giống hệt. Chốt thứ hai không phụ thuộc cấu hình: refresh token mang `ver` (và
+ * `typ` từ nay), access thì không. Lọt qua đây là một refresh token bị lộ thành vé vào cửa sống
+ * 14 ngày thay vì 15 phút.
+ */
 export function verifyAccessToken(token: string): JwtPayload {
-  return jwt.verify(token, env.JWT_SECRET) as JwtPayload
+  const payload = jwt.verify(token, env.JWT_SECRET) as JwtPayload
+  if (payload.typ === 'refresh' || payload.ver !== undefined) {
+    throw new JsonWebTokenError('refresh token used as access token')
+  }
+  return payload
 }
 
+/**
+ * Chiều ngược cũng chặn: access token (không `ver`) đi qua cửa refresh sẽ khớp `tokenVersion` 0
+ * của mọi tài khoản chưa từng đăng xuất, vì `auth.service` so `payload.ver ?? 0`.
+ */
 export function verifyRefreshToken(token: string): JwtPayload {
-  return jwt.verify(token, env.JWT_REFRESH_SECRET) as JwtPayload
+  const payload = jwt.verify(token, env.JWT_REFRESH_SECRET) as JwtPayload
+  if (payload.typ === 'access' || typeof payload.ver !== 'number') {
+    throw new JsonWebTokenError('access token used as refresh token')
+  }
+  return payload
 }

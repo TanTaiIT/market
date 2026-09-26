@@ -62,10 +62,11 @@ export const moderationController = {
 
   // DELETE /moderation/listings/:id
   removeListing: catchAsync(async (req, res) => {
-    await moderationService.removeListing(req.params.id, {
-      ...moderatorActor(req),
-      grants: req.grants!,
-    })
+    await moderationService.removeListing(
+      req.params.id,
+      { ...moderatorActor(req), grants: req.grants! },
+      req.body,
+    )
     success(res, { message: 'Listing removed' })
   }),
 }

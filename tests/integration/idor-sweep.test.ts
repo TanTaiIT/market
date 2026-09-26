@@ -297,3 +297,62 @@ describe('Quét người lạ — số liệu toàn hệ thống là của maste
     }
   }, 60_000)
 })
+
+describe('Quét người lạ — hộp thư', () => {
+  let directId = ''
+  let broadcastId = ''
+
+  beforeAll(async () => {
+    const { notificationService } =
+      await import('../../src/features/notification/notification.service')
+    const { notificationRepository } =
+      await import('../../src/features/notification/notification.repository')
+    const { Types } = await import('mongoose')
+
+    // Thông báo ĐÍCH DANH cho chủ tin — loại mang nội dung riêng (số dư ví, lý do khoá tài khoản).
+    const direct = await notificationService.notifyUser({
+      organizationId: null,
+      userId: new Types.ObjectId(owner.id),
+      title: 'Riêng chủ tin',
+      body: 'Số dư của bạn vừa đổi',
+    })
+    directId = direct._id.toString()
+
+    // Thông báo PHÁT CHUNG của một nhóm mà người lạ KHÔNG ở trong.
+    const other = await createOrg(app, master.token, {
+      name: 'Nhóm kín khác',
+      key: 'idor-org-2',
+      ownerEmail: owner.email,
+    })
+    const broadcast = await notificationRepository.create({
+      organizationId: new Types.ObjectId(other.id),
+      userId: null,
+      unitId: null,
+      title: 'Nội bộ nhóm khác',
+      body: 'Không dành cho người lạ',
+    })
+    broadcastId = broadcast._id.toString()
+  }, 60_000)
+
+  it('người lạ không đánh dấu đọc — và không đọc được nội dung — thông báo đích danh của người khác', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/notifications/${directId}/read`)
+      .set(bearer(stranger))
+    expect(BLOCKED).toContain(res.status)
+    expect(JSON.stringify(res.body)).not.toContain('Số dư của bạn')
+  })
+
+  it('người lạ không chạm được thông báo phát chung của nhóm mình không ở trong', async () => {
+    const res = await request(app)
+      .patch(`/api/v1/notifications/${broadcastId}/read`)
+      .set(bearer(stranger))
+    expect(BLOCKED).toContain(res.status)
+  })
+
+  it('chính chủ thì vẫn đánh dấu đọc được', async () => {
+    await request(app)
+      .patch(`/api/v1/notifications/${directId}/read`)
+      .set(bearer(owner))
+      .expect(200)
+  })
+})

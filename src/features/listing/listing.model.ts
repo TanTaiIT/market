@@ -359,6 +359,10 @@ const listingSchema = new Schema<IListingDocument>(
         delete r.autoApproval
         // Cùng lý do với autoApproval: hồ sơ kiểm duyệt nội bộ, không thuộc về trang tin.
         delete r.machineReview
+        // `moderation` mang `byUserId`/`byName` của người duyệt — ra bảng tin công khai là ai cũng
+        // biết ai đã duyệt/ẩn tin nào, và chủ tin biết đích danh người từ chối mình. Bàn duyệt ghép
+        // lại qua `toModerationListing`; chủ tin đọc lý do qua `review`.
+        delete r.moderation
         return r
       },
     },

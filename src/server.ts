@@ -4,10 +4,13 @@ import { connectDB, disconnectDB } from './config/database'
 import { startAgenda, stopAgenda } from './config/agenda'
 import { flushSentry, initSentry } from './config/sentry'
 import { initSockets, closeSockets } from './sockets'
-import { env } from './config/env'
+import { assertRuntimeSecrets, env } from './config/env'
 import { logger } from './config/logger'
 
 async function bootstrap() {
+  // Trước mọi thứ: production mà secret còn là chuỗi mẫu thì đừng lên nổi — xem `assertRuntimeSecrets`.
+  assertRuntimeSecrets()
+
   // TRƯỚC `connectDB`: lỗi ngay lúc nối DB cũng là lỗi cần báo, mà đó lại là loại lỗi dễ mất
   // nhất — process chết trước khi có ai kịp đọc log.
   initSentry()
@@ -25,28 +28,39 @@ async function bootstrap() {
     logger.info(`📚 API docs at http://localhost:${env.PORT}/docs`)
   })
 
-  // Graceful shutdown: ngừng nhận request -> đóng socket -> đóng Mongo
-  const closeHttp = () =>
-    new Promise<void>((resolve, reject) => {
-      httpServer.close((err) => (err ? reject(err) : resolve()))
-    })
-
+  // Graceful shutdown: đóng socket (kéo theo http server) -> dừng job -> đóng Mongo -> flush Sentry
   let shuttingDown = false
   const shutdown = async (signal: string) => {
     if (shuttingDown) return
     shuttingDown = true
     logger.info(`${signal} received, shutting down...`)
 
-    // Force exit nếu treo quá 10s
+    // Force exit nếu treo quá 10s. Vẫn flush: chính lượt shutdown treo là thứ cần tới Sentry nhất.
     const forceTimer = setTimeout(() => {
       logger.error('Shutdown timed out, forcing exit')
-      process.exit(1)
+      void flushSentry().finally(() => process.exit(1))
     }, 10000)
     forceTimer.unref()
 
     try {
-      await closeHttp()
+      /*
+       * Socket.IO TRƯỚC, không phải http server trước như bản cũ.
+       *
+       * `httpServer.close()` chỉ ngừng nhận kết nối mới rồi CHỜ mọi kết nối hiện có tự đóng — mà
+       * WebSocket đã upgrade thì không tự đóng bao giờ. Còn một người đang mở chat là callback
+       * không tới, force-exit 10s nổ, và `stopAgenda`/`disconnectDB`/`flushSentry` bị bỏ qua:
+       * lock job treo tới `lockLifetime`, lỗi cuối cùng không bao giờ lên Sentry.
+       *
+       * `io.close()` ngắt từng client rồi tự gọi `httpServer.close()` bên trong. Gọi `close()`
+       * thêm một lần là vô hại (Node chỉ phát `close` khi đã ráo kết nối) và không phụ thuộc vào
+       * chi tiết đó; `closeAllConnections` cắt nốt keep-alive đang rảnh, thứ Node cũng không tự
+       * đóng. Lắng nghe `close` TRƯỚC khi đóng socket, kẻo sự kiện phát ra rồi mới có người nghe.
+       */
+      const httpClosed = new Promise<void>((resolve) => httpServer.once('close', resolve))
       await closeSockets()
+      httpServer.close()
+      httpServer.closeAllConnections()
+      await httpClosed
       await stopAgenda()
       await disconnectDB()
       // Sentry gửi theo lô — không flush thì lỗi làm sập server, đúng loại cần nhất, lại là

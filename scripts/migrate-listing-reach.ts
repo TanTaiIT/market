@@ -4,6 +4,8 @@ import { env } from '../src/config/env'
 // Side-effect: bơm `DNS_SERVERS` cho c-ares trước lượt tra SRV đầu — xem `applyDnsOverride`.
 import '../src/config/database'
 import { LISTING_REACH } from '../src/common/constants'
+import { runUnscoped } from '../src/common/tenant/tenantContext'
+import { DRY_RUN, assertWriteConfirmed } from './confirmWrite'
 
 /**
  * `visibility` (2 giá trị) → `reach` (thang 3 bậc).
@@ -22,15 +24,18 @@ import { LISTING_REACH } from '../src/common/constants'
  *
  * Đi thẳng qua driver (`connection.db`), không qua model — cùng lý do với `migrate-ward-axis`:
  * `tenantPlugin` đòi scope cho mọi query trên `listings` mà migration không có request nào để
- * lấy scope, và validator `reach` required sẽ chặn đúng những bản ghi ta đang định sửa.
+ * lấy scope, và validator `reach` required sẽ chặn đúng những bản ghi ta đang định sửa. Vẫn bọc
+ * `runUnscoped`: plugin không chạm tới driver thô, nhưng `grep runUnscoped` phải liệt kê ĐỦ mọi
+ * lối đi xuyên tenant (AGENT.md 12d), kể cả lối không đi qua plugin.
  *
  * GIỮ NGUYÊN `visibility` sau khi ghi `reach` — đường lùi. Dọn ở một lượt riêng, sau khi đã
  * chắc chắn không quay lại.
  *
  * Idempotent: lượt hai không còn bản ghi nào thiếu `reach`.
  *
- * Chạy: npm run migrate:listing-reach
- * Sau đó: npm run sync-indexes  (xem rồi mới `-- --apply`)
+ * Chạy thử: npm run migrate:listing-reach -- --dry-run
+ * Chạy:     npm run migrate:listing-reach            (prod: CONFIRM_DB=<tên db> … :prod)
+ * Sau đó:   npm run sync-indexes  (xem rồi mới `-- --apply`)
  */
 const MAX_LISTED = 30
 
@@ -44,14 +49,19 @@ async function migrate() {
   const [total, hasReach, orgInternal, publicAxis, orphan] = await Promise.all([
     listings.countDocuments({}),
     listings.countDocuments({ reach: { $exists: true } }),
-    listings.countDocuments({ visibility: 'org_internal' }),
-    listings.countDocuments({ visibility: 'public' }),
+    listings.countDocuments({ visibility: 'org_internal', reach: { $exists: false } }),
+    listings.countDocuments({ visibility: 'public', reach: { $exists: false } }),
     listings.countDocuments({ visibility: { $exists: false }, reach: { $exists: false } }),
   ])
 
   console.log(`listings: ${total} tin · đã có reach: ${hasReach}`)
-  console.log(`  org_internal → members     : ${orgInternal}`)
-  console.log(`  public       → marketplace : ${publicAxis}`)
+  console.log(`  sẽ ghi org_internal → members     : ${orgInternal}`)
+  console.log(`  sẽ ghi public       → marketplace : ${publicAxis}`)
+  console.log(`  di sản không có cả hai field      : ${orphan}`)
+
+  // Đếm xong mới hỏi — người gõ nhìn thấy con số trước khi quyết định có ghi hay không.
+  assertWriteConfirmed('migrate:listing-reach')
+  if (DRY_RUN) return
 
   /*
    * Bản ghi không có CẢ HAI field là thứ không giải thích được bằng dữ liệu v1 lẫn v2. Dừng
@@ -63,33 +73,37 @@ async function migrate() {
     )
   }
 
-  // ── 1. Hai lượt ghi, chỉ chạm bản ghi CHƯA có `reach` ─────────────────────
-  const toMembers = await listings.updateMany(
-    { visibility: 'org_internal', reach: { $exists: false } },
-    { $set: { reach: LISTING_REACH.MEMBERS } },
-  )
-  const toMarketplace = await listings.updateMany(
-    { visibility: 'public', reach: { $exists: false } },
-    { $set: { reach: LISTING_REACH.MARKETPLACE } },
-  )
-  console.log(`→ members: ${toMembers.modifiedCount} · marketplace: ${toMarketplace.modifiedCount}`)
-
-  // ── 2. Di sản v1: không `visibility`, nhưng CÓ `reach` thì đã xong ở lượt trước ──
-  const legacy = await listings
-    .find({ visibility: { $exists: false }, reach: { $exists: false } })
-    .project({ _id: 1 })
-    .toArray()
-  if (legacy.length > 0) {
-    // Bậc THẤP NHẤT cho thứ không biết rõ — cùng nguyên tắc với dòng in hoa ở docblock.
-    await listings.updateMany(
-      { visibility: { $exists: false }, reach: { $exists: false } },
+  await runUnscoped('migration: lấp `reach` cho tin cũ theo `visibility`', async () => {
+    // ── 1. Hai lượt ghi, chỉ chạm bản ghi CHƯA có `reach` ───────────────────
+    const toMembers = await listings.updateMany(
+      { visibility: 'org_internal', reach: { $exists: false } },
       { $set: { reach: LISTING_REACH.MEMBERS } },
     )
-    const ids = legacy.map((d) => d._id.toString())
-    console.log(`⚠️  ${ids.length} tin di sản không có visibility → đặt \`members\`:`)
-    console.log('   ' + ids.slice(0, MAX_LISTED).join(', '))
-    if (ids.length > MAX_LISTED) console.log(`   … và ${ids.length - MAX_LISTED} tin nữa`)
-  }
+    const toMarketplace = await listings.updateMany(
+      { visibility: 'public', reach: { $exists: false } },
+      { $set: { reach: LISTING_REACH.MARKETPLACE } },
+    )
+    console.log(
+      `→ members: ${toMembers.modifiedCount} · marketplace: ${toMarketplace.modifiedCount}`,
+    )
+
+    // ── 2. Di sản v1: không `visibility`, nhưng CÓ `reach` thì đã xong ở lượt trước ──
+    const legacy = await listings
+      .find({ visibility: { $exists: false }, reach: { $exists: false } })
+      .project({ _id: 1 })
+      .toArray()
+    if (legacy.length > 0) {
+      // Bậc THẤP NHẤT cho thứ không biết rõ — cùng nguyên tắc với dòng in hoa ở docblock.
+      await listings.updateMany(
+        { visibility: { $exists: false }, reach: { $exists: false } },
+        { $set: { reach: LISTING_REACH.MEMBERS } },
+      )
+      const ids = legacy.map((d) => d._id.toString())
+      console.log(`⚠️  ${ids.length} tin di sản không có visibility → đặt \`members\`:`)
+      console.log('   ' + ids.slice(0, MAX_LISTED).join(', '))
+      if (ids.length > MAX_LISTED) console.log(`   … và ${ids.length - MAX_LISTED} tin nữa`)
+    }
+  })
 
   /*
    * ── 3. Báo cáo, KHÔNG sửa ────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import { Router } from 'express'
 import { listingController } from './listing.controller'
 import {
   createListingSchema,
+  quotaQuerySchema,
   quotaStatusSchema,
   updateListingSchema,
   listingQuerySchema,
@@ -64,7 +65,7 @@ router.get(
 )
 
 // Trạng thái quota — client hiện "còn N slot" thay vì để người dùng đoán vì sao bị chặn (§8.4).
-router.get('/quota', authenticate, listingController.quota)
+router.get('/quota', authenticate, validate({ query: quotaQuerySchema }), listingController.quota)
 
 // Catalog gói tin CÔNG KHAI — chỉ gói đang mở bán (master quản catalog ở /listing-products).
 router.get('/products', listingController.products)
@@ -422,6 +423,7 @@ registry.registerPath({
     'Hiện trạng quota để client nói rõ "bạn có N/M tin chờ duyệt" — thiếu nó thì khi người ' +
     'duyệt bận cả tuần, người dùng chỉ thấy mình bị chặn mà không hiểu vì sao.',
   ...protectedRoute,
+  request: { query: quotaQuerySchema },
   responses: { 200: jsonResponse('Trạng thái quota', envelope(quotaStatusSchema)) },
 })
 

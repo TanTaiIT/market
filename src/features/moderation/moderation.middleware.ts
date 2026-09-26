@@ -1,7 +1,7 @@
 import { Types } from 'mongoose'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { ForbiddenError } from '../../common/errors'
-import { currentScope, runWithTenant } from '../../common/tenant/tenantContext'
+import { currentScope, narrowToPublicAxis, runWithTenant } from '../../common/tenant/tenantContext'
 import { isMaster } from '../../common/authz/policy'
 import { roleGrantService } from '../role-grant/role-grant.service'
 import { SCOPE_TYPES } from '../../common/constants'
@@ -18,9 +18,11 @@ export const requireCategoryModerator = catchAsync(async (req, _res, next) => {
   req.grants = grants
 
   // Master thấy toàn bộ trục công khai: chính họ là fallback của mọi ô chưa có người phụ trách.
+  // `narrowToPublicAxis` chứ không spread scope: bàn của trục này không được kéo theo nhánh org
+  // mà `resolveTenant` đã mở cho thành viên — xem docblock của hàm đó.
   if (isMaster(grants)) {
     return runWithTenant(
-      { ...currentScope()!, publicAxis: { mode: 'moderator', categoryIds: [], cells: null } },
+      narrowToPublicAxis(currentScope()!, { mode: 'moderator', categoryIds: [], cells: null }),
       next,
     )
   }
@@ -68,7 +70,10 @@ export const requireCategoryModerator = catchAsync(async (req, _res, next) => {
           .map(([province, wards]) => ({ province, wards: [...wards] })),
       ]
 
-  runWithTenant({ ...currentScope()!, publicAxis: { mode: 'moderator', categoryIds, cells } }, next)
+  runWithTenant(
+    narrowToPublicAxis(currentScope()!, { mode: 'moderator', categoryIds, cells }),
+    next,
+  )
 })
 
 /**
@@ -112,7 +117,7 @@ export const requireMasterPublicAxis = catchAsync(async (req, _res, next) => {
   if (!isMaster(grants)) throw new ForbiddenError('Cần quyền master')
 
   runWithTenant(
-    { ...currentScope()!, publicAxis: { mode: 'moderator', categoryIds: [], cells: null } },
+    narrowToPublicAxis(currentScope()!, { mode: 'moderator', categoryIds: [], cells: null }),
     next,
   )
 })

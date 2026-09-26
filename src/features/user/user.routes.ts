@@ -5,6 +5,7 @@ import {
   adminUserQuerySchema,
   adminUserSchema,
   clearRejectionsSchema,
+  restoreTrustSchema,
   setUserStatusSchema,
   updateProfileSchema,
   userParamsSchema,
@@ -80,6 +81,13 @@ router.post(
   requireMaster,
   validate({ params: userParamsSchema, body: clearRejectionsSchema }),
   userController.clearRejections,
+)
+router.post(
+  '/:id/restore-trust',
+  authenticate,
+  requireMaster,
+  validate({ params: userParamsSchema, body: restoreTrustSchema }),
+  userController.restoreTrust,
 )
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
@@ -207,6 +215,30 @@ registry.registerPath({
     403: errorResponse('Cần quyền master'),
     404: errorResponse('Không tìm thấy người dùng'),
     409: errorResponse('Người này không có án phạt nào đang hiệu lực'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/users/{id}/restore-trust',
+  operationId: 'userRestoreTrust',
+  tags: ['User'],
+  summary: 'Phục hồi bậc uy tín về trần (master)',
+  description:
+    'Bậc uy tín chỉ leo lại bằng 5 tin liên tiếp do người duyệt thông qua, mà máy duyệt xử gần ' +
+    'hết tin của người bậc thấp nên một lượt gỡ nhầm là mất bậc vĩnh viễn. Endpoint này trả bậc ' +
+    'về trần. KHÔNG đụng cửa sổ phạt 7 ngày — đó là việc của `clear-rejections`.',
+  ...protectedRoute,
+  request: {
+    params: userParamsSchema,
+    body: { content: { 'application/json': { schema: restoreTrustSchema } } },
+  },
+  responses: {
+    200: jsonResponse('Đã phục hồi', envelope(adminUserSchema)),
+    401: errorResponse('Thiếu hoặc sai access token'),
+    403: errorResponse('Cần quyền master'),
+    404: errorResponse('Không tìm thấy người dùng'),
+    409: errorResponse('Uy tín đang ở bậc trần'),
   },
 })
 

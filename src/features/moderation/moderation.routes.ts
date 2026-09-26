@@ -12,6 +12,7 @@ import {
   rerouteListingSchema,
   coverageSchema,
   activityQuerySchema,
+  removeListingSchema,
   setListingStatusSchema,
   auditEventSchema,
   overviewResponseSchema,
@@ -97,7 +98,7 @@ router.delete(
   '/listings/:id',
   authenticate,
   requireAnyModerator,
-  validate({ params: modParamsSchema }),
+  validate({ params: modParamsSchema, body: removeListingSchema }),
   moderationController.removeListing,
 )
 
@@ -220,8 +221,15 @@ registry.registerPath({
   operationId: 'moderationRemoveListing',
   tags: ['Moderation'],
   summary: 'Gỡ tin khỏi bảng (soft delete)',
+  description:
+    '`reason` tuỳ chọn, đi thẳng vào thông báo cho người bán. Chỉ trừ uy tín khi tin đã từng ' +
+    'lên bảng và người gỡ có quyền duyệt trên trục của tin — quản trị nhóm gỡ tin sàn mang tên ' +
+    'nhóm thì tin rời sàn nhưng không ghi án.',
   ...protectedRoute,
-  request: { params: modParamsSchema },
+  request: {
+    params: modParamsSchema,
+    body: { content: { 'application/json': { schema: removeListingSchema } } },
+  },
   responses: {
     200: jsonResponse('Đã gỡ', envelope(z.null())),
     401: unauthorized,

@@ -11,6 +11,12 @@ export const userController = {
     success(res, { message: 'Rejection penalty cleared', data })
   }),
 
+  // POST /users/:id/restore-trust
+  restoreTrust: catchAsync(async (req, res) => {
+    const data = await userService.restoreTrust(req.params.id, req.body, req.user!.id)
+    success(res, { message: 'Trust restored', data })
+  }),
+
   // GET /users/me
   getMe: catchAsync(async (req, res) => {
     const user = await userService.getById(req.user!.id)
