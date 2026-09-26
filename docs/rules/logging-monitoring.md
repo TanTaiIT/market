@@ -51,11 +51,12 @@ Tuyệt đối **không được log** các loại dữ liệu nhạy cảm sau,
 
 Các field thuộc danh sách trên nên được đưa vào cơ chế **redaction/masking tự động** ở tầng logger, thay vì phụ thuộc hoàn toàn vào việc developer tự kiểm soát khi viết code.
 
-## 3. Request Trace — 🚧 CHƯA TRIỂN KHAI
+## 3. Request Trace — ✅ ĐÃ CÓ
 
-> Hiện tại `app.ts` mới có access log (`METHOD path status {ms}`), chưa có `requestId`.
-> Mục này là mục tiêu cần làm, không phải mô tả hiện trạng — đừng viết code giả định
-> `requestId` đã tồn tại.
+> `requestContext.middleware` gán `requestId` (kế thừa `x-request-id` nếu có) vào
+> AsyncLocalStorage; `logger` tự gắn `requestId`/`userId`/`orgId` vào MỌI dòng
+> (`config/logger.ts`, format `withContext`). Redaction ở tầng logger cũng đã có
+> (`observability/redact.ts`, audit 7.8). Job nền và socket chưa có ngữ cảnh — audit 7.10.
 
 - Mỗi request đi vào hệ thống bắt buộc phải được gán một `requestId` duy nhất (sinh mới nếu chưa có, hoặc kế thừa từ header như `x-request-id` nếu request đến từ upstream service).
 - `requestId` phải được truyền xuyên suốt qua toàn bộ luồng xử lý, xuất hiện trong **mọi** log entry liên quan đến request đó:

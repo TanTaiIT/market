@@ -64,7 +64,7 @@ const consoleFormat = printf((info) => {
 })
 
 export const logger = winston.createLogger({
-  level: env.isProd ? 'info' : 'debug',
+  level: env.LOG_LEVEL ?? (env.isProd ? 'info' : 'debug'),
   defaultMeta: { service: 'cho-tot-clone-api' },
   transports: [
     new winston.transports.Console({

@@ -4,6 +4,7 @@ import { env } from '../src/config/env'
 // Side-effect: bơm `DNS_SERVERS` cho c-ares trước lượt tra SRV đầu — xem `applyDnsOverride`.
 import '../src/config/database'
 import { Organization } from '../src/features/organization/organization.model'
+import { runMigrationOnce } from './migrationLedger'
 
 /**
  * Gỡ slug khỏi tổ chức: định danh của nhóm giờ là `_id`, không còn khoá chữ nào khác.
@@ -37,27 +38,29 @@ async function migrate() {
   await mongoose.connect(env.MONGO_URI)
   console.log(`▶ db "${mongoose.connection.name}" · NODE_ENV=${env.NODE_ENV}`)
 
-  // ── 1. Index TRƯỚC — xem dòng in hoa ở docblock ───────────────────────────
-  const before = (await Organization.collection.indexes()).map((i) => i.name)
-  const dropped = await Organization.syncIndexes()
-  const after = (await Organization.collection.indexes()).map((i) => i.name)
-  console.log(`organizations index — trước: ${before.join(', ')}`)
-  console.log(`organizations index — sau  : ${after.join(', ')}`)
-  if (dropped.length > 0) console.log(`  đã gỡ: ${dropped.join(', ')}`)
+  // Sổ `_migrations` (audit 7.2): chạy đúng một lần, chạy lại là bỏ qua.
+  await runMigrationOnce('drop-org-slug', async () => {
+    const before = (await Organization.collection.indexes()).map((i) => i.name)
+    const dropped = await Organization.syncIndexes()
+    const after = (await Organization.collection.indexes()).map((i) => i.name)
+    console.log(`organizations index — trước: ${before.join(', ')}`)
+    console.log(`organizations index — sau  : ${after.join(', ')}`)
+    if (dropped.length > 0) console.log(`  đã gỡ: ${dropped.join(', ')}`)
 
-  // ── 2. Rồi mới xoá field ──────────────────────────────────────────────────
-  const unset = await Organization.collection.updateMany(
-    { $or: [{ slug: { $exists: true } }, { slugNormalized: { $exists: true } }] },
-    { $unset: { slug: '', slugNormalized: '' } },
-  )
-  console.log(`organizations: gỡ slug khỏi ${unset.modifiedCount} bản ghi`)
+    // ── 2. Rồi mới xoá field ──────────────────────────────────────────────────
+    const unset = await Organization.collection.updateMany(
+      { $or: [{ slug: { $exists: true } }, { slugNormalized: { $exists: true } }] },
+      { $unset: { slug: '', slugNormalized: '' } },
+    )
+    console.log(`organizations: gỡ slug khỏi ${unset.modifiedCount} bản ghi`)
 
-  const db = mongoose.connection.db!
-  const aliases = await db.listCollections({ name: 'orgslugaliases' }).toArray()
-  if (aliases.length > 0) {
-    await db.collection('orgslugaliases').drop()
-    console.log('dropped collection `orgslugaliases`')
-  }
+    const db = mongoose.connection.db!
+    const aliases = await db.listCollections({ name: 'orgslugaliases' }).toArray()
+    if (aliases.length > 0) {
+      await db.collection('orgslugaliases').drop()
+      console.log('dropped collection `orgslugaliases`')
+    }
+  })
 
   await mongoose.disconnect()
 }

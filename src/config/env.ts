@@ -38,6 +38,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(5000),
   API_PREFIX: z.string().default('/api/v1'),
+  /** Bỏ trống = `info` ở production, `debug` ở dev (audit 7.10). */
+  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).optional(),
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
 
@@ -79,6 +81,8 @@ const envSchema = z.object({
    * đa 6 tiếng trên một hạn 7 ngày — không ai nhận ra, mà số lượt chạy vô ích giảm bốn lần.
    */
   UNVERIFIED_CLEANUP_EVERY: z.string().default('6 hours'),
+  /** Đối soát `wallets.balance` với sổ cái — mỗi ngày là đủ, lệch là chuyện phải có người xem. */
+  WALLET_RECONCILE_EVERY: z.string().default('24 hours'),
 
   /*
    * Nơi nhận lỗi 5xx. THIẾU = tắt hẳn, không phải lỗi cấu hình — dev và test không gửi gì đi
@@ -192,9 +196,6 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
 
-  AWS_S3_BUCKET: z.string().optional(),
-  AWS_REGION: z.string().optional(),
-
   /**
    * Số hop reverse proxy đứng trước server — đi thẳng vào `app.set('trust proxy')`, thứ quyết
    * định `req.ip` đọc `X-Forwarded-For` tới đâu.
@@ -222,6 +223,7 @@ const parsed = envSchema.safeParse(process.env)
 
 if (!parsed.success) {
   // `logger` import `env` nên chưa tồn tại ở thời điểm này — console là lối duy nhất còn lại.
+  // eslint-disable-next-line no-console
   console.error('❌ Invalid environment variables:', parsed.error.format())
   process.exit(1)
 }
@@ -230,6 +232,7 @@ if (!parsed.success) {
 // trường này nhưng tự nhận là môi trường kia (log level, stack trace trong response, và chốt
 // an toàn của seed đều đọc `NODE_ENV`). Fail sớm thay vì chạy với danh tính sai.
 if (parsed.data.NODE_ENV !== mode) {
+  // eslint-disable-next-line no-console
   console.error(
     `❌ NODE_ENV mismatch: file .env* khai "${parsed.data.NODE_ENV}" nhưng mode nạp file là ` +
       `"${mode}". Bỏ NODE_ENV khỏi file .env* — đặt nó ở lệnh chạy hoặc secret manager.`,

@@ -1,0 +1,18 @@
+# Chỉ nguồn build vào image — node_modules cài lại trong image, dist build lại, còn lại là rác
+# hoặc là thứ KHÔNG ĐƯỢC lọt vào image (.env*, .git).
+node_modules
+dist
+coverage
+logs
+.git
+.github
+.env
+.env.*
+!.env.example
+!.env.*.example
+tests
+docs
+scripts
+*.md
+.vscode
+.codebase-memory

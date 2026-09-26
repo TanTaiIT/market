@@ -8,7 +8,7 @@ Nền tảng rao vặt/mua bán (giống Chợ Tốt) — Node.js + Express + Mo
 - Runtime: Node.js 20+, Express 4.x, **TypeScript** (không có file `.js` trong `src/`)
 - DB: MongoDB + Mongoose 8
 - Auth: JWT (access + refresh), hash password bằng `@node-rs/bcrypt`
-- Upload ảnh: *chưa có* — module `upload` trả 501, chưa chọn thư viện lẫn nơi lưu
+- Upload ảnh: client đẩy thẳng lên Cloudinary (unsigned preset), BE chỉ cấp chữ ký (`/uploads/signature`) và nhận URL đã chốt host
 - Realtime: Socket.io, adapter in-memory (chạy ĐÚNG một instance)
 - Validation + OpenAPI: Zod + `@asteasolutions/zod-to-openapi` (1 schema dùng cho cả hai)
 - Logger: **winston** (`src/config/logger.ts`)
@@ -55,8 +55,9 @@ Module mẫu để bám theo: **`src/features/listing`** (đủ 7 layer) và
    họ. Phạm vi thật chốt ở service bằng `src/common/authz/policy.ts` (hàm thuần) — xem
    `notification.service.createForOrganization` cho ca staff nhóm con.
 6. Không hardcode chuỗi trạng thái (`"active"`, `"pending"`...) — dùng const trong
-   `src/common/constants/index.ts` (`LISTING_STATUS`, `LISTING_CONDITION`, `POST_VISIBILITY`,
-   `MEMBERSHIP_ROLES`, `SYSTEM_ROLES`, `SCOPE_TYPES`, `JOIN_REQUEST_STATUS`, `TENANT_STATUS`).
+   `src/common/constants/index.ts` (`LISTING_STATUS`, `LISTING_CONDITION`, `LISTING_REACH`,
+   `MEMBERSHIP_ROLES`, `SYSTEM_ROLES`, `SCOPE_TYPES`, `JOIN_REQUEST_STATUS`, `TENANT_STATUS`,
+   `REJECTION_SEVERITY`, `CASCADE_HIDE_KIND`).
    `MEMBERSHIP_ROLES` = **thân phận** trong org · `SYSTEM_ROLES` = **quyền hạn**, phân biệt
    phạm vi bằng `SCOPE_TYPES`. Gộp hai thứ vào một cột là lỗi thiết kế v1 đã bỏ.
 7. **Endpoint public không bao giờ được trả tin ngoài `PUBLIC_LISTING_STATUSES`.**

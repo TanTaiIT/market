@@ -122,3 +122,35 @@ export async function disconnectDB(): Promise<void> {
   await mongoose.connection.close()
   logger.info('MongoDB connection closed')
 }
+
+/**
+ * Prod PHẢI là replica set: ví ghi trong transaction (`withTransaction`), standalone thì lỗi ở đúng
+ * lượt nạp Xu đầu tiên chứ không phải lúc boot (audit 4.2). Fail-fast ở đây; dev/test chỉ cảnh báo.
+ */
+export async function assertReplicaSet(): Promise<void> {
+  const hello = await mongoose.connection.db!.admin().command({ hello: 1 })
+  if (hello.setName) return
+  const message = 'MongoDB không phải replica set — transaction của ví sẽ hỏng'
+  if (env.isProd) throw new Error(message)
+  logger.warn(message)
+}
+
+/**
+ * Index prod chỉ được tạo qua `sync-indexes:prod` (`autoIndex` tắt ở prod). Quên chạy là unique
+ * index của ví/idempotency không tồn tại mà không ai biết. Không chặn boot — một deploy hỏng vì
+ * thiếu index còn tệ hơn — nhưng log ở mức error để Sentry/log tập trung bắt được. Trả về danh
+ * sách lệch để test và `/health` dùng.
+ */
+export async function assertIndexesInSync(): Promise<string[]> {
+  const drift: string[] = []
+  for (const name of mongoose.modelNames()) {
+    const diff = await mongoose.model(name).diffIndexes()
+    if (diff.toCreate.length > 0 || diff.toDrop.length > 0) {
+      drift.push(`${name}: +${diff.toCreate.length} -${diff.toDrop.length}`)
+    }
+  }
+  if (drift.length > 0) {
+    logger.error('index drift — chạy `npm run sync-indexes:prod -- --apply`', { drift })
+  }
+  return drift
+}

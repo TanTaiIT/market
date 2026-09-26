@@ -1,4 +1,5 @@
 import { Agenda } from 'agenda'
+import { runWithRequestContext, newRequestId } from '../common/observability/requestContext'
 import { MongoBackend } from '@agendajs/mongo-backend'
 import { env } from './env'
 import { logger } from './logger'
@@ -6,6 +7,7 @@ import { reportJobError } from './sentry'
 import { machineReviewService } from '../features/moderation/moderation.machine.service'
 import { listingExpiryService } from '../features/listing/listing.expiry.service'
 import { unverifiedCleanupService } from '../features/auth/unverified-cleanup.service'
+import { walletReconcileService } from '../features/wallet/wallet.reconcile.service'
 import {
   cleanupConfigFromEnv,
   uploadCleanupService,
@@ -27,9 +29,17 @@ const JOBS = {
   IMAGE_CLEANUP: 'image-cleanup:sweep',
   LISTING_EXPIRY: 'listing-expiry:sweep',
   UNVERIFIED_CLEANUP: 'unverified-cleanup:sweep',
+  WALLET_RECONCILE: 'wallet-reconcile:sweep',
 } as const
 
 let agenda: Agenda | null = null
+
+/**
+ * Mỗi lượt job chạy trong một ngữ cảnh request giả (audit 7.10): log của job mang `requestId`
+ * `job:<tên>:<8 ký tự>` để nối các dòng của cùng một lượt quét, y như một request HTTP.
+ */
+const withJobContext = (name: string, run: () => Promise<unknown>) => () =>
+  runWithRequestContext({ requestId: `job:${name}:${newRequestId().slice(0, 8)}` }, run)
 
 /**
  * `address` có tham số vì test trỏ vào mongodb-memory-server, mà `env` đã đóng băng trước khi
@@ -75,9 +85,7 @@ export async function startAgenda(address: string = env.MONGO_URI): Promise<void
   // chừng thì lock tự nhả sau 5 phút, job không kẹt vĩnh viễn.
   agenda.define(
     JOBS.MACHINE_REVIEW,
-    async () => {
-      await machineReviewService.sweep()
-    },
+    withJobContext(JOBS.MACHINE_REVIEW, () => machineReviewService.sweep()),
     { lockLifetime: 5 * 60 * 1000 },
   )
 
@@ -85,9 +93,7 @@ export async function startAgenda(address: string = env.MONGO_URI): Promise<void
   // `lockLifetime` ngắn hơn machine review: một `updateMany` đi trọn index, không có vòng lặp.
   agenda.define(
     JOBS.LISTING_EXPIRY,
-    async () => {
-      await listingExpiryService.sweep()
-    },
+    withJobContext(JOBS.LISTING_EXPIRY, () => listingExpiryService.sweep()),
     { lockLifetime: 2 * 60 * 1000 },
   )
 
@@ -100,10 +106,15 @@ export async function startAgenda(address: string = env.MONGO_URI): Promise<void
    */
   agenda.define(
     JOBS.UNVERIFIED_CLEANUP,
-    async () => {
-      await unverifiedCleanupService.sweep()
-    },
+    withJobContext(JOBS.UNVERIFIED_CLEANUP, () => unverifiedCleanupService.sweep()),
     { lockLifetime: 15 * 60 * 1000 },
+  )
+
+  // Đối soát ví: ném khi lệch để `on('fail')` đẩy lên Sentry — xem `walletReconcileService`.
+  agenda.define(
+    JOBS.WALLET_RECONCILE,
+    withJobContext(JOBS.WALLET_RECONCILE, () => walletReconcileService.sweep()),
+    { lockLifetime: 10 * 60 * 1000 },
   )
 
   // Chỉ đăng ký khi có đủ CLOUDINARY_* — thiếu là tính năng chưa bật, đừng chạy một job mà
@@ -111,9 +122,7 @@ export async function startAgenda(address: string = env.MONGO_URI): Promise<void
   if (cleanupConfigFromEnv()) {
     agenda.define(
       JOBS.IMAGE_CLEANUP,
-      async () => {
-        await uploadCleanupService.sweep()
-      },
+      withJobContext(JOBS.IMAGE_CLEANUP, () => uploadCleanupService.sweep()),
       { lockLifetime: 10 * 60 * 1000 },
     )
   }
@@ -122,6 +131,7 @@ export async function startAgenda(address: string = env.MONGO_URI): Promise<void
   await agenda.every(env.MACHINE_REVIEW_EVERY, JOBS.MACHINE_REVIEW)
   await agenda.every(env.LISTING_EXPIRY_EVERY, JOBS.LISTING_EXPIRY)
   await agenda.every(env.UNVERIFIED_CLEANUP_EVERY, JOBS.UNVERIFIED_CLEANUP)
+  await agenda.every(env.WALLET_RECONCILE_EVERY, JOBS.WALLET_RECONCILE)
   if (cleanupConfigFromEnv()) {
     await agenda.every(env.IMAGE_CLEANUP_EVERY, JOBS.IMAGE_CLEANUP)
   }

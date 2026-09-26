@@ -1,5 +1,14 @@
 name: CI
 
+# Token của workflow chỉ đọc — không job nào ở đây cần ghi vào repo (audit 7.6).
+permissions:
+  contents: read
+
+# Push dồn dập lên cùng nhánh thì huỷ lượt cũ: kết quả của commit đã bị đè không ai đọc.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: ["main", "master"]
@@ -9,6 +18,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # Suite ~6 phút; treo (mongodb-memory-server không tải được binary) thì đừng giữ runner cả giờ.
+    timeout-minutes: 20
 
     strategy:
       matrix:
@@ -23,6 +34,13 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
+
+      # mongodb-memory-server tải binary ~100MB mỗi lượt chạy sạch — cache theo OS.
+      - name: Cache MongoDB binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/mongodb-binaries
+          key: mongodb-binaries-${{ runner.os }}
 
       - name: Install dependencies
         run: npm ci
@@ -42,6 +60,14 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      # Spec đã commit phải khớp code: client codegen từ `openapi.json`, lệch là app gọi sai.
+      - name: OpenAPI drift
+        run: npm run openapi:export && git diff --exit-code -- openapi.json
+        env:
+          MONGO_URI: mongodb://127.0.0.1:27017/ci
+          JWT_SECRET: ci-only-jwt-secret-not-for-production-0123456789
+          JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production-9876543210
 
       - name: Run tests
         run: npm test

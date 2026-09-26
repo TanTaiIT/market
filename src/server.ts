@@ -1,6 +1,6 @@
 import http from 'http'
 import { createApp } from './app'
-import { connectDB, disconnectDB } from './config/database'
+import { assertIndexesInSync, assertReplicaSet, connectDB, disconnectDB } from './config/database'
 import { startAgenda, stopAgenda } from './config/agenda'
 import { flushSentry, initSentry } from './config/sentry'
 import { initSockets, closeSockets } from './sockets'
@@ -16,6 +16,10 @@ async function bootstrap() {
   initSentry()
 
   await connectDB()
+  // Replica set là điều kiện của transaction ví; index prod chỉ có qua `sync-indexes:prod` — hai
+  // thứ mà thiếu thì lỗi xuất hiện ở lượt nạp Xu đầu tiên chứ không phải lúc boot (audit 4.2).
+  await assertReplicaSet()
+  await assertIndexesInSync()
   await startAgenda()
 
   const app = createApp()
