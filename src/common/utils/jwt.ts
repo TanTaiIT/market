@@ -35,6 +35,12 @@ export interface JwtPayload {
    * ro từ 15 phút xuống 0. Không đáng.
    */
   ver?: number
+  /**
+   * Định danh PHIÊN, CHỈ trong refresh token (audit 3.7). Mỗi lượt refresh xoay sang jti mới và
+   * ghi đè trong `user.sessions`; token mang jti cũ là bản sao — xem `authService.refresh`.
+   * Token phát trước khi có trường này không mang nó và được nhận một lần rồi đưa vào phiên.
+   */
+  jti?: string
 }
 
 export function signAccessToken(payload: JwtPayload): string {

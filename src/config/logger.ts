@@ -2,6 +2,7 @@ import winston from 'winston'
 import { env } from './env'
 import { removeEmoji } from '../common/utils/removeEmoji'
 import { currentRequestContext } from '../common/observability/requestContext'
+import { redactValue } from '../common/observability/redact'
 
 /**
  * message/stack của Error là non-enumerable -> JSON.stringify trả "{}" và nuốt sạch lỗi.
@@ -40,6 +41,19 @@ const withContext = winston.format((info) => {
   return info
 })
 
+/**
+ * Che email/SĐT/mã/token trong meta của MỌI dòng — xem `observability/redact.ts`. Đứng trước
+ * `json`/`printf` để cả hai format nhận cùng một bản đã che; `message` không đụng (URL trong
+ * access log đã đi qua `sanitizeUrl` ở chỗ ghi).
+ */
+const redact = winston.format((info) => {
+  for (const key of Object.keys(info)) {
+    if (key === 'level' || key === 'message' || key === 'timestamp') continue
+    info[key] = redactValue(key, info[key])
+  }
+  return info
+})
+
 const consoleFormat = printf((info) => {
   const { level, message, timestamp: ts, requestId, ...meta } = info
   delete meta.service // đã có trong defaultMeta, in lại mỗi dòng chỉ tổ nhiễu
@@ -65,8 +79,8 @@ export const logger = winston.createLogger({
        * Dev: một dòng ngắn cho mắt người, giờ không cần ngày vì đang xem trực tiếp.
        */
       format: env.isProd
-        ? combine(withContext(), timestamp(), json({ replacer: errorReplacer }))
-        : combine(withContext(), timestamp({ format: 'HH:mm:ss' }), consoleFormat),
+        ? combine(withContext(), redact(), timestamp(), json({ replacer: errorReplacer }))
+        : combine(withContext(), redact(), timestamp({ format: 'HH:mm:ss' }), consoleFormat),
       stderrLevels: ['error'],
     }),
   ],

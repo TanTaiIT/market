@@ -35,7 +35,6 @@ const supportMessageSchema = z.object({
   from: z.nativeEnum(SUPPORT_SIDE),
   body: z.string(),
   at: z.string().datetime(),
-  byUserId: objectId,
 })
 
 export const myThreadSchema = z

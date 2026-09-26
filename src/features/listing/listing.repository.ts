@@ -3,6 +3,7 @@ import { Listing, IListing, IListingDocument } from './listing.model'
 import { AttrQuery, ListingQuery } from './listing.schema'
 import { PaginationParams } from '../../common/utils/pagination'
 import {
+  type CascadeHideKind,
   IN_ORG_REACHES,
   LISTING_STATUS,
   LIVE_LISTING_STATUSES,
@@ -99,6 +100,20 @@ export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDo
   }
 
   return filter
+}
+
+/**
+ * Ẩn hàng loạt bằng PIPELINE update: `restoreTo` chụp TRẠNG THÁI TRƯỚC của từng tin trong cùng
+ * một lượt ghi, để đường đảo ngược (`restoreCascaded`) trả tin chờ về chờ, tin hiện về hiện —
+ * không đoán. `moderation` ghi đè cả object; tin bàn duyệt đã ẩn từ trước không nằm trong bộ lọc
+ * (không còn LIVE) nên không bị đụng.
+ */
+function cascadeHidePipeline(moderation: IListing['moderation']) {
+  return [
+    {
+      $set: { status: LISTING_STATUS.HIDDEN, moderation: { ...moderation, restoreTo: '$status' } },
+    },
+  ]
 }
 
 export const listingRepository = {
@@ -373,11 +388,8 @@ export const listingRepository = {
   hideAllBySeller(sellerId: Types.ObjectId, moderation: IListing['moderation']) {
     return runUnscoped('lock account: hide every live listing of the locked user', () =>
       Listing.updateMany(
-        {
-          seller: sellerId,
-          status: { $in: LIVE_LISTING_STATUSES },
-        },
-        { status: LISTING_STATUS.HIDDEN, moderation },
+        { seller: sellerId, status: { $in: LIVE_LISTING_STATUSES } },
+        cascadeHidePipeline(moderation),
       ).exec(),
     )
   },
@@ -430,7 +442,7 @@ export const listingRepository = {
           reach: { $in: IN_ORG_REACHES },
           status: { $in: LIVE_LISTING_STATUSES },
         },
-        { status: LISTING_STATUS.HIDDEN, moderation },
+        cascadeHidePipeline(moderation),
       ).exec(),
     )
   },
@@ -447,7 +459,7 @@ export const listingRepository = {
     return runUnscoped('nhóm tạm ngưng: ẩn tin trong nhóm đang hiện', async () => {
       const res = await Listing.updateMany(
         { organizationId, reach: { $in: IN_ORG_REACHES }, status: LISTING_STATUS.ACTIVE },
-        { status: LISTING_STATUS.HIDDEN, moderation },
+        cascadeHidePipeline(moderation),
       ).exec()
       return res.modifiedCount
     })
@@ -458,19 +470,51 @@ export const listingRepository = {
    * cố định. Tin bàn duyệt ẩn vì lý do khác trong lúc nhóm ngưng thì không được hồi sinh theo.
    * Tin quá `expiresAt` trong lúc ẩn sẽ được `listing-expiry` hạ xuống ở lượt quét kế.
    */
-  restoreHiddenInOrgByReason(organizationId: Types.ObjectId, reason: string): Promise<number> {
-    return runUnscoped('nhóm mở lại: trả tin đã ẩn vì tạm ngưng về bảng', async () => {
+  /**
+   * Đảo ngược ĐÚNG LÔ cascade: về trạng thái đã chụp ở `restoreTo`, sạch `moderation`. Tin bàn
+   * duyệt ẩn vì lý do khác (không có dấu) không hồi sinh theo; tin quá `expiresAt` trong lúc ẩn
+   * sẽ được `listing-expiry` hạ ở lượt quét kế.
+   */
+  restoreCascaded(
+    filter: FilterQuery<IListingDocument>,
+    cascade: CascadeHideKind,
+  ): Promise<number> {
+    return runUnscoped('cascade: trả tin về trạng thái trước khi bị ẩn hàng loạt', async () => {
       const res = await Listing.updateMany(
         {
-          organizationId,
-          reach: { $in: IN_ORG_REACHES },
+          ...filter,
           status: LISTING_STATUS.HIDDEN,
-          'moderation.reason': reason,
+          'moderation.cascade': cascade,
+          'moderation.restoreTo': { $exists: true },
         },
-        { $set: { status: LISTING_STATUS.ACTIVE }, $unset: { moderation: 1 } },
+        [{ $set: { status: '$moderation.restoreTo' } }, { $unset: 'moderation' }],
       ).exec()
       return res.modifiedCount
     })
+  },
+
+  /** Ghi ô mới; `clearTemplate` gỡ `templateRef` cũ khi bộ thuộc tính không khớp template mới. */
+  reroute(id: string, update: Partial<IListing>, clearTemplate: boolean) {
+    return runUnscoped('reroute: ghi ô mới, quyền là master trục công khai', () =>
+      Listing.findByIdAndUpdate(
+        id,
+        { $set: update, ...(clearTemplate ? { $unset: { templateRef: 1 } } : {}) },
+        { new: true, runValidators: true },
+      ).exec(),
+    )
+  },
+
+  /** `seller` của nhiều tin, kể cả đã xoá — cho hàng đợi báo cáo che tên người tố với chính chủ (audit 2.4). */
+  sellersOf(ids: Types.ObjectId[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return Promise.resolve(new Map())
+    return runUnscoped('report: tra chủ tin để che tên người tố với chính chủ', () =>
+      Listing.find({ _id: { $in: ids } })
+        .setOptions({ withDeleted: true })
+        .select('seller')
+        .lean()
+        .exec()
+        .then((rows) => new Map(rows.map((r) => [r._id.toString(), r.seller.toString()]))),
+    )
   },
 
   // ── MACHINE REVIEW (job) ────────────────────────────────────────────────────

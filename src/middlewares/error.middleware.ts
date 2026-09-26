@@ -4,6 +4,7 @@ import { ApiError } from '../common/errors/ApiError'
 import { httpStatus } from '../common/constants/httpStatus'
 import { env } from '../config/env'
 import { logger } from '../config/logger'
+import { sanitizeUrl } from '../common/observability/redact'
 import { reportServerError } from '../config/sentry'
 
 /**
@@ -47,7 +48,7 @@ export function errorHandler(err: ApiError, req: Request, res: Response, _next: 
   const statusCode = err.statusCode ?? httpStatus.INTERNAL_SERVER_ERROR
 
   if (statusCode >= 500) {
-    logger.error(err.message, { err, path: req.originalUrl, method: req.method })
+    logger.error(err.message, { err, path: sanitizeUrl(req.originalUrl), method: req.method })
     /*
      * Chỉ 5xx. 4xx là hệ thống đang làm ĐÚNG việc của nó (từ chối một yêu cầu sai) — đổ chúng
      * vào chỗ nhận lỗi là dìm những lỗi thật xuống dưới hàng nghìn cú 401 của token hết hạn,
@@ -58,7 +59,7 @@ export function errorHandler(err: ApiError, req: Request, res: Response, _next: 
      */
     reportServerError(err, {
       method: req.method,
-      route: (req.route?.path as string | undefined) ?? req.originalUrl,
+      route: (req.route?.path as string | undefined) ?? sanitizeUrl(req.originalUrl),
     })
   }
 

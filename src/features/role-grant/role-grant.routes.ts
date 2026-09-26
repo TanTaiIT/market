@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { roleGrantController } from './role-grant.controller'
 import {
   categoryAxisGrantSchema,
@@ -14,6 +15,8 @@ import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 // Cấp và thu hồi là việc của RIÊNG master (§5.3): hệ thống không còn cấp phó, quản trị nhóm
 // không cấp được quyền cho ai. Chốt ở router để câu trả lời rõ ngay từ cửa; `canGrant` bên

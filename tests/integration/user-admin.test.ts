@@ -164,7 +164,7 @@ describe('Khoá tài khoản', () => {
 })
 
 describe('Mở khoá', () => {
-  it('mở khoá: đăng nhập lại được, nhưng tin KHÔNG tự hiện lại', async () => {
+  it('mở khoá: đăng nhập lại được, và tin trở lại bảng đúng như trước khi khoá', async () => {
     await request(app)
       .patch(`/api/v1/users/${spammer.id}/status`)
       .set(asMaster())
@@ -176,8 +176,9 @@ describe('Mở khoá', () => {
       .send({ email: spammer.email, password: PASSWORD })
       .expect(200)
 
-    // Tin đã ẩn ở lại ẩn — tự bật hàng loạt là hồi sinh cả tin đã hết thời.
+    // Đổi 2026-09-27 (audit 1.9): khoá chụp trạng thái cũ của từng tin, mở khoá trả về đúng đó —
+    // khoá nhầm không được để lại một người bán với mọi tin biến mất. Chi tiết ở `account-lock-restore`.
     const board = await request(app).get('/api/v1/listings').expect(200)
-    expect(board.body.data.map((l: { _id: string }) => l._id)).not.toContain(spamListing)
+    expect(board.body.data.map((l: { _id: string }) => l._id)).toContain(spamListing)
   })
 })

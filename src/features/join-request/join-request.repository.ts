@@ -10,6 +10,14 @@ export const joinRequestRepository = {
     return JoinRequest.create(data)
   },
 
+  /** Tài khoản xoá thì đơn đang treo huỷ theo — quản trị nhóm không duyệt một người không còn tồn tại. */
+  cancelAllPendingByUser(userId: Id) {
+    return JoinRequest.updateMany(
+      { userId, status: JOIN_REQUEST_STATUS.PENDING },
+      { status: JOIN_REQUEST_STATUS.CANCELLED },
+    ).exec()
+  },
+
   findById(id: Id): Promise<IJoinRequestDocument | null> {
     return JoinRequest.findOne({ _id: id }).exec()
   },

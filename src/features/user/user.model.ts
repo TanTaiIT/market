@@ -46,6 +46,12 @@ export interface IUser {
    */
   tokenVersion: number
   /**
+   * Phiên refresh đang mở — mỗi thiết bị một `jti` (audit 3.7). Refresh XOAY jti của đúng phiên
+   * đó; token mang jti không còn trong danh sách là token đã bị xoay, tức có bản sao đang được
+   * dùng → cắt mọi phiên. Tối đa `REFRESH_SESSIONS_MAX`, cũ nhất rơi ra trước.
+   */
+  sessions: { jti: string; createdAt: Date; lastUsedAt: Date }[]
+  /**
    * Mốc "dọn hộp thư": chỉ đọc thông báo tạo SAU thời điểm này. `null` = chưa dọn lần nào.
    *
    * Nằm trên `User` chứ không trên `Membership`, và cũng không phải một cột `deletedBy` trên
@@ -118,6 +124,19 @@ const userSchema = new Schema<IUserDocument>(
     // Tài khoản có TRƯỚC trường này không mang nó -> Mongoose hydrate thành 0, khớp với refresh
     // token cũ (cũng không có `ver`, đọc là 0). Không cần migration, không ai bị đá ra.
     tokenVersion: { type: Number, default: 0 },
+    sessions: {
+      type: [
+        new Schema(
+          {
+            jti: { type: String, required: true },
+            createdAt: { type: Date, required: true },
+            lastUsedAt: { type: Date, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     notificationsClearedAt: { type: Date, default: null },
 
     // Denormalize thống kê người bán để đọc nhanh

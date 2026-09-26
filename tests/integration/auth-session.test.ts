@@ -104,3 +104,50 @@ describe('Vòng đời phiên — đăng xuất cắt được refresh token', (
     await refresh(s.refreshToken).expect(200)
   }, 60_000)
 })
+
+/** Xoay refresh token + phát hiện tái dùng (audit 3.7). */
+describe('Xoay refresh token', () => {
+  it('mỗi lượt refresh phát refresh token MỚI; token vừa dùng không dùng lại được', async () => {
+    const s = await signUp('f@session.local')
+    const first = await refresh(s.refreshToken).expect(200)
+    const next = first.body.data.tokens.refreshToken as string
+    expect(next).not.toBe(s.refreshToken)
+
+    await refresh(next).expect(200)
+  }, 60_000)
+
+  it('tái dùng token đã xoay → 401 và cắt MỌI phiên, kể cả token mới nhất', async () => {
+    const s = await signUp('g@session.local')
+    const first = await refresh(s.refreshToken).expect(200)
+    const next = first.body.data.tokens.refreshToken as string
+
+    const reused = await refresh(s.refreshToken).expect(401)
+    expect(reused.body.message).toMatch(/mọi thiết bị/)
+    await refresh(next).expect(401)
+  }, 60_000)
+
+  it('hai thiết bị: xoay ở máy này không đụng phiên máy kia', async () => {
+    const email = 'h@session.local'
+    const a = await signUp(email)
+    const b = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email, password: PASSWORD })
+      .expect(200)
+
+    await refresh(a.refreshToken).expect(200)
+    await refresh(b.body.data.tokens.refreshToken).expect(200)
+  }, 60_000)
+
+  it('token cũ không có `jti` (phát trước bản này) vẫn refresh được, rồi xoay như thường', async () => {
+    const s = await signUp('i@session.local')
+    const { signRefreshToken } = await import('../../src/common/utils/jwt')
+    const { User } = await import('../../src/features/user/user.model')
+    const user = await User.findOne({ email: 'i@session.local' }).exec()
+    const legacy = signRefreshToken({ sub: user!._id.toString(), ver: 0 })
+
+    const first = await refresh(legacy).expect(200)
+    await refresh(first.body.data.tokens.refreshToken).expect(200)
+    // Cặp phát lúc đăng ký vẫn sống — token cũ không mang jti nên không "xoay" đè lên phiên nào.
+    await refresh(s.refreshToken).expect(200)
+  }, 60_000)
+})

@@ -21,7 +21,18 @@ import { listingService } from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { QUOTA } from '../listing/listing.quota'
 import { notificationService } from '../notification/notification.service'
-import { REPORT_TIMEZONE, SCOPE_TYPES, SYSTEM_ROLES, VnProvinceName } from '../../common/constants'
+import { chatRepository } from '../chat/chat.repository'
+import { joinRequestRepository } from '../join-request/join-request.repository'
+import { inviteRepository } from '../invite/invite.repository'
+import { kycService } from '../kyc/kyc.service'
+import {
+  CASCADE_HIDE_KIND,
+  CASCADE_HIDE_REASON,
+  REPORT_TIMEZONE,
+  SCOPE_TYPES,
+  SYSTEM_ROLES,
+  VnProvinceName,
+} from '../../common/constants'
 import { BUCKET_FORMAT, bucketsBetween, resolveRange } from '../../common/report/timeBuckets'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
@@ -189,8 +200,19 @@ export const userService = {
       const hidden = await listingService.hideAllFromSeller(target._id, {
         reason: `Tài khoản bị khoá: ${input.reason}`,
         byUserId: actorId,
+        cascade: CASCADE_HIDE_KIND.ACCOUNT_LOCKED,
       })
       logger.info('user locked', { actorId, userId: id, hiddenListings: hidden })
+    }
+
+    if (input.isActive) {
+      // Mở khoá trả tin về đúng trạng thái trước khi khoá (audit 1.9): khoá nhầm không được để
+      // lại một người bán với mọi tin biến mất. Tin bàn duyệt ẩn vì lý do khác không hồi sinh.
+      const restored = await listingRepository.restoreCascaded(
+        { seller: target._id },
+        CASCADE_HIDE_KIND.ACCOUNT_LOCKED,
+      )
+      logger.info('user unlocked', { actorId, userId: id, restoredListings: restored })
     }
 
     // Người bị khoá vẫn đọc được hộp thư tới khi token hết hạn, và sau khi được mở lại — lý do
@@ -444,6 +466,27 @@ export const userService = {
       userRepository.bumpTokenVersion(id),
     ])
     disconnectUser(id)
+
+    /*
+     * Những thứ bám vào tài khoản chết theo nó (audit 3.4): tin đang sống (mang snapshot SĐT của
+     * họ), hộp thư chat phía họ, đơn xin vào nhóm và lời mời đang treo, hồ sơ KYC. Trước đây chỉ
+     * `deletedAt` đổi — tin và số điện thoại của một người "đã xoá tài khoản" vẫn nằm trên bảng.
+     */
+    const target = await userRepository.findById(id)
+    const objectId = new Types.ObjectId(id)
+    const hiddenListings = await listingService.hideAllFromSeller(objectId, {
+      reason: CASCADE_HIDE_REASON.ACCOUNT_DELETED,
+      byUserId: id,
+      byName: target?.name ?? 'Người dùng',
+      cascade: CASCADE_HIDE_KIND.ACCOUNT_DELETED,
+    })
+    await Promise.all([
+      chatRepository.hideAllForUser(objectId),
+      joinRequestRepository.cancelAllPendingByUser(id),
+      inviteRepository.revokeAllPendingForUser(id, target?.email ?? ''),
+      kycService.purgeForUser(id),
+    ])
+    logger.info('account deleted: cascades applied', { userId: id, hiddenListings })
 
     const user = await userRepository.softDelete(id)
     if (!user) throw new NotFoundError('User not found')

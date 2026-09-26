@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { membershipController } from './membership.controller'
 import {
   memberParamsSchema,
@@ -24,6 +25,8 @@ import {
 } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 // Thành viên thấy nhau: đây là danh bạ của nhóm, không phải công cụ riêng của bàn quản trị.
 // Quản trị nhận thêm ba field hồ sơ vận hành — phân mức nằm ở DTO, không phải ở route.

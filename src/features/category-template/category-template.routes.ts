@@ -19,6 +19,7 @@ import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../
  * `mergeParams` để `:id` của route cha đi xuống tới đây.
  */
 const router = Router({ mergeParams: true })
+// Limiter: kế thừa từ `category.routes` — router này lồng dưới đó, gắn thêm là đếm đôi (audit 7.4).
 
 // Đọc công khai, cùng lý do với `GET /categories`: màn tìm kiếm cũng cần template để dựng bộ
 // lọc, mà tìm kiếm thì không đòi đăng nhập. Ghi không có endpoint — template do

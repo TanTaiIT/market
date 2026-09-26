@@ -1,5 +1,7 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
 import {
+  CASCADE_HIDE_KIND,
+  type CascadeHideKind,
   LISTING_STATUS,
   LISTING_CONDITION,
   ListingStatus,
@@ -144,6 +146,10 @@ export interface IListing {
     byName?: string
     at?: Date
     severity?: RejectionSeverity
+    /** Chỉ khi bị ẩn HÀNG LOẠT (khoá tài khoản, nhóm tạm ngưng…) — xem `CASCADE_HIDE_KIND`. */
+    cascade?: CascadeHideKind
+    /** Trạng thái trước khi bị ẩn hàng loạt — đường đảo ngược trả về đúng đó. */
+    restoreTo?: ListingStatus
   }
   expiresAt?: Date
   deletedAt: Date | null
@@ -329,6 +335,8 @@ const listingSchema = new Schema<IListingDocument>(
           // Chỉ có nghĩa với lượt TỪ CHỐI. Vắng mặt = dữ liệu trước ngày phân mức, và
           // `countRecentRejections` xử nó như `violation` để không ân xá ngược cho ai.
           severity: { type: String, enum: [...REJECTION_SEVERITIES] },
+          cascade: { type: String, enum: Object.values(CASCADE_HIDE_KIND) },
+          restoreTo: { type: String, enum: Object.values(LISTING_STATUS) },
         },
         { _id: false },
       ),

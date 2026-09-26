@@ -7,6 +7,7 @@ import { apiReference } from '@scalar/express-api-reference'
 
 import { env } from './config/env'
 import { logger } from './config/logger'
+import { sanitizeUrl } from './common/observability/redact'
 import { generateOpenApiDocument } from './config/openapi'
 import featureRoutes from './features' // side-effect: đăng ký schema vào OpenAPI registry
 import { notFound } from './middlewares/notFound.middleware'
@@ -73,7 +74,7 @@ export function createApp(): Application {
        * Dòng này chạy trong `res.on(finish)`, vẫn cùng ngữ cảnh async của request, nên
        * `userId` do `authenticate` gắn giữa chuỗi middleware vẫn thấy được.
        */
-      logger.info(`${req.method} ${req.originalUrl} ${res.statusCode}`, {
+      logger.info(`${req.method} ${sanitizeUrl(req.originalUrl)} ${res.statusCode}`, {
         ms: Date.now() - startedAt,
         status: res.statusCode,
       })

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { categoryController } from './category.controller'
 import {
   categoryQuerySchema,
@@ -14,6 +15,8 @@ import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 // Đọc: công khai. Ghi: chỉ master — danh mục là từ điển dùng chung toàn hệ thống, không thuộc
 // tổ chức nào, nên nó là việc vận hành hệ thống chứ không phải việc của một org.

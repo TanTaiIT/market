@@ -471,7 +471,29 @@ export const CASCADE_HIDE_REASON = {
   ORG_SUSPENDED: 'Nhóm đang bị tạm ngưng',
   LEFT_ORG: 'Bạn đã rời nhóm',
   REMOVED_FROM_ORG: 'Bạn đã bị gỡ khỏi nhóm',
+  ACCOUNT_DELETED: 'Tài khoản đã xoá',
 } as const
+
+/**
+ * LOẠI cascade đã ẩn tin — dấu máy đọc, khác `CASCADE_HIDE_REASON` là câu người đọc. Đường đảo
+ * ngược (mở khoá tài khoản, mở lại nhóm) nhận ra đúng lô của mình bằng dấu này, không bằng so
+ * chuỗi lý do — chuỗi thì có ngày đổi câu chữ.
+ */
+export const CASCADE_HIDE_KIND = {
+  ACCOUNT_LOCKED: 'account_locked',
+  ACCOUNT_DELETED: 'account_deleted',
+  ORG_SUSPENDED: 'org_suspended',
+  LEFT_ORG: 'left_org',
+  REMOVED_FROM_ORG: 'removed_from_org',
+} as const
+export type CascadeHideKind = (typeof CASCADE_HIDE_KIND)[keyof typeof CASCADE_HIDE_KIND]
+
+/**
+ * Số phiên refresh (thiết bị) giữ cho một tài khoản. Phiên thứ 21 đá phiên cũ nhất — và vì token
+ * của phiên bị đá không còn trong danh sách, lượt refresh từ máy đó bị xử như tái dùng (cắt mọi
+ * phiên). 20 là đủ rộng để chuyện đó chỉ xảy ra với tài khoản bị chia sẻ, không với người thật.
+ */
+export const REFRESH_SESSIONS_MAX = 20
 
 // Vết kiểm toán của thao tác quản trị. Tên dạng `<đối tượng>.<hành động>` để grep ra nhóm.
 export const AUDIT_ACTION = {

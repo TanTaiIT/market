@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { moderationController } from './moderation.controller'
 import {
   requireAnyModerator,
@@ -36,6 +37,8 @@ import {
 } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 /*
  * Nhánh này là bàn duyệt, và nó KHÔNG đồng nhất một tầng phân quyền: mỗi route tự khai

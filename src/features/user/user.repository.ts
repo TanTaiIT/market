@@ -1,4 +1,5 @@
 import { ClientSession, FilterQuery, Types } from 'mongoose'
+import { REFRESH_SESSIONS_MAX } from '../../common/constants'
 import { User, IUserDocument, IUser } from './user.model'
 import { REPORT_TIMEZONE } from '../../common/constants'
 import { runUnscoped } from '../../common/tenant/tenantContext'
@@ -152,8 +153,41 @@ export const userRepository = {
    * dùng để từ chối đăng nhập. Xem `roleGrantService` §5.4 cho lý do phép đếm này tồn tại.
    */
   /** Giết mọi refresh token đã phát cho tài khoản này — xem `authService.logout`. */
+  /** Cắt MỌI phiên: version lệch là mọi refresh token chết, và danh sách phiên trống theo. */
   bumpTokenVersion(id: string | Types.ObjectId) {
-    return User.updateOne({ _id: id }, { $inc: { tokenVersion: 1 } }).exec()
+    return User.updateOne({ _id: id }, { $inc: { tokenVersion: 1 }, $set: { sessions: [] } }).exec()
+  },
+
+  /** Mở một phiên refresh; quá `REFRESH_SESSIONS_MAX` thì phiên cũ nhất rơi ra (`$slice` âm giữ đuôi). */
+  addSession(id: string | Types.ObjectId, jti: string) {
+    const now = new Date()
+    return User.updateOne(
+      { _id: id },
+      {
+        $push: {
+          sessions: {
+            $each: [{ jti, createdAt: now, lastUsedAt: now }],
+            $slice: -REFRESH_SESSIONS_MAX,
+          },
+        },
+      },
+    ).exec()
+  },
+
+  /**
+   * Xoay jti của ĐÚNG phiên đang refresh — compare-and-set trên jti cũ. `false` = jti cũ không
+   * còn: token đã được xoay trước đó (tái dùng) hoặc phiên đã bị cắt.
+   */
+  async rotateSession(
+    id: string | Types.ObjectId,
+    oldJti: string,
+    newJti: string,
+  ): Promise<boolean> {
+    const res = await User.updateOne(
+      { _id: id, 'sessions.jti': oldJti },
+      { $set: { 'sessions.$.jti': newJti, 'sessions.$.lastUsedAt': new Date() } },
+    ).exec()
+    return res.matchedCount > 0
   },
 
   /**

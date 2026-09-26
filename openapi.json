@@ -4330,17 +4330,12 @@
                 "at": {
                   "type": "string",
                   "format": "date-time"
-                },
-                "byUserId": {
-                  "type": "string",
-                  "pattern": "^[0-9a-fA-F]{24}$"
                 }
               },
               "required": [
                 "from",
                 "body",
-                "at",
-                "byUserId"
+                "at"
               ]
             }
           },
@@ -4392,17 +4387,12 @@
                 "at": {
                   "type": "string",
                   "format": "date-time"
-                },
-                "byUserId": {
-                  "type": "string",
-                  "pattern": "^[0-9a-fA-F]{24}$"
                 }
               },
               "required": [
                 "from",
                 "body",
-                "at",
-                "byUserId"
+                "at"
               ]
             }
           }

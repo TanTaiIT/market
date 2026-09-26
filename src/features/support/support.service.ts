@@ -1,10 +1,10 @@
 import { Types } from 'mongoose'
 import { supportRepository } from './support.repository'
-import { ISupportThreadDocument, SUPPORT_SIDE } from './support.model'
+import { ISupportThreadDocument, SUPPORT_SIDE, SUPPORT_THREAD_MAX_MESSAGES } from './support.model'
 import { userRepository } from '../user/user.repository'
 import { bannedPhraseService } from '../banned-phrase/banned-phrase.service'
 import { bannedContentReason, bannedPhraseIn } from '../moderation/moderation.machine'
-import { BadRequestError, NotFoundError } from '../../common/errors'
+import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
 import {
   buildPaginationMeta,
   parsePagination,
@@ -41,6 +41,20 @@ async function threadOf(userId: string): Promise<ISupportThreadDocument> {
   }
 }
 
+/**
+ * Tin nhắn ra DTO KHÔNG mang `byUserId` (audit 2.6): người dùng không cần biết id thật của master
+ * đang trả lời — `from` đã nói bên nào — và master đọc luồng thì id người dùng đã có ở đầu luồng.
+ */
+const toMessages = (messages: ISupportThreadDocument['messages']) =>
+  messages.map((m) => ({ from: m.from, body: m.body, at: m.at }))
+
+/** Trần tin nhắn một luồng — cùng câu cho cả hai phía, vì cả hai đều không tự gỡ được. */
+function assertRoom(thread: ISupportThreadDocument) {
+  if (thread.messages.length >= SUPPORT_THREAD_MAX_MESSAGES) {
+    throw new ConflictError('Luồng hỗ trợ đã quá dài — đội ngũ sẽ liên hệ bạn qua email')
+  }
+}
+
 /** Người dùng có tin chưa đọc từ master không — đây là cái chấm đỏ trên icon. */
 const hasUnreadForUser = (t: ISupportThreadDocument) =>
   t.lastMasterAt !== null && (t.userReadAt === null || t.lastMasterAt > t.userReadAt)
@@ -63,7 +77,7 @@ export const supportService = {
     }
     return {
       id: thread._id.toString(),
-      messages: thread.messages,
+      messages: toMessages(thread.messages),
       unread: hasUnreadForUser(thread),
       updatedAt: thread.updatedAt,
     }
@@ -80,6 +94,7 @@ export const supportService = {
     if (banned) throw new BadRequestError(bannedContentReason(banned))
 
     const thread = await threadOf(userId)
+    assertRoom(thread)
     const updated = await supportRepository.appendMessage(
       thread._id,
       {
@@ -91,7 +106,7 @@ export const supportService = {
       'lastUserAt',
     )
     logger.info('support: người dùng gửi tin', { userId, threadId: thread._id.toString() })
-    return { id: updated!._id.toString(), messages: updated!.messages, unread: false }
+    return { id: updated!._id.toString(), messages: toMessages(updated!.messages), unread: false }
   },
 
   /** Người dùng mở luồng ra đọc — tắt chấm đỏ. */
@@ -147,7 +162,7 @@ export const supportService = {
       id: thread._id.toString(),
       userId: thread.userId.toString(),
       userName: user?.name ?? 'Người dùng đã xoá',
-      messages: thread.messages,
+      messages: toMessages(thread.messages),
     }
   },
 
@@ -166,6 +181,13 @@ export const supportService = {
   async reply(threadId: string, masterId: string, body: string) {
     const thread = await supportRepository.findById(threadId)
     if (!thread) throw new NotFoundError('Không tìm thấy luồng hỗ trợ này')
+    // Người nhận phải còn dùng được: trả lời vào luồng của tài khoản đã khoá/xoá là ghi vào hư
+    // không, mà master thì tưởng đã trả lời xong (audit 2.6).
+    const recipient = await userRepository.findById(thread.userId)
+    if (!recipient || !recipient.isActive) {
+      throw new ConflictError('Tài khoản này đã bị khoá hoặc xoá — không gửi được trả lời')
+    }
+    assertRoom(thread)
 
     const updated = await supportRepository.appendMessage(
       thread._id,
@@ -193,7 +215,7 @@ export const supportService = {
     return {
       id: updated!._id.toString(),
       userId: updated!.userId.toString(),
-      messages: updated!.messages,
+      messages: toMessages(updated!.messages),
     }
   },
 

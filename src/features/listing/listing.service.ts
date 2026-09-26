@@ -46,6 +46,7 @@ import { reportRepository } from '../report/report.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { CLEAN_APPROVALS_PER_LEVEL, MAX_TRUST_LEVEL } from '../trust/trust.policy'
 import type { TrustProbation } from '../trust/trust.model'
+import type { CascadeHideKind } from '../../common/constants'
 import {
   Grant,
   canBumpListing,
@@ -616,6 +617,9 @@ async function withOrgBadge<T extends { organizationId: Types.ObjectId | null; t
   }))
 }
 
+/** Chỉ tin đang CHỜ hoặc ĐANG HIỆN mới chuyển ô được — xem `rerouteListing`. */
+const REROUTABLE_STATUSES: readonly string[] = [LISTING_STATUS.PENDING, LISTING_STATUS.ACTIVE]
+
 export const listingService = {
   /**
    * Đăng tin. Bốn chốt, theo đúng thứ tự này:
@@ -1129,28 +1133,31 @@ export const listingService = {
   /**
    * Ẩn mọi tin còn sống của một người (tài khoản bị khoá). Trả về số tin đã ẩn.
    *
-   * MỞ KHOÁ không có chiều ngược: tin đã ẩn ở lại ẩn, người dùng tự mở lại từng tin nếu còn
-   * muốn bán — chúng đã rời bảng một thời gian, tự bật hàng loạt là hồi sinh cả tin đã hết thời.
+   * MỞ KHOÁ có chiều ngược (audit 1.9): `cascade` + `restoreTo` ghi trên từng tin cho
+   * `restoreCascaded` trả đúng lô này về đúng trạng thái cũ — khoá nhầm không được để lại một
+   * người bán với mọi tin biến mất. Tin đã hết thời trong lúc ẩn thì `listing-expiry` hạ lại.
    */
   async hideAllFromSeller(
     sellerId: Types.ObjectId,
-    input: { reason: string; byUserId: string },
+    input: { reason: string; byUserId: string; byName?: string; cascade: CascadeHideKind },
   ): Promise<number> {
-    // Chỉ master khoá được tài khoản (`userService.setStatus`), và master là danh tính hệ thống:
-    // snapshot mang `MASTER_DISPLAY_NAME`, không phải tên thật — cùng luật với `audit_logs.actorName`.
+    // Khoá là việc của master (danh tính hệ thống → `MASTER_DISPLAY_NAME`); xoá tài khoản là việc
+    // của chính chủ, caller đưa tên vào. Cùng luật snapshot với `audit_logs.actorName`.
     const byUserId = new Types.ObjectId(input.byUserId)
+    const byName = input.byName ?? MASTER_DISPLAY_NAME
     // Liệt kê TRƯỚC khi ẩn: sau `updateMany` không còn biết tin nào vừa rời bảng để đóng báo cáo.
     const liveIds = await listingRepository.liveIdsBySeller(sellerId)
     const result = await listingRepository.hideAllBySeller(sellerId, {
       reason: input.reason,
       byUserId,
-      byName: MASTER_DISPLAY_NAME,
+      byName,
       at: new Date(),
+      cascade: input.cascade,
     })
     await reportRepository.resolveAllOpenForListings(liveIds, {
       action: REPORT_AUTO_RESOLUTION.TARGET_REMOVED,
       byUserId,
-      byName: MASTER_DISPLAY_NAME,
+      byName,
     })
     return result.modifiedCount
   },
@@ -1165,7 +1172,7 @@ export const listingService = {
   async detachFromOrg(
     sellerId: Types.ObjectId,
     organizationId: Types.ObjectId,
-    input: { reason: string; byUserId: string; byName: string },
+    input: { reason: string; byUserId: string; byName: string; cascade: CascadeHideKind },
   ): Promise<number> {
     const byUserId = new Types.ObjectId(input.byUserId)
     // Liệt kê TRƯỚC khi ẩn — cùng lý do `hideAllFromSeller`.
@@ -1176,6 +1183,7 @@ export const listingService = {
       byUserId,
       byName: input.byName,
       at: new Date(),
+      cascade: input.cascade,
     })
     await reportRepository.resolveAllOpenForListings(ids, {
       action: REPORT_AUTO_RESOLUTION.TARGET_REMOVED,
@@ -1481,35 +1489,70 @@ export const listingService = {
    * Đổi ô (danh mục/tỉnh) của một tin. Tin quay về ĐẦU hàng đợi mới: nó chưa từng được ai ở
    * ô mới nhìn qua, giữ nguyên thứ tự cũ là chen ngang hàng đợi của họ (§11.3).
    */
+  /**
+   * Chuyển ô duyệt (danh mục × tỉnh) của MỘT tin trên sàn — quyền master trục công khai
+   * (`requireMasterPublicAxis`), nên đọc/ghi unscoped (audit 1.6): master không đứng trong org
+   * nào mà tin sàn mang badge nhóm lại có `organizationId`, nhánh ghi có scope khớp 0 dòng.
+   *
+   * Chỉ tin đang CHỜ hoặc ĐANG HIỆN: chuyển ô một tin đã từ chối/ẩn/bán là hồi sinh nó qua cửa
+   * sau. Đổi danh mục → về hàng chờ của ô mới (bản duyệt cũ là của ô cũ) và máy chấm lại; chỉ đổi
+   * tỉnh → giữ trạng thái, nội dung không đổi, chỉ đổi người chịu trách nhiệm.
+   */
   async rerouteListing(id: string, input: { categoryId?: string; provinceCode?: string }) {
-    const listing = await listingRepository.findById(id)
+    const listing = await runUnscoped(
+      'reroute: đọc tin trên sàn, quyền là master trục công khai',
+      () => listingRepository.findById(id).exec(),
+    )
     if (!listing) throw new NotFoundError('Listing not found')
-    if (input.categoryId) await categoryService.assertUsable(input.categoryId)
+    if (listing.reach !== LISTING_REACH.MARKETPLACE) {
+      throw new BadRequestError('Chỉ chuyển ô được tin trên sàn — tin trong nhóm do nhóm duyệt')
+    }
+    if (!REROUTABLE_STATUSES.includes(listing.status)) {
+      throw new BadRequestError(`Không chuyển ô được tin đang "${listing.status}"`)
+    }
 
-    const update: Partial<IListing> = { status: LISTING_STATUS.PENDING }
-    if (input.categoryId) update.category = new Types.ObjectId(input.categoryId)
+    const update: Partial<IListing> = {}
+    let clearTemplate = false
+
+    if (input.categoryId && input.categoryId !== listing.category.toString()) {
+      await categoryService.assertUsable(input.categoryId)
+      /*
+       * Thuộc tính động là của danh mục CŨ: lọc lại qua template mới, cùng cách `update` làm khi
+       * đổi danh mục. Không khớp (thiếu field bắt buộc, sai kiểu) thì XOÁ bộ thuộc tính chứ không
+       * chặn: master đang chuyển ô, không sửa hộ người bán — và bộ cũ mà giữ lại là lọt vào bộ lọc
+       * của danh mục mới với những khoá không thuộc về nó. Người bán điền lại khi sửa tin.
+       */
+      let validated: ValidatedForCategory | null = null
+      try {
+        validated = await categoryTemplateService.validateForCategory(
+          input.categoryId,
+          Object.fromEntries(listing.attributes),
+        )
+      } catch (err) {
+        if (!(err instanceof BadRequestError)) throw err
+      }
+      update.category = new Types.ObjectId(input.categoryId)
+      update.attributes = new Map(Object.entries(validated?.attributes ?? {}))
+      update.attrs = validated?.attrs ?? []
+      if (validated?.templateId) update.templateRef = toTemplateRef(validated)
+      else clearTemplate = true
+      update.status = LISTING_STATUS.PENDING
+      update.machineReview = null
+    }
 
     /*
-     * Đổi tỉnh phải kéo theo PHƯỜNG, không thì để lại một ô không tồn tại.
-     *
-     * `rerouteListingSchema` không nhận phường, nên phường cũ ở lại. Cặp (tỉnh mới, phường cũ)
-     * không có thật: `canModerateCategory` ở tầng `category_ward` đòi `wardCodes.includes(ward)`,
-     * mà không manager phường nào của tỉnh mới giữ phường của tỉnh cũ — tin lặng lẽ leo lên
-     * manager cấp tỉnh, hoặc lên master nếu tỉnh đó chưa có ai.
-     *
-     * `null` chứ không đoán một phường: master đang chuyển tin sang tỉnh khác thì họ biết danh
-     * mục và tỉnh, không biết tin nằm ở phường nào bên đó. Ô cấp tỉnh là ô ĐÚNG cho một tin
-     * chưa rõ phường — grant cấp tỉnh phủ trọn mọi phường, nên vẫn luôn có người nhận.
-     *
-     * Giữ nguyên `location`: đó là địa chỉ người bán khai, không phải khoá định tuyến. Master
-     * sửa bàn duyệt, không sửa lời khai của người ta.
+     * Đổi tỉnh phải kéo theo PHƯỜNG, không thì để lại một ô không tồn tại: cặp (tỉnh mới, phường
+     * cũ) không manager phường nào giữ, tin lặng lẽ leo lên cấp tỉnh. `null` chứ không đoán một
+     * phường — ô cấp tỉnh là ô ĐÚNG cho tin chưa rõ phường. Giữ nguyên `location`: đó là lời khai
+     * của người bán, không phải khoá định tuyến.
      */
     if (input.provinceCode && input.provinceCode !== listing.provinceCode) {
       update.provinceCode = input.provinceCode
       update.wardCode = null
     }
 
-    const updated = await listingRepository.updateById(id, update)
+    if (Object.keys(update).length === 0) return listing
+    const updated = await listingRepository.reroute(id, update, clearTemplate)
     return updated!
   },
 

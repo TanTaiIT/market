@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { categoryTemplateController } from './category-template.controller'
 import { createFieldDefinitionSchema, fieldDefinitionSchema } from './category-template.schema'
 import { validate } from '../../middlewares/validate.middleware'
@@ -14,6 +15,8 @@ import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../
  * nhiều mảnh không gộp lại được.
  */
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 // Đọc cần đăng nhập master: đây là màn dựng template, không phải dữ liệu người mua cần.
 router.get('/', authenticate, requireMaster, categoryTemplateController.listDefinitions)

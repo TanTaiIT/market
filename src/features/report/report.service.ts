@@ -6,6 +6,7 @@ import { IReport, IReportDocument } from './report.model'
 import { assertCanActOnListing, listingService } from '../listing/listing.service'
 import type { TrustState } from '../trust/trust.policy'
 import { userRepository } from '../user/user.repository'
+import { listingRepository } from '../listing/listing.repository'
 import {
   applyTakedownPenalty,
   notifyPoster,
@@ -36,7 +37,30 @@ export interface ReportModerator extends ReportActor {
   grants: Grant[]
 }
 
-function toDto(report: IReportDocument, count: number) {
+/** Tên hiện ra thay cho người tố khi người xem chính là chủ đối tượng bị tố (audit 2.4). */
+const ANONYMOUS_REPORTER = 'Người dùng ẩn danh'
+
+/**
+ * Đối tượng bị báo cáo thuộc về CHÍNH người đang xem: tin của họ, hoặc chính họ. Quản trị nhóm
+ * cũng là người bán trong nhóm đó, và hàng đợi báo cáo hiện tên người tố — tức người bị tố biết
+ * ai tố mình. Che tên ở đúng những dòng đó; các dòng khác vẫn cần tên để xử.
+ */
+async function ownedTargets(reports: IReportDocument[], viewerId: string): Promise<Set<string>> {
+  const owned = new Set<string>()
+  const listingIds = reports
+    .filter((r) => r.targetType === REPORT_TARGET.LISTING)
+    .map((r) => r.targetId)
+  const sellers = await listingRepository.sellersOf(listingIds)
+  for (const r of reports) {
+    const id = r.targetId.toString()
+    const mine =
+      r.targetType === REPORT_TARGET.USER ? id === viewerId : sellers.get(id) === viewerId
+    if (mine) owned.add(id)
+  }
+  return owned
+}
+
+function toDto(report: IReportDocument, count: number, anonymous = false) {
   return {
     id: report._id.toString(),
     targetType: report.targetType,
@@ -44,7 +68,7 @@ function toDto(report: IReportDocument, count: number) {
     targetTitle: report.targetTitle,
     kind: report.kind,
     quote: report.quote,
-    reporterName: report.reporterName,
+    reporterName: anonymous ? ANONYMOUS_REPORTER : report.reporterName,
     status: report.status,
     count,
     createdAt: report.createdAt.toISOString(),
@@ -175,13 +199,18 @@ export const reportService = {
   },
 
   /** Hàng đợi theo scope đã dựng ở `requireReportReader` — plugin lo việc lọc hai trục. */
-  async list(query: ReportQuery) {
+  async list(query: ReportQuery, viewerId: string) {
     const pagination = parsePagination(query)
     const { items, total } = await reportRepository.paginate(query.status, pagination)
-    const counts = await reportRepository.countsByTarget(items.map((r) => r.targetId))
+    const [counts, owned] = await Promise.all([
+      reportRepository.countsByTarget(items.map((r) => r.targetId)),
+      ownedTargets(items, viewerId),
+    ])
 
     return {
-      items: items.map((r) => toDto(r, counts.get(r.targetId.toString()) ?? 1)),
+      items: items.map((r) =>
+        toDto(r, counts.get(r.targetId.toString()) ?? 1, owned.has(r.targetId.toString())),
+      ),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },
@@ -290,6 +319,7 @@ export const reportService = {
       report.organizationId,
     )
 
-    return toDto(claimed, 0)
+    const owned = await ownedTargets([claimed], actor.id)
+    return toDto(claimed, 0, owned.has(claimed.targetId.toString()))
   },
 }

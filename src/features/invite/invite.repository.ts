@@ -33,6 +33,16 @@ export const inviteRepository = {
     return { items, total }
   },
 
+  /** Tài khoản xoá thì lời mời đang treo (đích danh, hoặc gửi tới email đó) thu hồi theo. */
+  revokeAllPendingForUser(userId: Id, email: string) {
+    const targets: Record<string, unknown>[] = [{ invitedUserId: userId }]
+    if (email) targets.push({ value: email })
+    return Invite.updateMany(
+      { status: INVITE_STATUS.PENDING, $or: targets },
+      { status: INVITE_STATUS.REVOKED },
+    ).exec()
+  },
+
   /** Hộp thư lời mời của một người: chỉ lời mời đích danh, chỉ cái còn hiệu lực. */
   listPendingForUser(userId: Id) {
     return Invite.find({ invitedUserId: userId, status: INVITE_STATUS.PENDING })

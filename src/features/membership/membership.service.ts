@@ -11,7 +11,7 @@ import { canAdminOrg, isMaster, type Grant } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { listingService } from '../listing/listing.service'
-import { CASCADE_HIDE_REASON, MASTER_DISPLAY_NAME } from '../../common/constants'
+import { CASCADE_HIDE_KIND, CASCADE_HIDE_REASON, MASTER_DISPLAY_NAME } from '../../common/constants'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 
 /** Tên đi vào snapshot `moderation.byName` — master là danh tính hệ thống, không lộ tên thật. */
@@ -122,6 +122,7 @@ export const membershipService = {
     // Người không còn trong nhóm thì không còn tin trong nhóm — cùng luật với `leave` (audit 1.14).
     await listingService.detachFromOrg(new Types.ObjectId(targetUserId), organizationId, {
       reason: CASCADE_HIDE_REASON.REMOVED_FROM_ORG,
+      cascade: CASCADE_HIDE_KIND.REMOVED_FROM_ORG,
       byUserId: actor.id,
       byName: await displayNameOf(actor),
     })
@@ -156,6 +157,7 @@ export const membershipService = {
     const user = await userRepository.findById(actorId)
     await listingService.detachFromOrg(self, organizationId, {
       reason: CASCADE_HIDE_REASON.LEFT_ORG,
+      cascade: CASCADE_HIDE_KIND.LEFT_ORG,
       byUserId: actorId,
       byName: user?.name ?? 'Thành viên',
     })

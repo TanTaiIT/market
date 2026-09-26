@@ -13,7 +13,7 @@ export const reportController = {
 
   // GET /reports
   list: catchAsync(async (req, res) => {
-    const { items, meta } = await reportService.list(req.query as never)
+    const { items, meta } = await reportService.list(req.query as never, req.user!.id)
     success(res, { message: 'Reports', data: items, meta })
   }),
 

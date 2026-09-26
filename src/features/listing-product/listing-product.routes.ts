@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { listingProductController } from './listing-product.controller'
 import {
   createListingProductSchema,
@@ -12,6 +13,8 @@ import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 // Toàn bộ là bàn quản trị catalog — master-only. Người mua xem catalog qua đường công khai
 // `GET /listings/products` (chỉ trả gói đang mở bán), không phải ở đây.

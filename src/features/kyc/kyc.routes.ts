@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { kycService } from './kyc.service'
 import {
   kycDetailSchema,
@@ -53,6 +54,8 @@ export const kycController = {
 }
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 /*
  * `/kyc/me` phải khai TRƯỚC `/:id` — Express khớp theo thứ tự, đăng sau thì "me" bị nuốt thành

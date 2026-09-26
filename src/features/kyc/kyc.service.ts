@@ -24,6 +24,11 @@ function toDto(doc: IKycProfileDocument) {
 }
 
 export const kycService = {
+  /** Tài khoản xoá thì hồ sơ KYC (PII) xoá cứng theo — không có lý do gì giữ giấy tờ của người đã đi. */
+  async purgeForUser(userId: string): Promise<void> {
+    await KycProfile.deleteOne({ userId: new Types.ObjectId(userId) }).exec()
+  },
+
   /**
    * Nộp hồ sơ, hoặc nộp LẠI sau khi bị từ chối.
    *

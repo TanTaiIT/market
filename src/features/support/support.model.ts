@@ -6,6 +6,8 @@ export type SupportSide = (typeof SUPPORT_SIDE)[keyof typeof SUPPORT_SIDE]
 
 /** Dài hơn tin nhắn chat thường: người ta mô tả sự cố, không nhắn "còn hàng không". */
 export const SUPPORT_BODY_MAX = 2000
+/** Trần tin nhắn một luồng — `messages` nhúng trong document, không trần là document phình vô hạn (audit 2.6). */
+export const SUPPORT_THREAD_MAX_MESSAGES = 500
 
 export interface ISupportMessage {
   from: SupportSide

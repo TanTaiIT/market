@@ -20,7 +20,9 @@ import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { assertSingleAxis, roleGrantService } from '../role-grant/role-grant.service'
 import { canGrant } from '../../common/authz/policy'
 import {
+  CASCADE_HIDE_KIND,
   CASCADE_HIDE_REASON,
+  IN_ORG_REACHES,
   MASTER_DISPLAY_NAME,
   ORG_CAPABILITY_PRESETS,
   ORG_TYPES,
@@ -456,6 +458,7 @@ export const organizationService = {
         reason: CASCADE_HIDE_REASON.ORG_SUSPENDED,
         byName: MASTER_DISPLAY_NAME,
         at: new Date(),
+        cascade: CASCADE_HIDE_KIND.ORG_SUSPENDED,
       })
     }
 
@@ -463,9 +466,9 @@ export const organizationService = {
     if (!org) throw new NotFoundError('Organization not found')
 
     if (status === TENANT_STATUS.ACTIVE && before.status === TENANT_STATUS.SUSPENDED) {
-      await listingRepository.restoreHiddenInOrgByReason(
-        orgObjectId,
-        CASCADE_HIDE_REASON.ORG_SUSPENDED,
+      await listingRepository.restoreCascaded(
+        { organizationId: orgObjectId, reach: { $in: IN_ORG_REACHES } },
+        CASCADE_HIDE_KIND.ORG_SUSPENDED,
       )
     }
     return org
