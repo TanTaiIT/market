@@ -89,10 +89,10 @@ const userSchema = new Schema<IUserDocument>(
     /**
      * `sub` của Google — khoá ổn định của một tài khoản Google, KHÔNG đổi khi họ đổi email.
      *
-     * `sparse` để hàng nghìn tài khoản mật khẩu (không có field này) không đụng unique index.
      * Khớp theo `sub` TRƯỚC khi khớp theo email: email đổi được, `sub` thì không.
+     * Unique index khai ở cuối file, partial như `email` — xem ghi chú ở đó.
      */
-    googleId: { type: String, unique: true, sparse: true, default: undefined },
+    googleId: { type: String, default: undefined },
     avatar: { type: String, default: '' },
     gender: { type: String, enum: Object.values(GENDER), default: GENDER.UNDISCLOSED },
     // `_id: false`: subdoc thuần dữ liệu, không cần khoá riêng để tham chiếu tới.
@@ -146,6 +146,17 @@ const userSchema = new Schema<IUserDocument>(
 // nằm ở `memberships`, không ở bảng này.
 // partialFilterExpression: thiếu nó thì một tài khoản đã xoá giữ chỗ email vĩnh viễn.
 userSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } })
+/*
+ * `googleId` cũng partial theo `deletedAt`, cùng lý do với `email`: bản trước là `unique + sparse`,
+ * nên tài khoản Google đã xoá mềm giữ chỗ `sub` vĩnh viễn — người đó đăng nhập Google lại là
+ * `findByGoogleId` (lọc `deletedAt: null`) không thấy, `create` đụng index, 500. `$type: 'string'`
+ * thay cho `sparse`: hàng nghìn tài khoản mật khẩu không có field này vẫn không vào index.
+ * Production: `npm run sync-indexes:prod` để gỡ index cũ và tạo bản này (`autoIndex` tắt ở prod).
+ */
+userSchema.index(
+  { googleId: 1 },
+  { unique: true, partialFilterExpression: { googleId: { $type: 'string' }, deletedAt: null } },
+)
 // KHÔNG index `phone`: nó chỉ được đọc/ghi như một field hồ sơ, không call-site nào lọc theo
 // nó. Thêm lại khi có đường "tìm người theo số" thật — index không ai dùng vẫn phải cập nhật
 // mỗi lượt ghi và vẫn chiếm chỗ trong bộ nhớ.

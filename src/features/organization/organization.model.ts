@@ -133,6 +133,23 @@ organizationSchema.pre('validate', function syncDerivedKeys(next) {
   next()
 })
 
+/*
+ * Soft delete — cùng hook với mọi model có `deletedAt` khác (User, Listing, OrgUnit…).
+ *
+ * Model này từng là ngoại lệ duy nhất: repository tự viết `deletedAt: null` ở từng query, và
+ * method mới nhất (`allImageUrls`) đã quên — job dọn ảnh vì thế giữ ảnh của org đã xoá như
+ * đang được dùng. Hook ở model là chỗ duy nhất không ai phải nhớ. `withDeleted` cho đường cần
+ * đọc cả bản đã xoá (không có caller nào hôm nay, giữ cùng hợp đồng với các model kia).
+ */
+function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
+  if (!this.getOptions().withDeleted) {
+    this.where({ deletedAt: null })
+  }
+  next()
+}
+organizationSchema.pre(/^find/, excludeDeleted)
+organizationSchema.pre('countDocuments', excludeDeleted)
+
 // Organization *là* tenant nên KHÔNG gắn tenantPlugin — truy cập nó đi qua
 // organization.repository (chạy runUnscoped), đó là nơi duy nhất được phép.
 /*

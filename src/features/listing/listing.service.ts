@@ -41,6 +41,7 @@ import { organizationRepository } from '../organization/organization.repository'
 import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { roleGrantService } from '../role-grant/role-grant.service'
+import { reportRepository } from '../report/report.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { CLEAN_APPROVALS_PER_LEVEL, MAX_TRUST_LEVEL } from '../trust/trust.policy'
 import {
@@ -57,6 +58,8 @@ import {
   MASTER_DISPLAY_NAME,
   MODERATION_ACTION,
   MODERATION_QUEUE,
+  MODERATION_TRANSITIONS,
+  REPORT_AUTO_RESOLUTION,
   ModerationAction,
   ModerationDecision,
   LISTING_REACH,
@@ -1048,9 +1051,14 @@ export const listingService = {
    * Không rò rỉ gì: caller BẮT BUỘC đưa tin này qua `assertCanActOnListing` trước khi làm
    * bất cứ điều gì với nó.
    */
-  async getForModeration(id: string) {
+  async getForModeration(id: string, opts: { withDeleted?: boolean } = {}) {
+    // `withDeleted` cho báo cáo về một tin đã xoá: vẫn phải xét được trục của nó để đóng báo cáo,
+    // nếu không hàng đợi giữ mãi một dòng mà mở ra là 404.
     const listing = await runUnscoped('moderation: đọc tin để xét thẩm quyền theo trục', () =>
-      listingRepository.findById(id).exec(),
+      (opts.withDeleted
+        ? listingRepository.findByIdWithDeleted(id)
+        : listingRepository.findById(id)
+      ).exec(),
     )
     if (!listing) throw new NotFoundError('Listing not found')
     return listing
@@ -1066,7 +1074,9 @@ export const listingService = {
     if (ids.length === 0) return []
     const items = await listingRepository.findByIds(ids)
     const byId = new Map(items.map((item) => [item._id.toString(), item]))
-    return ids.map((id) => byId.get(id.toString())).filter((item) => item !== undefined)
+    const ordered = ids.map((id) => byId.get(id.toString())).filter((item) => item !== undefined)
+    // Cùng DTO với bảng tin (kèm danh thiếp nhóm) — "Tin đã lưu" không phải một hình dạng riêng.
+    return withOrgBadge(ordered)
   },
 
   /**
@@ -1089,11 +1099,19 @@ export const listingService = {
   ): Promise<number> {
     // Chỉ master khoá được tài khoản (`userService.setStatus`), và master là danh tính hệ thống:
     // snapshot mang `MASTER_DISPLAY_NAME`, không phải tên thật — cùng luật với `audit_logs.actorName`.
+    const byUserId = new Types.ObjectId(input.byUserId)
+    // Liệt kê TRƯỚC khi ẩn: sau `updateMany` không còn biết tin nào vừa rời bảng để đóng báo cáo.
+    const liveIds = await listingRepository.liveIdsBySeller(sellerId)
     const result = await listingRepository.hideAllBySeller(sellerId, {
       reason: input.reason,
-      byUserId: new Types.ObjectId(input.byUserId),
+      byUserId,
       byName: MASTER_DISPLAY_NAME,
       at: new Date(),
+    })
+    await reportRepository.resolveAllOpenForListings(liveIds, {
+      action: REPORT_AUTO_RESOLUTION.TARGET_REMOVED,
+      byUserId,
+      byName: MASTER_DISPLAY_NAME,
     })
     return result.modifiedCount
   },
@@ -1242,10 +1260,18 @@ export const listingService = {
   },
 
   async remove(id: string, userId: string) {
-    await assertOwnerUnscoped(id, userId)
-    return runUnscoped('xoá tin: ghi sau khi đã chốt chính chủ', () =>
+    const listing = await assertOwnerUnscoped(id, userId)
+    const removed = await runUnscoped('xoá tin: ghi sau khi đã chốt chính chủ', () =>
       listingRepository.softDelete(id).exec(),
     )
+    // Tin không còn thì báo cáo về nó không còn gì để xử — để mở là kẹt vĩnh viễn trong hàng
+    // đợi và `openReports` đếm mãi. Tên người đóng là chính chủ: họ vừa gỡ đối tượng bị tố.
+    await reportRepository.resolveAllOpenForListings([listing._id], {
+      action: REPORT_AUTO_RESOLUTION.TARGET_REMOVED,
+      byUserId: listing.seller,
+      byName: listing.posterName,
+    })
+    return removed
   },
 
   /**
@@ -1321,9 +1347,26 @@ export const listingService = {
     // khe nào để hai lớp phán khác nhau.
     assertCanActOnListing(listing, grants, ACTION_BY_DECISION[next.status])
 
+    // Cùng trạng thái = không ghi gì. Lớp ngoài (`moderationService.setListingStatus`) cũng bỏ
+    // qua uy tín/báo/nhật ký ở ca này — không có gì để "ghi lại" cả.
+    if (listing.status === next.status) return listing
+
+    /*
+     * MÁY TRẠNG THÁI, tra `MODERATION_TRANSITIONS`. Bản trước ghi vô điều kiện: `sold → active`
+     * hồi sinh tin đã bán, `expired → active` là gia hạn hộ mà chủ tin không biết, và bấm
+     * "duyệt" lần thứ hai lên tin đang active cộng thêm một bài sạch mỗi lần bấm.
+     */
+    if (!MODERATION_TRANSITIONS[next.status].includes(listing.status)) {
+      throw new BadRequestError(
+        `Không chuyển được tin từ "${listing.status}" sang "${next.status}"`,
+      )
+    }
+
+    // Ghi CÓ CHỐT trạng thái đã đọc: hai moderator cùng mở một tin, người bấm sau thấy 409 thay vì
+    // đè phán quyết vừa ghi (và cộng/trừ uy tín lần nữa).
     const updated = await runUnscoped('moderation: ghi phán quyết đã qua chốt thẩm quyền', () =>
       listingRepository
-        .updateById(id, {
+        .updateByIdIfStatus(id, listing.status, {
           status: next.status,
           /*
            * Lên bảng là bắt đầu lại 30 ngày, tính từ LÚC DUYỆT — không phải lúc đăng. `expiresAt`
@@ -1343,7 +1386,8 @@ export const listingService = {
         })
         .exec(),
     )
-    return updated!
+    if (!updated) throw new ConflictError('Tin vừa được người khác xử lý — tải lại rồi xem')
+    return updated
   },
 
   /**

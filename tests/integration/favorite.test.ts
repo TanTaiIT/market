@@ -58,6 +58,15 @@ async function favoriteCountOf(listingId: string) {
 const savedIds = (token: string) =>
   request(app).get('/api/v1/favorites/ids').set('Authorization', `Bearer ${token}`)
 
+/** Đổi trạng thái thẳng ở model — mô phỏng bàn duyệt ẩn/từ chối mà không đi qua API. */
+async function setStatus(listingId: string, status: string) {
+  const { Listing } = await import('../../src/features/listing/listing.model')
+  const { runUnscoped } = await import('../../src/common/tenant/tenantContext')
+  await runUnscoped('test: đổi trạng thái thẳng', () =>
+    Listing.updateOne({ _id: listingId }, { status }).exec(),
+  )
+}
+
 beforeAll(async () => {
   mongod = await startTestDb()
   app = await createTestApp()
@@ -119,6 +128,8 @@ describe('Favorite — lưu và bỏ lưu', () => {
     expect(res.body.data).toHaveLength(1)
     expect(res.body.data[0]._id).toBe(publicListing)
     expect(res.body.data[0].title).toBe('Bàn phím cơ còn bảo hành')
+    // Cùng DTO với bảng tin: tin sàn mang badge nhóm thì "Tin đã lưu" cũng phải mang badge đó.
+    expect(res.body.data[0].org).toMatchObject({ name: 'Tổ chức Favorite' })
     expect(res.body.meta).toMatchObject({ page: 1, total: 1, totalPages: 1 })
   })
 
@@ -194,5 +205,53 @@ describe('Favorite — tin bị gỡ sau khi đã lưu', () => {
   it('vẫn bỏ lưu được tin đã gỡ — không ai bị kẹt với bản ghi không xoá nổi', async () => {
     await request(app).delete(`/api/v1/favorites/${removed}`).set(bearer(buyer)).expect(200)
     expect((await savedIds(buyer.token)).body.data).toEqual([])
+  })
+})
+
+/**
+ * Audit 1.8: `findByIds` chạy dưới scope org không kẹp `status`, nên thành viên gửi `X-Org-Id`
+ * thấy cả tin `hidden`/`rejected` của nhóm trong "Tin đã lưu" — thứ chỉ bàn duyệt được thấy.
+ */
+describe('Favorite — tin bị ẩn / từ chối SAU khi đã lưu', () => {
+  let hidden = ''
+  let rejected = ''
+
+  const savedAsMember = () =>
+    request(app).get('/api/v1/favorites').set(orgAuth(member.token, ORG)).expect(200)
+
+  beforeAll(async () => {
+    hidden = await createListing(orgAuth(member.token, ORG), 'Loa bluetooth', 'marketplace')
+    rejected = await createListing(orgAuth(member.token, ORG), 'Màn hình 24 inch', 'marketplace')
+    await publishListing(hidden)
+    await publishListing(rejected)
+    await request(app)
+      .post(`/api/v1/favorites/${hidden}`)
+      .set(orgAuth(member.token, ORG))
+      .expect(201)
+    await request(app)
+      .post(`/api/v1/favorites/${rejected}`)
+      .set(orgAuth(member.token, ORG))
+      .expect(201)
+    await setStatus(hidden, 'hidden')
+    await setStatus(rejected, 'rejected')
+  })
+
+  it('thành viên gửi X-Org-Id cũng KHÔNG thấy tin ẩn/từ chối của nhóm — dù bàn duyệt thấy', async () => {
+    const res = await savedAsMember()
+    const ids = res.body.data.map((l: { _id: string }) => l._id)
+
+    expect(ids).not.toContain(hidden)
+    expect(ids).not.toContain(rejected)
+    // Bản ghi lưu vẫn còn: tin mở lại là về lại danh sách, không mất lượt tim.
+    expect(res.body.meta.total).toBeGreaterThanOrEqual(2)
+  })
+
+  it('tin được mở lại thì về lại danh sách, kèm danh thiếp nhóm như trên bảng tin', async () => {
+    await setStatus(hidden, 'active')
+    const res = await savedAsMember()
+    const row = res.body.data.find((l: { _id: string }) => l._id === hidden)
+
+    expect(row).toBeDefined()
+    expect(row.org).toMatchObject({ name: 'Tổ chức Favorite' })
   })
 })

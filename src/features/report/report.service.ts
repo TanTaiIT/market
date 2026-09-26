@@ -18,6 +18,7 @@ import {
   LISTING_STATUS,
   MASTER_DISPLAY_NAME,
   MODERATION_ACTION,
+  MODERATION_TRANSITIONS,
   REPORT_STATUS,
   REPORT_TARGET,
 } from '../../common/constants'
@@ -122,7 +123,11 @@ async function assertCanResolve(report: IReportDocument, grants: Grant[]): Promi
   }
 
   if (report.targetType === REPORT_TARGET.LISTING) {
-    const listing = await listingService.getForModeration(report.targetId.toString())
+    // `withDeleted`: báo cáo về tin đã xoá (dữ liệu trước khi xoá tin tự đóng báo cáo) vẫn phải
+    // xét được trục để người có quyền đóng nó bằng `ignore`, thay vì 404 mãi mãi.
+    const listing = await listingService.getForModeration(report.targetId.toString(), {
+      withDeleted: true,
+    })
     // Cửa GỠ: đóng một báo cáo là rút tin xuống, không phải cho tin đi tiếp. Điều này vá luôn
     // một đường nửa vời — `targetOf` đóng dấu `organizationId` của tin công khai mang org lên
     // báo cáo, nên nhóm MỞ được báo cáo rồi lại 403 khi định xử nó.
@@ -196,13 +201,41 @@ export const reportService = {
     const moderator = await userRepository.findById(actor.id)
     const byName = moderator?.name ?? 'Quản trị'
     const hideTarget = input.action === 'hide_target' && report.targetType === REPORT_TARGET.LISTING
+    const outcome = {
+      status: hideTarget ? REPORT_STATUS.RESOLVED : REPORT_STATUS.DISMISSED,
+      resolution: {
+        action: input.action,
+        byUserId: new Types.ObjectId(actor.id),
+        byName,
+        at: new Date(),
+      },
+    }
+
+    /*
+     * NHẬN XỬ trước mọi side-effect. Phép kiểm `status !== OPEN` ở trên chỉ chặn lượt gọi TUẦN
+     * TỰ: hai moderator cùng bấm thì cả hai đọc được `open`, cùng qua cửa, cùng ẩn tin và cùng
+     * trừ uy tín — người bán mất hai bậc cho một báo cáo. CAS trên `status: open` là cửa chỉ
+     * một người lọt; người kia nhận 409 và không chạy tiếp.
+     */
+    const claimed = await reportRepository.claimOpen(report._id, outcome)
+    if (!claimed) throw new ConflictError('Báo cáo vừa được người khác xử lý — tải lại rồi xem')
+
     /** Bậc uy tín sau khi trừ — chỉ có khi báo cáo được xác minh. Dùng cho dòng nhật ký. */
     let trust: TrustState | null = null
 
-    if (hideTarget) {
-      // Trạng thái TRƯỚC khi ẩn — `applyTakedownPenalty` cần nó để biết tin đã từng lên bảng chưa.
-      const before = await listingService.getForModeration(report.targetId.toString())
+    // Trạng thái TRƯỚC khi ẩn — `applyTakedownPenalty` cần nó để biết tin đã từng lên bảng chưa.
+    // Đọc SAU khi đã nhận xử, và đọc kể cả tin đã xoá: báo cáo mồ côi vẫn phải đóng được.
+    const before = hideTarget
+      ? await listingService.getForModeration(report.targetId.toString(), { withDeleted: true })
+      : null
+    // Tin đã xoá, đã từ chối, hay đang ẩn thì không còn gì để ẩn — máy trạng thái của
+    // `setModerationStatus` sẽ từ chối, mà báo cáo thì vẫn phải đóng được. Chỉ ĐÓNG, không phạt.
+    const canHide =
+      before !== null &&
+      !before.deletedAt &&
+      MODERATION_TRANSITIONS[LISTING_STATUS.HIDDEN].includes(before.status)
 
+    if (hideTarget && before && canHide) {
       // `grants` là bắt buộc: `setModerationStatus` tự chốt phạm vi duyệt theo TRỤC của tin —
       // cùng phép kiểm `assertCanResolve` vừa làm, giữ lại vì đây là hàm public có caller khác.
       const hidden = await listingService.setModerationStatus(
@@ -226,8 +259,10 @@ export const reportService = {
        * sàn thì chỉ người có quyền DUYỆT trục đó mới ghi được. Bản trước để nhóm tự báo cáo rồi
        * tự gỡ là hạ bậc bất kỳ ai từng đăng dưới tên nhóm.
        *
-       * Không sợ trừ hai lần: `resolveAllForTarget` đóng mọi báo cáo còn mở của cùng một tin
-       * trong một lượt, và lượt gọi thứ hai bị chặn ngay ở `status !== OPEN` phía trên.
+       * Không sợ trừ hai lần: cùng một báo cáo thì `claimOpen` ở trên chỉ cho một người qua; hai
+       * báo cáo KHÁC NHAU về cùng một tin thì `before` đọc sau khi nhận xử, nên hoặc thấy tin đã
+       * `hidden` (không phạt), hoặc thua CAS trong `setModerationStatus` (409, chưa kịp phạt).
+       * `resolveAllForTarget` bên dưới đóng nốt các báo cáo còn mở của cùng tin trong một lượt.
        */
       trust = await applyTakedownPenalty(hidden, actor, before.status)
 
@@ -236,15 +271,7 @@ export const reportService = {
       await notifyPoster(hidden, LISTING_STATUS.HIDDEN, `Bị báo cáo: ${report.kind}`)
     }
 
-    await reportRepository.resolveAllForTarget(report.targetId, report.organizationId, {
-      status: hideTarget ? REPORT_STATUS.RESOLVED : REPORT_STATUS.DISMISSED,
-      resolution: {
-        action: input.action,
-        byUserId: new Types.ObjectId(actor.id),
-        byName,
-        at: new Date(),
-      },
-    })
+    await reportRepository.resolveAllForTarget(report.targetId, report.organizationId, outcome)
 
     await recordAudit(
       { id: actor.id, name: byName },
@@ -263,7 +290,6 @@ export const reportService = {
       report.organizationId,
     )
 
-    const updated = await reportRepository.findByIdForModeration(id)
-    return toDto(updated!, 0)
+    return toDto(claimed, 0)
   },
 }

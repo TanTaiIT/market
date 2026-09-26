@@ -146,3 +146,36 @@ describe('Ví Xu — bất biến của sổ cái', () => {
     expect(await walletRepository.ledgerSum(userId)).toBe(0)
   }, 60_000)
 })
+
+describe('Khoá idempotent scope theo NGƯỜI NHẬN (audit 4.1)', () => {
+  const asUser = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` })
+
+  it('cùng idempotencyKey cho hai người khác nhau → hai dòng sổ riêng, không trả nhầm giao dịch của người trước', async () => {
+    const other = await registerUser(app, 'other@wallet.local', 'Người khác')
+    await request(app)
+      .post(`/api/v1/wallet/${owner.id}/adjust`)
+      .set(asMaster())
+      .send({ amount: 100, note: 'Tặng đợt 2', idempotencyKey: 'shared-key' })
+      .expect(200)
+
+    const res = await request(app)
+      .post(`/api/v1/wallet/${other.id}/adjust`)
+      .set(asMaster())
+      .send({ amount: 100, note: 'Tặng đợt 2', idempotencyKey: 'shared-key' })
+      .expect(200)
+    expect(String(res.body.data.userId)).toBe(other.id)
+
+    const wallet = await request(app).get('/api/v1/wallet').set(asUser(other)).expect(200)
+    expect(wallet.body.data.balance).toBe(100)
+  }, 60_000)
+
+  it('cùng khoá, cùng người, KHÁC số tiền → 409, không ghi thêm dòng nào', async () => {
+    const before = await walletService.balanceOf(new Types.ObjectId(owner.id))
+    await request(app)
+      .post(`/api/v1/wallet/${owner.id}/adjust`)
+      .set(asMaster())
+      .send({ amount: 50, note: 'Tặng đợt 2', idempotencyKey: 'shared-key' })
+      .expect(409)
+    expect(await walletService.balanceOf(new Types.ObjectId(owner.id))).toBe(before)
+  }, 60_000)
+})

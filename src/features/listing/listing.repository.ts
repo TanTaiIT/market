@@ -6,6 +6,7 @@ import {
   LISTING_STATUS,
   MODERATABLE_STATUSES,
   LISTING_REACH,
+  PUBLIC_LISTING_STATUSES,
   REPORT_TIMEZONE,
   ListingStatus,
 } from '../../common/constants'
@@ -214,7 +215,10 @@ export const listingRepository = {
    * mảng id truyền vào, và đó là hành vi ĐÚNG: tin đã gỡ không hiện lại chỉ vì ai đó từng lưu.
    */
   findByIds(ids: Types.ObjectId[]) {
-    return Listing.find({ _id: { $in: ids } })
+    // Cùng luật với `getForViewer`: tin đã ẩn/từ chối/đang chờ không hiện trong "Tin đã lưu".
+    // Nhánh org của scope không kẹp `status` (bàn duyệt cần thấy đủ), nên thành viên gửi
+    // `X-Org-Id` từng thấy cả tin `hidden` của nhóm — kèm lý do ẩn — chỉ vì đã từng bấm tim.
+    return Listing.find({ _id: { $in: ids }, status: { $in: PUBLIC_LISTING_STATUSES } })
   },
 
   async paginate(params: ListingFilterParams, { skip, limit }: PaginationParams) {
@@ -293,6 +297,23 @@ export const listingRepository = {
   },
 
   /**
+   * Ghi có CHỐT trạng thái — compare-and-set cho bàn duyệt. Người bấm sau khi tin đã đổi tay
+   * (một moderator khác vừa xử, máy vừa duyệt) khớp 0 document và nhận `null`, thay vì đè lên
+   * phán quyết vừa ghi. Cùng cơ chế với `applyMachineVerdict` nhưng cho người thật.
+   */
+  updateByIdIfStatus(id: string, expected: ListingStatus, update: Partial<IListing>) {
+    return Listing.findOneAndUpdate({ _id: id, status: expected }, update, {
+      new: true,
+      runValidators: true,
+    })
+  },
+
+  /** Đọc KỂ CẢ tin đã xoá mềm — cho báo cáo về một tin không còn: vẫn phải xét được trục để đóng. */
+  findByIdWithDeleted(id: string) {
+    return Listing.findById(id).setOptions({ withDeleted: true })
+  },
+
+  /**
    * Cộng một lượt xem. CHỈ ghi — không đọc, không xét quyền.
    *
    * Người gác là `listingService.getForViewer`, chạy TRƯỚC hàm này: nó quyết ai được xem tin
@@ -333,6 +354,22 @@ export const listingRepository = {
    * Ẩn cả tin CHỜ DUYỆT chứ không riêng tin đang hiển thị: để chúng lại là hàng đợi của người
    * duyệt vẫn đầy rác của một tài khoản đã khoá.
    */
+  /** `_id` mọi tin còn sống của một người — để đóng báo cáo về chúng trước khi ẩn hàng loạt. */
+  liveIdsBySeller(sellerId: Types.ObjectId): Promise<Types.ObjectId[]> {
+    return runUnscoped('lock account: liệt kê tin còn sống để đóng báo cáo', () =>
+      Listing.find({
+        seller: sellerId,
+        status: {
+          $in: [LISTING_STATUS.ACTIVE, LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIFIED],
+        },
+      })
+        .select('_id')
+        .lean()
+        .exec()
+        .then((rows) => rows.map((r) => r._id)),
+    )
+  },
+
   hideAllBySeller(sellerId: Types.ObjectId, moderation: IListing['moderation']) {
     return runUnscoped('lock account: hide every live listing of the locked user', () =>
       Listing.updateMany(

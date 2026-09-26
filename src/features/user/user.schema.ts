@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { registry } from '../../config/openapi'
+import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 import {
   GENDER,
   REPORT_GRANULARITY,
@@ -57,7 +58,9 @@ export const updateProfileSchema = z
      * được BẤT KỲ field nào khác — form gửi `phone: ''` và cả lượt lưu ăn 400.
      */
     phone: z.string().min(8).max(15).or(z.literal('')).optional(),
-    avatar: z.string().url().or(z.literal('')).optional(),
+    // Cùng luật với ảnh tin và ảnh nhóm (`imageUrl.ts`): avatar được snapshot vào hội thoại và
+    // vào tin đăng, nên một URL ở host lạ là một pixel theo dõi mọi người mua mở danh sách chat.
+    avatar: cloudinaryImageUrl.or(z.literal('')).optional(),
     gender: z.nativeEnum(GENDER).optional(),
     /** `{}` = xoá khu vực đã lưu. Không ai lọc theo `User.location` nên subdoc rỗng vô hại. */
     location: userLocationInputSchema.optional(),

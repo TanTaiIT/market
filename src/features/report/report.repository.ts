@@ -1,6 +1,6 @@
 import { Types } from 'mongoose'
 import { Report, IReport, IReportDocument } from './report.model'
-import { REPORT_STATUS, ReportStatus } from '../../common/constants'
+import { REPORT_STATUS, REPORT_TARGET, ReportStatus } from '../../common/constants'
 import { PaginationParams } from '../../common/utils/pagination'
 import { runUnscoped } from '../../common/tenant/tenantContext'
 
@@ -26,6 +26,22 @@ export const reportRepository = {
    */
   findByIdForModeration(id: string) {
     return runUnscoped('report: đọc để xét thẩm quyền theo trục', () => Report.findById(id).exec())
+  },
+
+  /**
+   * NHẬN XỬ một báo cáo — compare-and-set trên `status: open`. Hai moderator cùng bấm thì đúng
+   * một người thắng; người kia nhận `null` và không được chạy tiếp phần ẩn tin / trừ uy tín.
+   * Bản trước kiểm `status !== open` rồi mới làm side-effect, nên cả hai qua cửa và cùng trừ.
+   *
+   * Ghi thẳng trạng thái CUỐI, không có trạng thái "đang xử": hỏng ở bước ẩn tin thì báo cáo đã
+   * đóng — đổi lại là không bao giờ có hai lượt trừ uy tín cho cùng một tin.
+   */
+  claimOpen(id: Types.ObjectId, update: Partial<IReportDocument>) {
+    return runUnscoped('report: nhận xử, chốt trên status open', () =>
+      Report.findOneAndUpdate({ _id: id, status: REPORT_STATUS.OPEN }, update, {
+        new: true,
+      }).exec(),
+    )
   },
 
   countOpen() {
@@ -61,6 +77,32 @@ export const reportRepository = {
    * thì scope không có org đó — để plugin lọc là `updateMany` khớp 0 dòng, và báo cáo "đã xử"
    * vẫn nằm mở trong hàng đợi.
    */
+  /**
+   * Đóng mọi báo cáo còn mở về một (hoặc nhiều) TIN — khi tin bị xoá, bị gỡ, hay bị ẩn hàng loạt
+   * lúc khoá tài khoản. Tin không còn thì báo cáo không còn gì để xử: để mở là kẹt vĩnh viễn trong
+   * hàng đợi (người duyệt mở ra 404) và `openReports` đếm mãi.
+   *
+   * KHÔNG lọc `organizationId`: báo cáo về tin sàn mang badge nhóm từng nằm trục org (trước khi
+   * trục đi theo `reach`) và nay nằm trục công khai — đóng theo `targetId` là đúng cho cả hai đời
+   * dữ liệu, mà quyền thì đã có ở người vừa xoá được chính cái tin đó.
+   */
+  resolveAllOpenForListings(
+    targetIds: Types.ObjectId[],
+    resolution: { action: string; byUserId: Types.ObjectId; byName: string },
+  ) {
+    if (targetIds.length === 0) return Promise.resolve({ modifiedCount: 0 })
+    return runUnscoped('report: đóng theo tin đã xoá/gỡ, quyền là quyền xoá tin đó', () =>
+      Report.updateMany(
+        {
+          targetType: REPORT_TARGET.LISTING,
+          targetId: { $in: targetIds },
+          status: REPORT_STATUS.OPEN,
+        },
+        { status: REPORT_STATUS.RESOLVED, resolution: { ...resolution, at: new Date() } },
+      ).exec(),
+    )
+  },
+
   resolveAllForTarget(
     targetId: Types.ObjectId,
     organizationId: Types.ObjectId | null,

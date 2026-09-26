@@ -408,6 +408,46 @@ export const ACTION_BY_DECISION = {
 } as const
 export type ModerationDecision = keyof typeof ACTION_BY_DECISION
 
+/**
+ * Trạng thái TRƯỚC mà mỗi quyết định của bàn duyệt được phép đứng lên — máy trạng thái của
+ * `setModerationStatus`. Cùng-trạng-thái không nằm trong bảng: lớp ngoài coi là no-op (không
+ * uy tín, không báo, không nhật ký), vì bấm "duyệt" lần hai lên tin đang active từng cộng thêm
+ * một bài sạch mỗi lần bấm.
+ *
+ * `sold`/`expired` KHÔNG nhận `active`: hồi sinh tin đã bán là việc chủ tin đăng tin mới, còn
+ * tin hết hạn là `renew` của chính chủ — bàn duyệt không có việc gì với hai trạng thái đó ngoài
+ * ẩn. `rejected` không nhận `hidden`: tin đã bị từ chối không ở trên bảng để mà ẩn.
+ */
+export const MODERATION_TRANSITIONS: Record<ModerationDecision, readonly ListingStatus[]> = {
+  [LISTING_STATUS.ACTIVE]: [
+    LISTING_STATUS.PENDING,
+    LISTING_STATUS.PENDING_UNVERIFIED,
+    LISTING_STATUS.HIDDEN,
+    LISTING_STATUS.REJECTED,
+  ],
+  [LISTING_STATUS.REJECTED]: [
+    LISTING_STATUS.PENDING,
+    LISTING_STATUS.PENDING_UNVERIFIED,
+    LISTING_STATUS.ACTIVE,
+    LISTING_STATUS.HIDDEN,
+  ],
+  [LISTING_STATUS.HIDDEN]: [
+    LISTING_STATUS.PENDING,
+    LISTING_STATUS.PENDING_UNVERIFIED,
+    LISTING_STATUS.ACTIVE,
+    LISTING_STATUS.SOLD,
+    LISTING_STATUS.EXPIRED,
+  ],
+}
+
+/**
+ * Cách một báo cáo bị đóng KHÔNG do người duyệt bấm: đối tượng bị xoá/gỡ/ẩn hàng loạt trước khi
+ * ai kịp xử. Ghi vào `resolution.action` để phân biệt với `hide_target`/`ignore` của người thật.
+ */
+export const REPORT_AUTO_RESOLUTION = {
+  TARGET_REMOVED: 'target_removed',
+} as const
+
 // Vết kiểm toán của thao tác quản trị. Tên dạng `<đối tượng>.<hành động>` để grep ra nhóm.
 export const AUDIT_ACTION = {
   LISTING_APPROVE: 'listing.approve',

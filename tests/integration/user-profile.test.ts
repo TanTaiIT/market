@@ -225,3 +225,40 @@ describe('Xoá tài khoản kéo theo quyền và tư cách thành viên', () =>
     await request(app).get('/api/v1/users/me').set(bearer(master)).expect(200)
   })
 })
+
+/**
+ * Audit 4.7: avatar được snapshot vào hội thoại và vào tin đăng, nên một URL ở host lạ là một
+ * pixel theo dõi mọi người mua mở danh sách chat. Cùng luật với ảnh tin và ảnh nhóm.
+ */
+describe('Avatar — chỉ nhận ảnh Cloudinary', () => {
+  const CLOUDINARY = 'https://res.cloudinary.com/demo/image/upload/v1/avatar.jpg'
+
+  it('URL Cloudinary thì lưu được', async () => {
+    const res = await request(app)
+      .patch('/api/v1/users/me')
+      .set(bearer(seller))
+      .send({ avatar: CLOUDINARY })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.avatar).toBe(CLOUDINARY)
+  })
+
+  it('URL ở host lạ thì 400', async () => {
+    const res = await request(app)
+      .patch('/api/v1/users/me')
+      .set(bearer(seller))
+      .send({ avatar: 'https://tracker.example.com/p.gif' })
+
+    expect(res.status).toBe(400)
+  })
+
+  it('chuỗi rỗng = xoá avatar, vẫn qua', async () => {
+    const res = await request(app)
+      .patch('/api/v1/users/me')
+      .set(bearer(seller))
+      .send({ avatar: '' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.avatar).toBe('')
+  })
+})

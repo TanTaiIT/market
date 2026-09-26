@@ -124,6 +124,22 @@ export const roleGrantRepository = {
     ).exec()
   },
 
+  /**
+   * Thu hồi mọi grant của một người TRONG một org (`org` lẫn `org_unit`) — gọi khi gỡ họ khỏi
+   * danh bạ. Thân phận và quyền là một cặp: gỡ thân phận mà để quyền là "admin rỗng ruột" vẫn mở
+   * được bàn duyệt của nhóm mình không còn đứng trong.
+   */
+  revokeAllForUserInOrg(
+    userId: string | Types.ObjectId,
+    orgId: string | Types.ObjectId,
+    revokedBy: Types.ObjectId | null,
+  ) {
+    return RoleGrant.updateMany(
+      { userId, orgId, scopeType: { $in: [SCOPE_TYPES.ORG, SCOPE_TYPES.ORG_UNIT] }, ...ACTIVE },
+      { revokedAt: new Date(), revokedBy },
+    ).exec()
+  },
+
   revokeById(id: string | Types.ObjectId, revokedBy: Types.ObjectId | null) {
     return RoleGrant.findOneAndUpdate(
       { _id: id, ...ACTIVE },

@@ -4,6 +4,8 @@ import { toMemberDto } from './membership.types'
 import { userRepository } from '../user/user.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { INITIAL_TRUST } from '../trust/trust.policy'
+import { Types } from 'mongoose'
+import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { roleGrantService, usableOrgAdmins } from '../role-grant/role-grant.service'
 import { canAdminOrg, isMaster, type Grant } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
@@ -77,16 +79,10 @@ export const membershipService = {
     }
 
     /*
-     * Người đang GIỮ QUYỀN quản trị không bị gỡ khỏi danh bạ — kể cả bởi master.
-     *
-     * `grantAdmin` ghi hai thứ cùng nhau và nói rõ chúng không tách rời được: `Membership` là
-     * thân phận, `RoleGrant` là quyền. Gỡ thân phận mà để quyền còn hiệu lực tạo ra một
-     * "admin rỗng ruột" — `canAdminOrg` vẫn cho họ mở bàn duyệt và duyệt tin của một nhóm mà
-     * họ không còn là thành viên, còn danh bạ thì không còn ai để master nhìn ra chuyện đó.
+     * Quản trị DUY NHẤT của nhóm không bị gỡ — kể cả bởi master: gỡ xong org không còn ai duyệt.
      *
      * Chốt này KHÔNG trùng chốt 403 ở trên: chốt kia hỏi "ai được phép gỡ", chốt này hỏi "gỡ
-     * xong org còn đứng vững không". Bắt thu hồi quyền trước cũng đi qua chốt admin-cuối-cùng
-     * ở `roleGrantService.revoke`, nên không có đường nào lách được cả hai.
+     * xong org còn đứng vững không". Cùng chốt admin-cuối-cùng với `roleGrantService.revoke`.
      */
     const targetOrgAdmins = await usableOrgAdmins(organizationId, { userId: targetUserId })
     const targetIsAdmin = await roleGrantService
@@ -100,6 +96,20 @@ export const membershipService = {
 
     const removed = await membershipRepository.archiveOne(targetUserId, organizationId)
     if (!removed) throw new NotFoundError('Người này không còn trong nhóm')
+
+    /*
+     * Gỡ thân phận là thu hồi luôn quyền trong nhóm đó (`org` lẫn `org_unit`).
+     *
+     * `Membership` là thân phận, `RoleGrant` là quyền, và `grantAdmin` ghi chúng thành một cặp.
+     * Bản trước chỉ đổi thân phận: người bị gỡ (hoặc staff nhóm con) vẫn giữ grant `revokedAt:
+     * null`, `canModerateAnyInOrg` vẫn mở bàn duyệt cho họ, và danh bạ không còn tên để master
+     * nhìn ra một "admin rỗng ruột" đang duyệt tin của nhóm mình không còn đứng trong.
+     */
+    await roleGrantRepository.revokeAllForUserInOrg(
+      targetUserId,
+      organizationId,
+      new Types.ObjectId(actor.id),
+    )
     return removed
   },
 }

@@ -2,7 +2,12 @@ import mongoose, { Types } from 'mongoose'
 import { walletRepository } from './wallet.repository'
 import { IXuTransactionDocument, XuTxType } from './wallet.model'
 import { notificationService } from '../notification/notification.service'
-import { BadRequestError, InsufficientBalanceError, NotFoundError } from '../../common/errors'
+import {
+  BadRequestError,
+  ConflictError,
+  InsufficientBalanceError,
+  NotFoundError,
+} from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { userRepository } from '../user/user.repository'
 import { logger } from '../../config/logger'
@@ -43,7 +48,7 @@ export const walletService = {
 
     // Đường nhanh: đã ghi rồi thì trả lại đúng dòng cũ, khỏi mở transaction.
     const seen = await walletRepository.findByIdempotencyKey(input.idempotencyKey)
-    if (seen) return seen
+    if (seen) return sameIntent(seen, input)
 
     const session = await mongoose.startSession()
     let created: IXuTransactionDocument | undefined
@@ -75,7 +80,7 @@ export const walletService = {
       // đứa thắng — vẫn đúng hợp đồng idempotent, không phải lỗi để ném ra ngoài.
       if (isDuplicateKey(err)) {
         const existing = await walletRepository.findByIdempotencyKey(input.idempotencyKey)
-        if (existing) return existing
+        if (existing) return sameIntent(existing, input)
       }
       throw err
     } finally {
@@ -135,11 +140,14 @@ export const walletService = {
     const target = await userRepository.findById(input.userId)
     if (!target) throw new NotFoundError('User not found')
 
+    // Khoá scope theo NGƯỜI NHẬN: client sinh uuid cho mỗi lần mở form, nhưng hai master mở hai
+    // form cho hai người vẫn có thể đụng nhau (hoặc client cache khoá cũ). Không có tiền tố người
+    // thì lượt thứ hai trả về dòng sổ của người thứ nhất — và người thứ hai không được ghi gì.
     const tx = await this.apply({
       userId: target._id,
       amount: input.amount,
       type: 'admin_adjust',
-      idempotencyKey: `adjust:${input.idempotencyKey}`,
+      idempotencyKey: `adjust:${target._id.toString()}:${input.idempotencyKey}`,
       note: input.note,
     })
     logger.info('wallet adjusted by master', {
@@ -153,4 +161,20 @@ export const walletService = {
 
 function isDuplicateKey(err: unknown): boolean {
   return typeof err === 'object' && err !== null && 'code' in err && err.code === 11000
+}
+
+/**
+ * Idempotent nghĩa là "cùng ý định gọi lại thì ra cùng kết quả" — KHÔNG phải "cùng chuỗi khoá
+ * thì trả bất cứ thứ gì đã có". Khoá trùng mà người/số tiền/loại khác nhau là hai giao dịch
+ * khác nhau đụng khoá: trả dòng cũ về là nói dối caller rằng tiền của họ đã ghi.
+ */
+function sameIntent(seen: IXuTransactionDocument, input: ApplyInput): IXuTransactionDocument {
+  if (
+    !seen.userId.equals(input.userId) ||
+    seen.amount !== input.amount ||
+    seen.type !== input.type
+  ) {
+    throw new ConflictError('idempotencyKey này đã dùng cho một giao dịch khác')
+  }
+  return seen
 }

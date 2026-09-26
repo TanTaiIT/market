@@ -33,6 +33,7 @@ import {
   MODERATION_ACTION,
   MODERATION_QUEUE,
   PUBLIC_LISTING_STATUSES,
+  REPORT_AUTO_RESOLUTION,
   SCOPE_TYPES,
   ModerationQueue,
   VN_PROVINCE_NAMES,
@@ -387,6 +388,11 @@ export const moderationService = {
     const existing = await listingService.getForModeration(id)
     assertCanActOnListing(existing, actor.grants, ACTION_BY_DECISION[input.status])
 
+    // Cùng trạng thái = no-op ở CẢ hai lớp: không uy tín, không báo, không nhật ký. Bấm "duyệt"
+    // lần hai lên tin đang active từng cộng thêm một bài sạch mỗi lần bấm — một nhóm thân thiện
+    // bấm 5 lần là phục hồi bậc cho người vừa bị phạt.
+    if (existing.status === input.status) return toModerationListing(existing)
+
     const name = await actorName(actor)
     const previousStatus = existing.status
     const listing = await listingService.setModerationStatus(
@@ -590,6 +596,12 @@ export const moderationService = {
     // quyền phán trên trục của tin và tin đã từng tới tay người mua. Xem `applyTakedownPenalty`.
     const trust = await applyTakedownPenalty(listing!, actor, existing.status)
     await notifyRemoved(listing!, input.reason)
+    // Tin đã rời bảng thì báo cáo về nó cũng xong — người gỡ chính là người xử.
+    await reportRepository.resolveAllOpenForListings([listing!._id], {
+      action: REPORT_AUTO_RESOLUTION.TARGET_REMOVED,
+      byUserId: new Types.ObjectId(actor.id),
+      byName: name,
+    })
 
     await recordAudit(
       { ...actor, name },

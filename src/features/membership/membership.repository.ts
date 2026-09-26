@@ -1,6 +1,11 @@
 import { ClientSession, Types } from 'mongoose'
 import { Membership, IMembership, IMembershipDocument } from './membership.model'
-import { MEMBERSHIP_STATUS, REPORT_TIMEZONE } from '../../common/constants'
+import {
+  JOINED_VIA,
+  MEMBERSHIP_ROLES,
+  MEMBERSHIP_STATUS,
+  REPORT_TIMEZONE,
+} from '../../common/constants'
 import type { JoinedVia, MembershipRole } from '../../common/constants'
 import { PaginationParams } from '../../common/utils/pagination'
 
@@ -172,6 +177,36 @@ export const membershipRepository = {
     return Membership.updateMany(
       { userId, ...ACTIVE },
       { status: MEMBERSHIP_STATUS.ARCHIVED, archivedAt: new Date() },
+    ).exec()
+  },
+
+  /**
+   * Thân phận `admin` đi kèm một grant org — MỘT đường cho cả `organizationService.grantAdmin`
+   * lẫn `POST /role-grants` scope `org`, để hai cửa cấp quyền không lệch nhau: cửa nào cũng ra
+   * "có quyền VÀ có mặt trong danh bạ với nhãn admin".
+   */
+  async ensureAdmin(userId: Types.ObjectId, organizationId: Types.ObjectId) {
+    const existing = await this.findActive(userId, organizationId)
+    if (existing) {
+      if (existing.role !== MEMBERSHIP_ROLES.ADMIN) {
+        existing.role = MEMBERSHIP_ROLES.ADMIN
+        await existing.save()
+      }
+      return existing
+    }
+    return this.activate({
+      userId,
+      organizationId,
+      role: MEMBERSHIP_ROLES.ADMIN,
+      joinedVia: JOINED_VIA.ROSTER,
+    })
+  },
+
+  /** Chiều ngược của `ensureAdmin`: thu hồi grant org thì nhãn trong danh bạ về `member`. */
+  demoteAdmin(userId: Id, organizationId: Id) {
+    return Membership.updateOne(
+      { userId, organizationId, ...ACTIVE, role: MEMBERSHIP_ROLES.ADMIN },
+      { role: MEMBERSHIP_ROLES.MEMBER },
     ).exec()
   },
 }

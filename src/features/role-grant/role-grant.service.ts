@@ -1,5 +1,6 @@
 import { Types } from 'mongoose'
 import { roleGrantRepository } from './role-grant.repository'
+import { membershipRepository } from '../membership/membership.repository'
 import { toPolicyGrant, toRoleGrantDto } from './role-grant.types'
 import type { UpdateGrantScopeInput } from './role-grant.schema'
 import { userRepository } from '../user/user.repository'
@@ -294,6 +295,17 @@ export const roleGrantService = {
         wardCodes: input.wardCodes ?? [],
         grantedBy: new Types.ObjectId(actorId),
       })
+      /*
+       * Quyền quản trị org đi kèm THÂN PHẬN admin trong danh bạ — đúng cặp mà `grantAdmin` ghi.
+       * Cấp qua đường này mà không có membership là "admin rỗng ruột": duyệt được tin của một
+       * nhóm mình không đứng trong, và danh bạ không có ai để master nhìn ra chuyện đó.
+       */
+      if (input.scopeType === SCOPE_TYPES.ORG && input.orgId) {
+        await membershipRepository.ensureAdmin(
+          new Types.ObjectId(userId),
+          new Types.ObjectId(input.orgId),
+        )
+      }
       logger.info('role-grant granted', { actorId, targetUserId: userId, ...grant })
       return toRoleGrantDto(doc)
     } catch (err) {
@@ -435,6 +447,12 @@ export const roleGrantService = {
 
     const revoked = await roleGrantRepository.revokeById(grantId, new Types.ObjectId(actorId))
     if (!revoked) throw new NotFoundError('Grant not found')
+
+    // Thu hồi quyền org thì hạ nhãn `admin` trong danh bạ về `member`. Nhãn đó chỉ là thân phận
+    // hiển thị, không ai phân quyền bằng nó — nhưng để lệch là danh bạ nói người này còn quản nhóm.
+    if (doc.scopeType === SCOPE_TYPES.ORG && doc.orgId) {
+      await membershipRepository.demoteAdmin(doc.userId, doc.orgId)
+    }
 
     logger.info('role-grant revoked', { actorId, grantId, targetUserId: target.userId })
     return toRoleGrantDto(revoked)

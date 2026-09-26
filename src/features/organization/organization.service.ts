@@ -17,10 +17,9 @@ import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 // Chốt một-người-một-trục. Nhập từ service chứ không chép lại luật: hai bản sao của một luật
 // phân quyền là hai bản sẽ lệch nhau ở lần sửa kế tiếp.
-import { assertSingleAxis } from '../role-grant/role-grant.service'
+import { assertSingleAxis, roleGrantService } from '../role-grant/role-grant.service'
+import { canGrant } from '../../common/authz/policy'
 import {
-  JOINED_VIA,
-  MEMBERSHIP_ROLES,
   ORG_CAPABILITY_PRESETS,
   ORG_TYPES,
   SCOPE_TYPES,
@@ -28,7 +27,7 @@ import {
   TENANT_STATUS,
   TenantStatus,
 } from '../../common/constants'
-import { ConflictError, NotFoundError } from '../../common/errors'
+import { ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { orgNameTokens } from '../../common/utils/orgName'
 import { generateJoinCode, normalizeJoinCode } from '../../common/utils/joinCode'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
@@ -168,20 +167,26 @@ export const organizationService = {
      * một lượt bị từ chối vẫn kịp đổi vai thành viên rồi mới ném — để lại đúng trạng thái nửa
      * vời mà không ai dọn: admin trong danh bạ nhóm nhưng không có quyền duyệt nào.
      */
+    /*
+     * Cùng luật với `POST /role-grants` (`canGrant`): không ai tự cấp cho mình, kể cả master —
+     * vết cấp quyền luôn có hai người. Route đã `requireMaster`, nên chốt này thực tế chỉ còn
+     * chặn đúng ca tự cấp; bản trước bỏ qua nó và đây là đường duy nhất master tự trao được.
+     */
+    const actorGrants = await roleGrantService.grantsOf(actorId)
+    const target = {
+      userId: user._id.toString(),
+      grant: { role: SYSTEM_ROLES.MANAGER, scopeType: SCOPE_TYPES.ORG, orgId: org._id.toString() },
+    }
+    if (!canGrant({ userId: actorId, grants: actorGrants }, target)) {
+      throw new ForbiddenError(
+        'Không đủ thẩm quyền để trao quyền quản trị — và không ai tự trao cho mình',
+      )
+    }
+
     await assertSingleAxis(user._id, SCOPE_TYPES.ORG)
 
-    const existing = await membershipRepository.findActive(user._id, org._id)
-    if (existing) {
-      existing.role = MEMBERSHIP_ROLES.ADMIN
-      await existing.save()
-    } else {
-      await membershipRepository.activate({
-        userId: user._id,
-        organizationId: org._id,
-        role: MEMBERSHIP_ROLES.ADMIN,
-        joinedVia: JOINED_VIA.ROSTER,
-      })
-    }
+    // Một đường cho thân phận admin, dùng chung với `POST /role-grants` scope org.
+    await membershipRepository.ensureAdmin(user._id, org._id)
 
     try {
       await roleGrantRepository.create({
