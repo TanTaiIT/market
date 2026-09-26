@@ -1095,6 +1095,16 @@
           "posterHistogram"
         ]
       },
+      "UpdateListingLocation": {
+        "type": "object",
+        "properties": {
+          "address": {
+            "type": "string",
+            "maxLength": 255
+          }
+        },
+        "additionalProperties": false
+      },
       "UpdateListing": {
         "type": "object",
         "properties": {
@@ -1140,61 +1150,6 @@
             "minItems": 1,
             "maxItems": 12
           },
-          "location": {
-            "type": "object",
-            "properties": {
-              "address": {
-                "type": "string",
-                "maxLength": 255
-              },
-              "province": {
-                "type": "string",
-                "enum": [
-                  "Hà Nội",
-                  "Cao Bằng",
-                  "Tuyên Quang",
-                  "Lào Cai",
-                  "Điện Biên",
-                  "Lai Châu",
-                  "Sơn La",
-                  "Thái Nguyên",
-                  "Lạng Sơn",
-                  "Quảng Ninh",
-                  "Bắc Ninh",
-                  "Phú Thọ",
-                  "Hải Phòng",
-                  "Hưng Yên",
-                  "Ninh Bình",
-                  "Thanh Hóa",
-                  "Nghệ An",
-                  "Hà Tĩnh",
-                  "Quảng Trị",
-                  "Huế",
-                  "Đà Nẵng",
-                  "Quảng Ngãi",
-                  "Gia Lai",
-                  "Đắk Lắk",
-                  "Khánh Hòa",
-                  "Lâm Đồng",
-                  "Đồng Nai",
-                  "Tây Ninh",
-                  "Hồ Chí Minh",
-                  "Đồng Tháp",
-                  "Vĩnh Long",
-                  "An Giang",
-                  "Cần Thơ",
-                  "Cà Mau"
-                ],
-                "example": "Hồ Chí Minh"
-              },
-              "ward": {
-                "type": "string",
-                "maxLength": 100,
-                "example": "Phường Bến Thành"
-              }
-            },
-            "additionalProperties": false
-          },
           "attributes": {
             "type": "object",
             "additionalProperties": {
@@ -1216,6 +1171,9 @@
                 }
               ]
             }
+          },
+          "location": {
+            "$ref": "#/components/schemas/UpdateListingLocation"
           }
         },
         "additionalProperties": false

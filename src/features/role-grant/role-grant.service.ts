@@ -5,7 +5,14 @@ import type { UpdateGrantScopeInput } from './role-grant.schema'
 import { userRepository } from '../user/user.repository'
 import { categoryService } from '../category/category.service'
 import { Grant, canGrant, canRevoke, categoryScopesOverlap } from '../../common/authz/policy'
-import { SCOPE_TYPES, SYSTEM_ROLES, SystemRole, ScopeType } from '../../common/constants'
+import {
+  AXIS_LABEL,
+  SCOPE_TYPES,
+  SYSTEM_ROLES,
+  SystemRole,
+  ScopeType,
+  axisOf,
+} from '../../common/constants'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { logger } from '../../config/logger'
 
@@ -125,6 +132,48 @@ function asScopeShapeError(err: unknown): never {
 const CATEGORY_AXIS: ScopeType[] = [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]
 
 /**
+ * MỘT NGƯỜI, MỘT TRỤC — quản trị nhóm và phụ trách danh mục loại trừ nhau.
+ *
+ * Lý do nghiệp vụ nằm ở `axisOf` bên constants. Ở đây chỉ nói phần kỹ thuật:
+ *
+ * Chốt phải là một hàm DÙNG CHUNG chứ không nằm gọn trong `roleGrantService.grant`, vì có HAI
+ * đường tạo grant và chúng không đi qua nhau: đường này, và `organizationService.grantAdmin`
+ * (gọi thẳng `roleGrantRepository.create` — đó là lượt cấp dựng nên quản trị đầu tiên của một
+ * nhóm, và cũng là lượt đưa org từ `pending_admin` sang `active`). Chặn một đường là để hở đường
+ * kia, mà đường kia lại chính là nơi một người phụ trách danh mục dễ được trao thêm nhóm nhất.
+ *
+ * KHÔNG đặt trong hook của model dù mọi lượt ghi đều qua đó: hook sẽ chạy cả với seed và
+ * migration — hai thứ có quyền dựng dữ liệu ở trạng thái mà API không cho phép — và một chốt
+ * async trong `pre('validate')` biến mỗi lượt ghi thành thêm một vòng DB. Cùng lập luận đã đặt
+ * `assertNoManagerOverlap` ở tầng service.
+ *
+ * Chỉ xét grant CÒN HIỆU LỰC: thu hồi quyền cũ rồi giao trục kia là đường đi hợp lệ, và phải
+ * thông. `revokedAt` đã lọc sẵn trong `listActiveByUser`.
+ */
+export async function assertSingleAxis(
+  userId: Types.ObjectId | string,
+  nextScope: ScopeType,
+): Promise<void> {
+  const next = axisOf(nextScope)
+  // `system` đứng ngoài cả hai trục — master phủ mọi thứ theo thiết kế, không phải một chân
+  // trong bàn duyệt nào.
+  if (!next) return
+
+  const active = await roleGrantRepository.listActiveByUser(userId)
+  const clash = active.find((doc) => {
+    const held = axisOf(doc.scopeType)
+    return held !== null && held !== next
+  })
+  if (!clash) return
+
+  const heldAxis = axisOf(clash.scopeType)!
+  throw new ConflictError(
+    `Tài khoản này đang là ${AXIS_LABEL[heldAxis]} — một người chỉ đứng trên MỘT trục duyệt. ` +
+      `Thu hồi quyền đang có trước khi giao vai ${AXIS_LABEL[next]}.`,
+  )
+}
+
+/**
  * MỘT Ô, MỘT NGƯỜI PHỤ TRÁCH — chặn hai manager cùng phủ một ô (danh mục × tỉnh × phường).
  *
  * Index unique trên model KHÔNG thay được chốt này: nó khoá theo `userId`, nên nó chỉ chặn một
@@ -230,6 +279,7 @@ export const roleGrantService = {
     if (!canGrant({ userId: actorId, grants: actorGrants }, { userId, grant })) {
       throw new ForbiddenError('Không đủ thẩm quyền để cấp quyền này')
     }
+    await assertSingleAxis(userId, input.scopeType)
     await assertNoManagerOverlap(grant)
 
     try {
