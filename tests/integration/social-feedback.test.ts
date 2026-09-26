@@ -167,3 +167,16 @@ describe('Công bố', () => {
     expect(queue.body.data).toHaveLength(1)
   }, 60_000)
 })
+
+describe('Xử đúng một lần (audit 2.7)', () => {
+  it('ý kiến đã công bố không xử lại được → 409, bản công khai giữ nguyên', async () => {
+    await request(app)
+      .patch(`/api/v1/social-feedback/${pendingId}`)
+      .set(auth(master))
+      .send({ status: 'rejected' })
+      .expect(409)
+
+    const res = await publicList().expect(200)
+    expect(res.body.data.some((row: { id: string }) => row.id === pendingId)).toBe(true)
+  }, 60_000)
+})

@@ -1,4 +1,6 @@
 import { reportService } from './report.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { reportQuerySchema } from './report.schema'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { moderatorActor } from '../../common/utils/actor'
 import { success, created } from '../../common/utils/apiResponse'
@@ -13,7 +15,7 @@ export const reportController = {
 
   // GET /reports
   list: catchAsync(async (req, res) => {
-    const { items, meta } = await reportService.list(req.query as never, req.user!.id)
+    const { items, meta } = await reportService.list(queryOf(req, reportQuerySchema), req.user!.id)
     success(res, { message: 'Reports', data: items, meta })
   }),
 

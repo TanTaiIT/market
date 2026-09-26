@@ -1,6 +1,6 @@
 import { Types } from 'mongoose'
 import { SocialFeedback } from './social-feedback.model'
-import { SocialFeedbackStatus } from '../../common/constants'
+import { SocialFeedbackStatus, SOCIAL_FEEDBACK_STATUS } from '../../common/constants'
 import { PaginationParams } from '../../common/utils/pagination'
 
 export const socialFeedbackRepository = {
@@ -22,9 +22,14 @@ export const socialFeedbackRepository = {
     return { items, total }
   },
 
+  findById(id: string) {
+    return SocialFeedback.findById(id).exec()
+  },
+
+  /** Chỉ xử được ý kiến ĐANG CHỜ (audit 2.7): công bố rồi lại từ chối, hay ngược lại, là hai quyết định chồng nhau không ai giải thích được. */
   setStatus(id: string, status: SocialFeedbackStatus, reviewedBy: Types.ObjectId) {
-    return SocialFeedback.findByIdAndUpdate(
-      id,
+    return SocialFeedback.findOneAndUpdate(
+      { _id: id, status: SOCIAL_FEEDBACK_STATUS.PENDING },
       { status, reviewedBy, reviewedAt: new Date() },
       { new: true },
     ).exec()

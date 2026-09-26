@@ -177,8 +177,14 @@ export const joinRequestService = {
   },
 
   async cancel(actorId: string, requestId: string) {
-    const doc = await this.getPending(requestId)
+    // Chốt CHỦ ĐƠN trước, trạng thái sau (audit 3.15): hỏi trạng thái trước là nói cho người lạ
+    // biết đơn X "đã duyệt" hay "đang chờ" trước khi biết họ có quyền hỏi không.
+    const doc = await joinRequestRepository.findById(requestId)
+    if (!doc) throw new NotFoundError('Không tìm thấy đơn')
     if (doc.userId.toString() !== actorId) throw new ForbiddenError('Không phải đơn của bạn')
+    if (doc.status !== JOIN_REQUEST_STATUS.PENDING) {
+      throw new ConflictError(`Đơn đã ở trạng thái "${doc.status}"`)
+    }
 
     const updated = await joinRequestRepository.updateById(requestId, {
       status: JOIN_REQUEST_STATUS.CANCELLED,

@@ -12,7 +12,7 @@ import { validate } from '../../middlewares/validate.middleware'
 import { authenticate } from '../../middlewares/auth.middleware'
 import { requireAnyModerator } from '../moderation/moderation.middleware'
 import { requireReportReader } from './report.middleware'
-import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
+import { apiLimiter, reportLimiter } from '../../middlewares/rateLimiter.middleware'
 import {
   registry,
   bearerAuth,
@@ -30,6 +30,7 @@ router.post(
   '/',
   authenticate,
   apiLimiter,
+  reportLimiter,
   validate({ body: createReportSchema }),
   reportController.create,
 )

@@ -3,7 +3,7 @@ import { ISocialFeedbackDocument } from './social-feedback.model'
 import { socialFeedbackRepository } from './social-feedback.repository'
 import { CreateSocialFeedbackInput, ReviewSocialFeedbackInput } from './social-feedback.schema'
 import { SOCIAL_FEEDBACK_STATUS, SocialFeedbackStatus } from '../../common/constants'
-import { NotFoundError } from '../../common/errors'
+import { NotFoundError, ConflictError } from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { logger } from '../../config/logger'
 
@@ -66,7 +66,11 @@ export const socialFeedbackService = {
       input.status,
       new Types.ObjectId(actorId),
     )
-    if (!row) throw new NotFoundError('Không tìm thấy ý kiến này')
+    if (!row) {
+      const exists = await socialFeedbackRepository.findById(id)
+      if (!exists) throw new NotFoundError('Không tìm thấy ý kiến này')
+      throw new ConflictError(`Ý kiến này đã được xử lý ("${exists.status}") — không xử lại`)
+    }
     logger.info('social feedback reviewed', { id, status: input.status, actorId })
     return toAdminDto(row)
   },

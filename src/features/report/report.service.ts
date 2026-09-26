@@ -6,7 +6,9 @@ import { IReport, IReportDocument } from './report.model'
 import { assertCanActOnListing, listingService } from '../listing/listing.service'
 import type { TrustState } from '../trust/trust.policy'
 import { userRepository } from '../user/user.repository'
+import { notificationService } from '../notification/notification.service'
 import { listingRepository } from '../listing/listing.repository'
+import { membershipRepository } from '../membership/membership.repository'
 import {
   applyTakedownPenalty,
   notifyPoster,
@@ -22,6 +24,7 @@ import {
   MODERATION_TRANSITIONS,
   REPORT_STATUS,
   REPORT_TARGET,
+  AUDIT_TARGET,
 } from '../../common/constants'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { Grant, canModerateAnyInOrg, isMaster } from '../../common/authz/policy'
@@ -39,6 +42,20 @@ export interface ReportModerator extends ReportActor {
 
 /** Tên hiện ra thay cho người tố khi người xem chính là chủ đối tượng bị tố (audit 2.4). */
 const ANONYMOUS_REPORTER = 'Người dùng ẩn danh'
+
+/** Thông báo cho người báo cáo khi báo cáo được xử — xem `resolve`. */
+const REPORTER_NOTICE = {
+  RESOLVED: {
+    title: 'Báo cáo của bạn đã được xử lý',
+    body: (title: string) =>
+      `Tin "${title}" đã bị gỡ khỏi bảng sau khi xem xét. Cảm ơn bạn đã báo.`,
+  },
+  DISMISSED: {
+    title: 'Báo cáo của bạn đã được xem xét',
+    body: (title: string) =>
+      `Tin "${title}" được giữ nguyên sau khi xem xét. Cảm ơn bạn đã báo — vẫn cứ báo nếu thấy có gì bất thường.`,
+  },
+} as const
 
 /**
  * Đối tượng bị báo cáo thuộc về CHÍNH người đang xem: tin của họ, hoặc chính họ. Quản trị nhóm
@@ -79,7 +96,10 @@ function toDto(report: IReportDocument, count: number, anonymous = false) {
 type ReportTarget = Pick<
   IReport,
   'targetTitle' | 'organizationId' | 'category' | 'provinceCode' | 'wardCode'
->
+> & {
+  /** Chủ của đối tượng — để chặn tự báo cáo tin của mình (audit 2.5). Không ghi vào báo cáo. */
+  ownerId: string
+}
 
 /**
  * Snapshot đối tượng bị báo cáo (§2.3 cấm populate), và quan trọng hơn: TRỤC của nó.
@@ -115,17 +135,26 @@ async function targetOf(input: CreateReportInput, reporterId: string): Promise<R
       category: isPublic ? listing.category : null,
       provinceCode: isPublic ? listing.provinceCode : null,
       wardCode: isPublic ? listing.wardCode : null,
+      ownerId: listing.seller.toString(),
     }
   }
 
   const user = await userRepository.findById(input.targetId)
   if (!user) throw new NotFoundError('Không tìm thấy người dùng này')
+  /*
+   * Báo cáo về NGƯỜI chỉ đóng dấu org khi người bị tố CŨNG ở trong org đó (audit 2.5): quản trị
+   * nhóm xử được (gỡ khỏi nhóm), và hàng đợi của nhóm không dính báo cáo về người lạ. Người bị tố
+   * không thuộc nhóm nào của người tố thì lên trục công khai — master xử.
+   */
+  const ownOrgId = currentScope()?.ownOrgId ?? null
+  const sharesOrg = ownOrgId ? await membershipRepository.findActive(user._id, ownOrgId) : null
   return {
     targetTitle: user.name,
-    organizationId: currentScope()?.ownOrgId ?? null,
+    organizationId: sharesOrg ? ownOrgId : null,
     category: null,
     provinceCode: null,
     wardCode: null,
+    ownerId: user._id.toString(),
   }
 }
 
@@ -168,11 +197,14 @@ export const reportService = {
   async create(input: CreateReportInput, actor: ReportActor) {
     if (input.targetId === actor.id) throw new BadRequestError('Không tự báo cáo chính mình')
 
-    const [target, reporter] = await Promise.all([
+    const [{ ownerId, ...target }, reporter] = await Promise.all([
       targetOf(input, actor.id),
       userRepository.findById(actor.id),
     ])
     if (!reporter) throw new NotFoundError('User not found')
+    // Chặn tự báo cáo tin của mình ở đây, cạnh chốt "tự báo cáo chính mình" — cùng một trò: tự tố để
+    // kéo người duyệt vào, hoặc để xoá dấu vết bằng `hide_target`.
+    if (ownerId === actor.id) throw new BadRequestError('Không tự báo cáo tin của mình')
 
     try {
       const report = await reportRepository.create({
@@ -302,6 +334,20 @@ export const reportService = {
 
     await reportRepository.resolveAllForTarget(report.targetId, report.organizationId, outcome)
 
+    /*
+     * Người báo cáo được biết kết quả (audit 2.3): họ là người duy nhất trong vòng này không có
+     * màn nào để tự xem — người bán thấy tin mình biến mất, bàn duyệt thấy hàng đợi vơi đi, còn
+     * người tố thì chỉ thấy im lặng và lần sau không báo nữa. Không nêu án uy tín của người bán.
+     */
+    await notificationService.notifyUser({
+      organizationId: report.organizationId,
+      userId: report.reporterId,
+      title: hideTarget ? REPORTER_NOTICE.RESOLVED.title : REPORTER_NOTICE.DISMISSED.title,
+      body: (hideTarget ? REPORTER_NOTICE.RESOLVED : REPORTER_NOTICE.DISMISSED).body(
+        report.targetTitle,
+      ),
+    })
+
     await recordAudit(
       { id: actor.id, name: byName },
       {
@@ -311,11 +357,10 @@ export const reportService = {
         summary: hideTarget
           ? `Gỡ "${report.targetTitle}" sau báo cáo${trustNote(trust)}`
           : `Bỏ qua báo cáo về "${report.targetTitle}"`,
-        targetType: 'report',
+        targetType: AUDIT_TARGET.REPORT,
         targetId: report._id,
       },
-      // Trục công khai (`null`) thì `recordAudit` chỉ ghi logger: `AuditLog` chưa dual-axis —
-      // cùng hạng mục nợ trong v2-org-permission.plan.md, không phải việc của báo cáo.
+      // Trục công khai (`null`) ghi dưới `organizationId: null` — `AuditLog` dual-axis (audit 1.13).
       report.organizationId,
     )
 

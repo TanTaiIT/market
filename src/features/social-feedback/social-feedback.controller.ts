@@ -1,4 +1,9 @@
 import { socialFeedbackService } from './social-feedback.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import {
+  socialFeedbackQuerySchema,
+  socialFeedbackReviewQuerySchema,
+} from './social-feedback.schema'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
 
@@ -11,13 +16,17 @@ export const socialFeedbackController = {
 
   // GET /social-feedback
   listPublished: catchAsync(async (req, res) => {
-    const { items, meta } = await socialFeedbackService.listPublished(req.query as never)
+    const { items, meta } = await socialFeedbackService.listPublished(
+      queryOf(req, socialFeedbackQuerySchema),
+    )
     success(res, { message: 'Social feedback', data: items, meta })
   }),
 
   // GET /social-feedback/review
   listForReview: catchAsync(async (req, res) => {
-    const { items, meta } = await socialFeedbackService.listForReview(req.query as never)
+    const { items, meta } = await socialFeedbackService.listForReview(
+      queryOf(req, socialFeedbackReviewQuerySchema),
+    )
     success(res, { message: 'Social feedback queue', data: items, meta })
   }),
 
