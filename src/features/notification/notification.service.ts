@@ -1,4 +1,5 @@
 import { Types } from 'mongoose'
+import { roleGrantService } from '../role-grant/role-grant.service'
 import { notificationRepository } from './notification.repository'
 import type { ManagedAudience } from './notification.repository'
 import { CreateNotificationInput, NotificationQuery } from './notification.schema'
@@ -23,7 +24,7 @@ import { emitToOrgMembers, emitToUser } from '../../sockets/emit'
 const NOTIF_EVENT = 'notif:new'
 
 /** Người đọc hộp thư. `organizationId` chỉ còn dùng cho `scope=managed` (bàn quản trị). */
-type Viewer = { id: string; organizationId: string | null; grants: Grant[] }
+type Viewer = { id: string; organizationId: string | null; grants?: Grant[] }
 
 /*
  * Hộp thư đọc từ MỌI nhóm người ta tham gia — xem `list` bên dưới, nơi nó được dựng.
@@ -46,7 +47,9 @@ type Viewer = { id: string; organizationId: string | null; grants: Grant[] }
  * điều kiện nhóm. Còn staff nhóm con chỉ thấy phần trong tầm với của họ, đúng bằng thứ họ gửi
  * được, nên bàn quản trị không thành đường vòng đọc thông báo của nhóm khác.
  */
-async function managedAudience(viewer: Viewer): Promise<ManagedAudience | null> {
+async function managedAudience(
+  viewer: Viewer & { grants: Grant[] },
+): Promise<ManagedAudience | null> {
   const { organizationId } = viewer
   if (!organizationId) return null
 
@@ -123,11 +126,22 @@ export const notificationService = {
     })
 
     /*
-     * Phát cho cả nhóm. KHÔNG loại người soạn: khác `notifyGroupOfListing`, thông báo do quản
-     * trị soạn cũng gửi TỚI họ (họ là thành viên, và `paginateInbox` không loại vì dòng này
-     * không mang `actorId`). Loại họ ở đây sẽ làm chuông im trong khi hộp thư có thêm một dòng.
+     * Phát cho đúng NGƯỜI NHẬN. Cấp tổ chức → phòng của cả org. Nhóm con → từng thành viên của
+     * nhóm con (audit 4.6): bản trước gõ chuông cả org cho một tin chỉ nhóm con đọc được, người
+     * ngoài nhóm con mở hộp thư ra chẳng thấy gì mới. KHÔNG loại người soạn: khác
+     * `notifyGroupOfListing`, thông báo do quản trị soạn cũng gửi TỚI họ (họ là thành viên, và
+     * `paginateInbox` không loại vì dòng này không mang `actorId`).
      */
-    emitToOrgMembers(actor.organizationId, NOTIF_EVENT, { at: new Date().toISOString() })
+    const at = new Date().toISOString()
+    if (unitId) {
+      const memberIds = await membershipRepository.listActiveUserIdsByUnit(
+        new Types.ObjectId(actor.organizationId),
+        new Types.ObjectId(unitId),
+      )
+      for (const id of memberIds) emitToUser(id.toString(), NOTIF_EVENT, { at })
+    } else {
+      emitToOrgMembers(actor.organizationId, NOTIF_EVENT, { at })
+    }
     return notification
   },
 
@@ -142,7 +156,10 @@ export const notificationService = {
     const pagination = parsePagination(query)
 
     if (query.scope === 'managed') {
-      const audience = await managedAudience(viewer)
+      // Chỉ nạp grant khi thật sự cần: `inbox` quyết định phạm vi bằng membership, nạp grant cho
+      // nó là một truy vấn thừa trên đúng đường đi nóng nhất của màn thông báo.
+      const grants = viewer.grants ?? (await roleGrantService.grantsOf(viewer.id))
+      const audience = await managedAudience({ ...viewer, grants })
       // Không quản lý dòng nào thì trả trang RỖNG, không phải 403: `scope` là tham số của một
       // route ai cũng gọi được, và 403 ở đây sẽ làm màn thông báo thường vỡ nếu client gõ nhầm.
       if (!audience) {

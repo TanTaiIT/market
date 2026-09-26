@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { softDeletePlugin } from '../../common/db/softDelete.plugin'
 
 /**
  * Hội thoại 1-1 giữa người mua và người bán, gắn vào đúng một tin đăng.
@@ -194,15 +195,7 @@ const messageSchema = new Schema<IMessageDocument>(
  */
 messageSchema.index({ conversationId: 1, createdAt: -1 })
 
-function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
-  if (!this.getOptions().withDeleted) {
-    this.where({ deletedAt: null })
-  }
-  next()
-}
-
-conversationSchema.pre(/^find/, excludeDeleted)
-conversationSchema.pre('countDocuments', excludeDeleted)
+conversationSchema.plugin(softDeletePlugin)
 
 export const Conversation: Model<IConversationDocument> = mongoose.model<IConversationDocument>(
   'Conversation',

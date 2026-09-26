@@ -1,8 +1,7 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { PAGINATION } from '../../common/constants'
 import { registry } from '../../config/openapi'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const openConversationSchema = z
   .object({ listingId: objectId })

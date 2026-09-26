@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import {
   FEED_LAYOUTS,
@@ -8,8 +9,6 @@ import {
   PAGINATION,
 } from '../../common/constants'
 import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const organizationSummarySchema = z
   .object({

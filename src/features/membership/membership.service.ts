@@ -1,4 +1,5 @@
 import { membershipRepository } from './membership.repository'
+import { disconnectUser } from '../../sockets/emit'
 import { MembershipQuery } from './membership.schema'
 import { toMemberDto } from './membership.types'
 import { userRepository } from '../user/user.repository'
@@ -7,7 +8,7 @@ import { INITIAL_TRUST } from '../trust/trust.policy'
 import { Types } from 'mongoose'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { roleGrantService, usableOrgAdmins } from '../role-grant/role-grant.service'
-import { canAdminOrg, isMaster, type Grant } from '../../common/authz/policy'
+import { canAdminOrg, canModerateAnyInOrg, isMaster, type Grant } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 import { listingService } from '../listing/listing.service'
@@ -32,8 +33,13 @@ export const membershipService = {
    * Một lượt đọc `users` cho cả trang thay vì `populate`: populate sang collection không có
    * plugin là lách cách ly (mt§2.3), còn đọc theo đúng danh sách id của org mình thì không.
    */
-  async list(query: MembershipQuery, detailed: boolean) {
+  async list(query: MembershipQuery, viewer: { id: string; grants?: Grant[] }) {
     const organizationId = requireOwnOrgId('membership.list')
+    // Quản trị nhận thêm hồ sơ vận hành (uy tín…). Cổng route `requireMembershipOrOrgModerator`
+    // thoát sớm khi có membership nên `req.grants` có thể chưa nạp — nạp ở ĐÂY, một chỗ, thay vì
+    // để controller quyết (audit 5.7).
+    const grants = viewer.grants ?? (await roleGrantService.grantsOf(viewer.id))
+    const detailed = canModerateAnyInOrg(grants, organizationId.toString())
     const pagination = parsePagination(query)
     const { items, total } = await membershipRepository.paginateByOrganization(
       organizationId,
@@ -119,6 +125,8 @@ export const membershipService = {
       organizationId,
       new Types.ObjectId(actor.id),
     )
+    // Socket đang mở vẫn nằm trong phòng thành viên của nhóm — ngắt để nối lại theo membership mới (audit 3.14).
+    disconnectUser(targetUserId)
     // Người không còn trong nhóm thì không còn tin trong nhóm — cùng luật với `leave` (audit 1.14).
     await listingService.detachFromOrg(new Types.ObjectId(targetUserId), organizationId, {
       reason: CASCADE_HIDE_REASON.REMOVED_FROM_ORG,
@@ -154,6 +162,7 @@ export const membershipService = {
 
     const self = new Types.ObjectId(actorId)
     await roleGrantRepository.revokeAllForUserInOrg(actorId, organizationId, self)
+    disconnectUser(actorId)
     const user = await userRepository.findById(actorId)
     await listingService.detachFromOrg(self, organizationId, {
       reason: CASCADE_HIDE_REASON.LEFT_ORG,

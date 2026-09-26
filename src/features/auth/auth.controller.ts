@@ -9,7 +9,7 @@ export const authController = {
   // POST /auth/register
   register: catchAsync(async (req, res) => {
     const result = await authService.register(req.body)
-    created(res, { message: 'Organization created', data: toAuthResponseDto(result) })
+    created(res, { message: 'Account created', data: toAuthResponseDto(result) })
   }),
 
   /*
@@ -33,6 +33,15 @@ export const authController = {
   logout: catchAsync(async (req, res) => {
     await authService.logout(req.user!.id)
     success(res, { message: 'Đã đăng xuất khỏi mọi thiết bị' })
+  }),
+
+  // POST /auth/password/change
+  changePassword: catchAsync(async (req, res) => {
+    const result = await authService.changePassword(req.user!.id, req.body)
+    success(res, {
+      message: 'Đã đổi mật khẩu — các thiết bị khác đã bị đăng xuất',
+      data: toAuthResponseDto(result),
+    })
   }),
 
   // POST /auth/refresh

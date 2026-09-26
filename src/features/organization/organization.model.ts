@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { softDeletePlugin } from '../../common/db/softDelete.plugin'
 import {
   FEED_LAYOUTS,
   FeedLayout,
@@ -141,14 +142,7 @@ organizationSchema.pre('validate', function syncDerivedKeys(next) {
  * đang được dùng. Hook ở model là chỗ duy nhất không ai phải nhớ. `withDeleted` cho đường cần
  * đọc cả bản đã xoá (không có caller nào hôm nay, giữ cùng hợp đồng với các model kia).
  */
-function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
-  if (!this.getOptions().withDeleted) {
-    this.where({ deletedAt: null })
-  }
-  next()
-}
-organizationSchema.pre(/^find/, excludeDeleted)
-organizationSchema.pre('countDocuments', excludeDeleted)
+organizationSchema.plugin(softDeletePlugin)
 
 // Organization *là* tenant nên KHÔNG gắn tenantPlugin — truy cập nó đi qua
 // organization.repository (chạy runUnscoped), đó là nơi duy nhất được phép.

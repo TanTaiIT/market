@@ -5,7 +5,10 @@ import { toConversationDto, toMessageDto } from './chat.types'
 import { IConversationDocument } from './chat.model'
 import { listingService } from '../listing/listing.service'
 import { userRepository } from '../user/user.repository'
-import { BadRequestError, NotFoundError } from '../../common/errors'
+import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
+import { LISTING_STATUS } from '../../common/constants'
+import { bannedPhraseService } from '../banned-phrase/banned-phrase.service'
+import { bannedContentReason, bannedPhraseIn } from '../moderation/moderation.machine'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToConversation, emitToUser } from '../../sockets/emit'
 
@@ -39,7 +42,8 @@ async function requireMembership(id: string, actor: ChatActor): Promise<IConvers
 export const chatService = {
   /**
    * Mở hội thoại cho một tin, hoặc trả lại hội thoại đã có. Bấm "Nhắn tin" lần thứ hai không
-   * đẻ thêm bản ghi — unique index `(organizationId, listingId, buyerId)` là chốt cuối.
+   * đẻ thêm bản ghi — unique index `(listingId, buyerId)` là chốt cuối, và
+   * `chatRepository.create` đọc lại khi thua race thay vì 500.
    */
   async open(input: OpenConversationInput, actor: ChatActor) {
     // Đọc theo QUAN HỆ của người mở: tin chưa public, hoặc tin nội bộ của nhóm mình không
@@ -64,6 +68,12 @@ export const chatService = {
     const buyerId = new Types.ObjectId(actor.id)
     const existing = await chatRepository.findByListingAndBuyer(listing._id, buyerId)
     if (existing) return toConversationDto(existing, actor.id)
+
+    // Tin đã bán / hết hạn vẫn XEM được (`PUBLIC_LISTING_STATUSES`) nhưng không mở hội thoại MỚI
+    // (audit 4.5): người bán đã xong việc. Hội thoại đã có thì vẫn tiếp tục — xem nhánh trên.
+    if (listing.status !== LISTING_STATUS.ACTIVE) {
+      throw new ConflictError('Tin đã bán hoặc hết hạn — không mở được hội thoại mới')
+    }
 
     const [buyer, seller] = await Promise.all([
       userRepository.findById(actor.id),
@@ -167,6 +177,10 @@ export const chatService = {
    */
   async send(id: string, input: SendMessageInput, actor: ChatActor) {
     const conversation = await requireMembership(id, actor)
+    // Cổng cụm cấm áp cho chat như mọi ô nhập tự do khác (audit 4.5): tin nhắn tới người lạ mà
+    // không có người duyệt nào đứng trước.
+    const banned = bannedPhraseIn(input.text, await bannedPhraseService.phrases())
+    if (banned) throw new BadRequestError(bannedContentReason(banned))
     const me = conversation.participants.find((p) => p.user.toString() === actor.id)
 
     const senderId = new Types.ObjectId(actor.id)

@@ -55,7 +55,7 @@ export function signUploadParams(
 }
 
 export const uploadService = {
-  signature(): UploadSignature {
+  signature(userId: string): UploadSignature {
     const {
       CLOUDINARY_CLOUD_NAME: cloudName,
       CLOUDINARY_API_KEY: apiKey,
@@ -75,12 +75,16 @@ export const uploadService = {
     }
 
     const timestamp = Math.floor(Date.now() / 1000)
+    // Thư mục theo NGƯỜI (audit 4.8): chữ ký ràng vào `folder`, nên một vé xin ra chỉ đẩy được
+    // ảnh vào ngăn của chính người xin — không ghi đè/chen vào ảnh của người khác. App gửi lại
+    // đúng `folder` nhận được (xem `cloudinary.ts` phía app), nên không cần đổi gì bên đó.
+    const userFolder = `${folder}/${userId}`
     // Ba tham số này, không hơn không kém — app phải gửi lên đúng ba cái, cùng giá trị.
     const signature = signUploadParams(
-      { folder, timestamp, upload_preset: uploadPreset },
+      { folder: userFolder, timestamp, upload_preset: uploadPreset },
       apiSecret,
     )
 
-    return { cloudName, apiKey, timestamp, signature, folder, uploadPreset }
+    return { cloudName, apiKey, timestamp, signature, folder: userFolder, uploadPreset }
   },
 }

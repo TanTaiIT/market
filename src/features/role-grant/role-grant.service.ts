@@ -1,4 +1,5 @@
 import { Types } from 'mongoose'
+import { disconnectUser } from '../../sockets/emit'
 import { roleGrantRepository } from './role-grant.repository'
 import { membershipRepository } from '../membership/membership.repository'
 import { toPolicyGrant, toRoleGrantDto } from './role-grant.types'
@@ -14,7 +15,13 @@ import {
   ScopeType,
   axisOf,
 } from '../../common/constants'
-import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
+import {
+  BadRequestError,
+  ConflictError,
+  ForbiddenError,
+  NotFoundError,
+  DomainRuleError,
+} from '../../common/errors'
 import { logger } from '../../config/logger'
 
 export interface GrantInput {
@@ -120,13 +127,11 @@ async function resolveRecipientId(input: GrantInput): Promise<string> {
  * phải `mongoose.Error.ValidationError`, nên error handler không nhận ra và trả 500 — trong
  * khi đây đúng là lỗi của người gửi ("category_ward cần ít nhất một phường").
  *
- * Nhận diện bằng `constructor === Error`, không bằng chuỗi thông điệp: thông điệp nằm rải
- * trong model và sẽ đổi, còn mọi lỗi KHÁC ở đường này đều là lớp con — `ValidationError`,
- * `CastError`, `MongoServerError`, `MongoNetworkError`. Bắt theo chuỗi là bỏ sót luật mới
- * thêm; bắt tất cả là biến một sự cố mạng thành 400.
+ * Model ném `DomainRuleError` (audit 5.8) — lớp riêng, không dò `constructor === Error` nữa: mọi
+ * lỗi KHÁC ở đường này (`ValidationError`, `CastError`, `MongoServerError`, lỗi mạng) đi tiếp.
  */
 function asScopeShapeError(err: unknown): never {
-  if (err instanceof Error && err.constructor === Error) throw new BadRequestError(err.message)
+  if (err instanceof DomainRuleError) throw new BadRequestError(err.message)
   throw err
 }
 
@@ -267,6 +272,12 @@ export const roleGrantService = {
   },
 
   /** Nạp quyền của một người về dạng tầng policy hiểu được. */
+  /** Quyền của chính mình, dạng DTO — cho màn "quyền của tôi" (audit 5.7: controller hết chạm repository). */
+  async listMine(userId: string) {
+    const docs = await roleGrantRepository.listActiveByUser(userId)
+    return docs.map(toRoleGrantDto)
+  },
+
   async grantsOf(userId: string): Promise<Grant[]> {
     const docs = await roleGrantRepository.listActiveByUser(userId)
     return docs.map(toPolicyGrant)
@@ -447,6 +458,9 @@ export const roleGrantService = {
 
     const revoked = await roleGrantRepository.revokeById(grantId, new Types.ObjectId(actorId))
     if (!revoked) throw new NotFoundError('Grant not found')
+    // Socket đang mở giữ phòng quản trị theo grant lúc bắt tay — ngắt để lượt nối lại đọc quyền
+    // mới (audit 3.14). Client tự reconnect, người dùng không thấy gì ngoài một nhịp.
+    disconnectUser(doc.userId.toString())
 
     // Thu hồi quyền org thì hạ nhãn `admin` trong danh bạ về `member`. Nhãn đó chỉ là thân phận
     // hiển thị, không ai phân quyền bằng nó — nhưng để lệch là danh bạ nói người này còn quản nhóm.

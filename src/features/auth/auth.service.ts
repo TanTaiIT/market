@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto'
 import { userRepository } from '../user/user.repository'
 import { IUserDocument } from '../user/user.model'
-import { RegisterInput, LoginInput } from './auth.schema'
+import { ChangePasswordInput, RegisterInput, LoginInput } from './auth.schema'
 import { AuthResult } from './auth.types'
-import { ConflictError, UnauthorizedError } from '../../common/errors'
+import { BadRequestError, ConflictError, UnauthorizedError } from '../../common/errors'
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../common/utils/jwt'
 import { logger } from '../../config/logger'
 import { env } from '../../config/env'
@@ -39,19 +39,28 @@ export const authService = {
       throw new ConflictError('Email đã được đăng ký')
     }
 
-    const user = await userRepository.create({
-      name: input.name,
-      email: input.email,
-      phone: input.phone,
-      password: input.password,
-      /*
-       * Cờ TẠM THỜI cho vòng kiểm duyệt — xem `SKIP_EMAIL_VERIFICATION` ở `config/env`.
-       *
-       * `undefined` khi tắt, không phải `null`: để `default` của model quyết định, y như trước
-       * khi có dòng này. Gỡ về sau = xoá đúng dòng này và cờ kia.
-       */
-      ...(env.SKIP_EMAIL_VERIFICATION ? { emailVerifiedAt: new Date() } : {}),
-    })
+    let user: IUserDocument
+    try {
+      user = await userRepository.create({
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        password: input.password,
+        /*
+         * Cờ TẠM THỜI cho vòng kiểm duyệt — xem `SKIP_EMAIL_VERIFICATION` ở `config/env`.
+         *
+         * `undefined` khi tắt, không phải `null`: để `default` của model quyết định, y như trước
+         * khi có dòng này. Gỡ về sau = xoá đúng dòng này và cờ kia.
+         */
+        ...(env.SKIP_EMAIL_VERIFICATION ? { emailVerifiedAt: new Date() } : {}),
+      })
+    } catch (err) {
+      // Hai lượt đăng ký cùng email cùng lúc: `existsByEmail` ở trên cho cả hai qua, unique index
+      // chặn lượt sau — trả 409 như lượt kiểm trước, không phải 500 (audit 3.12).
+      if ((err as { code?: number }).code === 11000)
+        throw new ConflictError('Email đã được đăng ký')
+      throw err
+    }
     return { user, ...(await startSession(user)) }
   },
 
@@ -181,6 +190,37 @@ export const authService = {
     // Token phát trước bản này không mang `jti`: nhận một lần và đưa vào phiên có jti — từ lượt
     // sau nó xoay như mọi token khác. Không đá ai ra lúc deploy.
     return { user, ...(await startSession(user)) }
+  },
+
+  /**
+   * Đổi mật khẩu khi ĐANG đăng nhập (audit 3.8). Đòi mật khẩu hiện tại: access token bị lộ chỉ
+   * sống 15 phút và không đủ để đổi khoá nhà. Thành công thì cắt mọi phiên khác — người đổi mật
+   * khẩu thường đang nghi ngờ gì đó — và phát cặp token mới cho chính máy này để họ không bị đá.
+   */
+  async changePassword(userId: string, input: ChangePasswordInput): Promise<AuthResult> {
+    const user = await userRepository.findById(userId, { withPassword: true })
+    if (!user) throw new UnauthorizedError('User no longer valid')
+    // Tài khoản Google chưa từng đặt mật khẩu: không có gì để "hiện tại". Đường đúng là quên mật
+    // khẩu — mã về hộp thư chứng minh đúng thứ mật khẩu cũ định chứng minh.
+    if (!user.password) {
+      throw new BadRequestError('Tài khoản chưa có mật khẩu — dùng "Quên mật khẩu" để đặt lần đầu')
+    }
+    if (!(await user.comparePassword(input.currentPassword))) {
+      throw new UnauthorizedError('Mật khẩu hiện tại không đúng')
+    }
+    if (input.currentPassword === input.newPassword) {
+      throw new BadRequestError('Mật khẩu mới phải khác mật khẩu hiện tại')
+    }
+
+    user.password = input.newPassword
+    // `pre('save')` băm — cùng đường với đăng ký và đặt lại.
+    await user.save()
+    await userRepository.bumpTokenVersion(user._id)
+    disconnectUser(user._id.toString())
+    logger.info('auth: password changed, other sessions revoked', { userId })
+
+    const fresh = await userRepository.findById(user._id)
+    return { user: fresh!, ...(await startSession(fresh!)) }
   },
 
   /**

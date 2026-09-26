@@ -127,7 +127,7 @@ export const supportService = {
    * không phải kho lưu trữ mọi cuộc trò chuyện từng có.
    */
   async queue(query: { waiting?: boolean } & Partial<PaginationParams>) {
-    const pagination = parsePagination(query as never)
+    const pagination = parsePagination({ page: query.page, limit: query.limit })
     const { items, total } = await supportRepository.paginateForMaster(
       query.waiting !== false,
       pagination,

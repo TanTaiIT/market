@@ -10,8 +10,11 @@ export const roleGrantRepository = {
   },
 
   /** Nạp toàn bộ quyền còn hiệu lực của một người — đầu vào của tầng policy. */
+  /** Chạy trên MỌI request cần phân quyền — `lean`: mapper chỉ đọc field, không cần document (audit 5.9). */
   listActiveByUser(userId: string | Types.ObjectId): Promise<IRoleGrantDocument[]> {
-    return RoleGrant.find({ userId, ...ACTIVE }).exec()
+    return RoleGrant.find({ userId, ...ACTIVE })
+      .lean<IRoleGrantDocument[]>()
+      .exec()
   },
 
   findActiveById(id: string | Types.ObjectId): Promise<IRoleGrantDocument | null> {

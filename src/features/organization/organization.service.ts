@@ -31,7 +31,7 @@ import {
   TENANT_STATUS,
   TenantStatus,
 } from '../../common/constants'
-import { ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
+import { ConflictError, ForbiddenError, NotFoundError, BadRequestError } from '../../common/errors'
 import { orgNameTokens } from '../../common/utils/orgName'
 import { generateJoinCode, normalizeJoinCode } from '../../common/utils/joinCode'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
@@ -162,6 +162,11 @@ export const organizationService = {
       throw new NotFoundError(
         `Chưa có tài khoản nào dùng email ${email} — người phụ trách phải đăng ký trước`,
       )
+    }
+    // Tài khoản đang khoá không nhận quyền (audit 3.15): trao xong họ vẫn không đăng nhập được,
+    // mà nhóm thì đã có "một quản trị" trên giấy — chốt admin-cuối-cùng đếm nhầm ngay lượt sau.
+    if (!user.isActive) {
+      throw new BadRequestError('Tài khoản này đang bị khoá — mở khoá trước khi trao quyền')
     }
 
     /*

@@ -1,6 +1,6 @@
 import { roleGrantService } from './role-grant.service'
-import { roleGrantRepository } from './role-grant.repository'
-import { toRoleGrantDto } from './role-grant.types'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { categoryAxisQuerySchema } from './role-grant.schema'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
 
@@ -25,13 +25,12 @@ export const roleGrantController = {
 
   // GET /role-grants/category-axis
   categoryAxis: catchAsync(async (req, res) => {
-    const data = await roleGrantService.listCategoryAxis(req.query as never)
+    const data = await roleGrantService.listCategoryAxis(queryOf(req, categoryAxisQuerySchema))
     success(res, { message: 'Phụ trách trục danh mục', data })
   }),
 
   // GET /role-grants/mine
   mine: catchAsync(async (req, res) => {
-    const docs = await roleGrantRepository.listActiveByUser(req.user!.id)
-    success(res, { message: 'Quyền của tôi', data: docs.map(toRoleGrantDto) })
+    success(res, { message: 'Quyền của tôi', data: await roleGrantService.listMine(req.user!.id) })
   }),
 }

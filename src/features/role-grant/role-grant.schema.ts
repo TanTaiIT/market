@@ -1,8 +1,7 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import { SYSTEM_ROLES, SCOPE_TYPES } from '../../common/constants'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const roleGrantParamsSchema = z.object({ id: objectId })
 

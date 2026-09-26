@@ -1,9 +1,9 @@
 import { CODE_PURPOSE } from './email-verification.model'
-import { sendPasswordResetCode } from './email.sender'
+import { mailEnabled, sendPasswordResetCode } from './email.sender'
 import { consumeCode, dropCode, issueCode, issueTicket } from './verification-code.service'
 import { userRepository } from '../user/user.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
-import { BadRequestError } from '../../common/errors'
+import { BadRequestError, ServiceUnavailableError } from '../../common/errors'
 import { logger } from '../../config/logger'
 
 /**
@@ -39,6 +39,16 @@ export const passwordResetService = {
    * với "không", vì thư chỉ đi khi tài khoản tồn tại. Lỗi thật vẫn nằm trong log.
    */
   async requestReset(email: string): Promise<void> {
+    // Mail tắt thì nói thẳng 503 cho MỌI địa chỉ (audit 3.8): im lặng 200 rồi không có mã nào tới
+    // là người dùng thật kẹt ngoài cửa mà tưởng mình gõ sai email. Cùng câu cho mọi email nên
+    // không dò được tài khoản.
+    if (!mailEnabled()) {
+      logger.error(
+        'password reset requested while mail is disabled — set GMAIL_USER/GMAIL_APP_PASSWORD',
+      )
+      throw new ServiceUnavailableError('Đặt lại mật khẩu tạm không khả dụng — liên hệ hỗ trợ')
+    }
+
     const user = await userRepository.findByEmail(email)
     if (!user || !user.isActive) {
       logger.info('password reset requested for unusable account', { email })

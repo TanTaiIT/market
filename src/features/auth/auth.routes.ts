@@ -13,6 +13,7 @@ import {
   verifyResetCodeSchema,
   resetTicketSchema,
   resetPasswordSchema,
+  changePasswordSchema,
 } from './auth.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { authLimiter } from '../../middlewares/rateLimiter.middleware'
@@ -89,6 +90,15 @@ router.post(
   authLimiter,
   validate({ body: resetPasswordSchema }),
   authController.resetPassword,
+)
+// Đổi mật khẩu KHI ĐANG ĐĂNG NHẬP (audit 3.8): đòi mật khẩu hiện tại — access token bị lộ không
+// đủ để đổi khoá. Thành công thì cắt mọi phiên khác và phát cặp token mới cho chính máy này.
+router.post(
+  '/password/change',
+  authenticate,
+  authLimiter,
+  validate({ body: changePasswordSchema }),
+  authController.changePassword,
 )
 
 // ── OPENAPI ─────────────────────────────────────────────────────────────────
@@ -254,6 +264,26 @@ registry.registerPath({
   responses: {
     200: jsonResponse('Đã đặt lại mật khẩu', envelope(z.null())),
     400: errorResponse('Mã không đúng hoặc đã hết hạn'),
+    429: errorResponse('Quá nhiều request'),
+  },
+})
+
+registry.registerPath({
+  method: 'post',
+  path: '/auth/password/change',
+  operationId: 'authChangePassword',
+  tags: ['Auth'],
+  summary: 'Đổi mật khẩu khi đang đăng nhập',
+  description:
+    'Đòi mật khẩu hiện tại. Thành công: mật khẩu mới, CẮT mọi phiên khác (`tokenVersion`), và trả ' +
+    'cặp token mới cho chính thiết bị này — client phải lưu lại. Tài khoản chỉ có Google (chưa ' +
+    'từng đặt mật khẩu) thì 400: đặt mật khẩu lần đầu qua "Quên mật khẩu".',
+  security: [{ [bearerAuth.name]: [] }],
+  request: { body: { content: { 'application/json': { schema: changePasswordSchema } } } },
+  responses: {
+    200: jsonResponse('Đã đổi mật khẩu', envelope(authResponseSchema)),
+    400: errorResponse('Mật khẩu mới trùng mật khẩu cũ, hoặc tài khoản chưa có mật khẩu'),
+    401: errorResponse('Mật khẩu hiện tại không đúng, hoặc thiếu token'),
     429: errorResponse('Quá nhiều request'),
   },
 })

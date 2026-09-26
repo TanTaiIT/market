@@ -29,8 +29,8 @@ router.post(
   '/signature',
   authenticate,
   signatureLimiter,
-  catchAsync(async (_req, res) => {
-    success(res, { message: 'Upload signature', data: uploadService.signature() })
+  catchAsync(async (req, res) => {
+    success(res, { message: 'Upload signature', data: uploadService.signature(req.user!.id) })
   }),
 )
 

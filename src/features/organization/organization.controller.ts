@@ -1,4 +1,6 @@
 import { organizationService } from './organization.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { organizationAdminQuerySchema } from './organization.schema'
 import { toOrganizationCardDto, toOrganizationDto } from './organization.types'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
@@ -63,7 +65,9 @@ export const organizationController = {
 
   // GET /organizations  (master)
   listAll: catchAsync(async (req, res) => {
-    const { items, meta } = await organizationService.listAll(req.query as never)
+    const { items, meta } = await organizationService.listAll(
+      queryOf(req, organizationAdminQuerySchema),
+    )
     success(res, { message: 'Tổ chức', data: items, meta })
   }),
 

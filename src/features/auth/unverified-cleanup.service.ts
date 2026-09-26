@@ -38,9 +38,9 @@ import { env } from '../../config/env'
  */
 
 /** Hạn xác thực. Quá mốc này mà chưa nhập mã thì tài khoản bị xoá và email được trả lại. */
-export const unverifiedTtlMs = () => env.UNVERIFIED_TTL_DAYS * 24 * 60 * 60 * 1000
+const unverifiedTtlMs = () => env.UNVERIFIED_TTL_DAYS * 24 * 60 * 60 * 1000
 
-export const unverifiedCutoff = () => new Date(Date.now() - unverifiedTtlMs())
+const unverifiedCutoff = () => new Date(Date.now() - unverifiedTtlMs())
 
 /** Trần mỗi lượt quét — xem chốt 3 ở docblock. */
 const BATCH = 200
