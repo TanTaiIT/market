@@ -179,3 +179,44 @@ describe('Khoá idempotent scope theo NGƯỜI NHẬN (audit 4.1)', () => {
     expect(await walletService.balanceOf(new Types.ObjectId(owner.id))).toBe(before)
   }, 60_000)
 })
+
+describe('Sổ cái — append-only bằng cơ chế (audit 4.3)', () => {
+  it('không sửa / xoá được dòng sổ qua Mongoose, dù là code nội bộ', async () => {
+    const { XuTransaction } = await import('../../src/features/wallet/wallet.model')
+    await expect(XuTransaction.updateOne({}, { $set: { amount: 1 } }).exec()).rejects.toThrow(
+      'append-only',
+    )
+    await expect(
+      XuTransaction.findOneAndUpdate({}, { $set: { amount: 1 } }).exec(),
+    ).rejects.toThrow('append-only')
+    await expect(XuTransaction.deleteMany({}).exec()).rejects.toThrow('append-only')
+  })
+
+  it('một lượt cộng / trừ tay quá trần → 400 (gõ thừa một số 0 không thành một triệu Xu)', async () => {
+    const { XU_ADJUST_MAX } = await import('../../src/features/wallet/wallet.model')
+    await request(app)
+      .post(`/api/v1/wallet/${owner.id}/adjust`)
+      .set(asMaster())
+      .send({ amount: XU_ADJUST_MAX + 1, note: 'Gõ thừa số 0', idempotencyKey: 'adjust:qua-tran' })
+      .expect(400)
+    expect(await walletRepository.findByIdempotencyKey('adjust:qua-tran')).toBeNull()
+  })
+
+  it('kết quả điều chỉnh và lịch sử là DTO — không lộ idempotencyKey / __v', async () => {
+    const res = await request(app)
+      .post(`/api/v1/wallet/${owner.id}/adjust`)
+      .set(asMaster())
+      .send({ amount: 5, note: 'Kiểm DTO', idempotencyKey: 'adjust:dto' })
+      .expect(200)
+    for (const key of ['idempotencyKey', '__v']) {
+      expect(res.body.data).not.toHaveProperty(key)
+    }
+    expect(res.body.data).toMatchObject({ amount: 5, note: 'Kiểm DTO' })
+
+    const history = await request(app).get('/api/v1/wallet/transactions').set(asOwner()).expect(200)
+    expect(history.body.data.length).toBeGreaterThan(0)
+    for (const row of history.body.data) {
+      for (const key of ['idempotencyKey', '__v']) expect(row).not.toHaveProperty(key)
+    }
+  })
+})

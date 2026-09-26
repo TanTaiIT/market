@@ -1,4 +1,5 @@
 import mongoose, { Types } from 'mongoose'
+import { toXuTransactionDto } from './wallet.types'
 import { walletRepository } from './wallet.repository'
 import { IXuTransactionDocument, XuTxType } from './wallet.model'
 import { notificationService } from '../notification/notification.service'
@@ -118,7 +119,7 @@ export const walletService = {
     const pagination = parsePagination(query)
     const { items, total } = await walletRepository.paginateTransactions(userId, pagination)
     return {
-      items,
+      items: items.map(toXuTransactionDto),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },

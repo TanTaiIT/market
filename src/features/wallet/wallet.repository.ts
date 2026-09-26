@@ -51,6 +51,29 @@ export const walletRepository = {
    * Tổng sổ cái của một người — phép ĐỐI SOÁT với `wallets.balance`. Lệch nhau nghĩa là có
    * đường ghi tắt nào đó đã lọt qua `walletService.apply`, và đó là sự cố phải điều tra.
    */
+  /**
+   * Đối soát MỌI ví: `balance` (cache) so với `sum(amount)` của sổ cái (audit 4.2). Một
+   * aggregate cho cả sổ cái rồi ghép với danh sách ví — không N+1, và không tự sửa gì.
+   */
+  async reconcile(): Promise<{
+    checked: number
+    mismatched: { userId: string; balance: number; ledger: number }[]
+  }> {
+    const sums = await XuTransaction.aggregate<{ _id: Types.ObjectId; total: number }>([
+      { $group: { _id: '$userId', total: { $sum: '$amount' } } },
+    ])
+    const ledger = new Map(sums.map((s) => [s._id.toString(), s.total]))
+    const wallets = await Wallet.find().select('userId balance').lean().exec()
+    const mismatched: { userId: string; balance: number; ledger: number }[] = []
+    for (const w of wallets) {
+      const total = ledger.get(w.userId.toString()) ?? 0
+      if (total !== w.balance) {
+        mismatched.push({ userId: w.userId.toString(), balance: w.balance, ledger: total })
+      }
+    }
+    return { checked: wallets.length, mismatched }
+  },
+
   async ledgerSum(userId: Types.ObjectId): Promise<number> {
     const [row] = await XuTransaction.aggregate<{ total: number }>([
       { $match: { userId } },

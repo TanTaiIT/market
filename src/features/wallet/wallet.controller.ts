@@ -1,4 +1,5 @@
 import { Types } from 'mongoose'
+import { toXuTransactionDto } from './wallet.types'
 import { walletService } from './wallet.service'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success } from '../../common/utils/apiResponse'
@@ -26,6 +27,6 @@ export const walletController = {
       actorId: req.user!.id,
       ...req.body,
     })
-    success(res, { message: 'Wallet adjusted', data: tx })
+    success(res, { message: 'Wallet adjusted', data: toXuTransactionDto(tx) })
   }),
 }
