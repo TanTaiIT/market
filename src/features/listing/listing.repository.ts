@@ -37,6 +37,7 @@ export interface ModerationFilter {
   status?: ListingStatus
   category?: string
   q?: string
+  seller?: string
 }
 
 function escapeRegex(input: string): string {
@@ -845,13 +846,15 @@ export const listingRepository = {
    * hiển thị" thay vì "mọi trạng thái" — đúng ngược với thứ tab "Tất cả" của bàn duyệt cần.
    */
   async paginateForModeration(
-    { status, category, q }: ModerationFilter,
+    { status, category, q, seller }: ModerationFilter,
     { skip, limit }: PaginationParams,
   ) {
     const filter: FilterQuery<IListingDocument> = {
       status: status ?? { $in: [...MODERATABLE_STATUSES] },
     }
     if (category) filter.category = new Types.ObjectId(category)
+    // Đi trọn index `{ organizationId, seller, status, … }` (có scope org) hoặc `{ seller, createdAt }`.
+    if (seller) filter.seller = new Types.ObjectId(seller)
     if (q) {
       const term = new RegExp(escapeRegex(q), 'i')
       // Cả tên người đăng: quản trị thường lần theo một người bán đáng ngờ, không nhớ đúng tiêu

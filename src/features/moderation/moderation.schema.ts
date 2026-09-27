@@ -19,6 +19,11 @@ export const modListingQuerySchema = z.object({
    */
   category: objectId.optional(),
   q: z.string().trim().min(1).max(100).optional(),
+  /**
+   * Mọi tin của MỘT người đăng — màn Người dùng › chi tiết của master. Là bộ lọc, không phải cửa
+   * hậu: scope của người gọi vẫn áp lên trên, quản trị nhóm chỉ thấy tin của người đó TRONG nhóm mình.
+   */
+  seller: objectId.optional(),
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })

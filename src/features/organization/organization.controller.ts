@@ -1,6 +1,6 @@
 import { organizationService } from './organization.service'
 import { queryOf } from '../../middlewares/validate.middleware'
-import { organizationAdminQuerySchema } from './organization.schema'
+import { organizationAdminQuerySchema, organizationLookupQuerySchema } from './organization.schema'
 import { toOrganizationCardDto, toOrganizationDto } from './organization.types'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
@@ -57,9 +57,10 @@ export const organizationController = {
     success(res, { message: 'Hồ sơ nhóm', data })
   }),
 
-  // GET /organizations/lookup?q=
+  // GET /organizations/lookup?q=&province=&ward=
   lookup: catchAsync(async (req, res) => {
-    const data = await organizationService.discover(String(req.query.q ?? ''))
+    const { q, province, ward } = queryOf(req, organizationLookupQuerySchema)
+    const data = await organizationService.discover(q ?? '', { province, ward })
     success(res, { message: 'Organization lookup', data })
   }),
 

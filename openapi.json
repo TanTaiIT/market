@@ -1676,6 +1676,10 @@
             "type": "string",
             "nullable": true
           },
+          "ward": {
+            "type": "string",
+            "nullable": true
+          },
           "provinceCode": {
             "type": "string",
             "nullable": true
@@ -1695,6 +1699,7 @@
           "coverUrl",
           "memberCount",
           "district",
+          "ward",
           "provinceCode",
           "allowJoinRequests",
           "allowOutsiderPosts"
@@ -1728,6 +1733,10 @@
             "nullable": true
           },
           "district": {
+            "type": "string",
+            "nullable": true
+          },
+          "ward": {
             "type": "string",
             "nullable": true
           },
@@ -1772,6 +1781,7 @@
           "description",
           "provinceCode",
           "district",
+          "ward",
           "memberCount",
           "postsThisWeek",
           "rules",
@@ -1885,6 +1895,12 @@
               "feed",
               "grid"
             ]
+          },
+          "ward": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 100
           }
         },
         "additionalProperties": false
@@ -1910,6 +1926,10 @@
             "type": "string",
             "nullable": true
           },
+          "ward": {
+            "type": "string",
+            "nullable": true
+          },
           "memberCount": {
             "type": "number"
           },
@@ -1923,6 +1943,7 @@
           "description",
           "provinceCode",
           "district",
+          "ward",
           "memberCount",
           "allowJoinRequests"
         ]
@@ -1950,6 +1971,10 @@
             "maxLength": 60
           },
           "district": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "ward": {
             "type": "string",
             "maxLength": 100
           }
@@ -10059,6 +10084,61 @@
             "required": false,
             "name": "q",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Hà Nội",
+                "Cao Bằng",
+                "Tuyên Quang",
+                "Lào Cai",
+                "Điện Biên",
+                "Lai Châu",
+                "Sơn La",
+                "Thái Nguyên",
+                "Lạng Sơn",
+                "Quảng Ninh",
+                "Bắc Ninh",
+                "Phú Thọ",
+                "Hải Phòng",
+                "Hưng Yên",
+                "Ninh Bình",
+                "Thanh Hóa",
+                "Nghệ An",
+                "Hà Tĩnh",
+                "Quảng Trị",
+                "Huế",
+                "Đà Nẵng",
+                "Quảng Ngãi",
+                "Gia Lai",
+                "Đắk Lắk",
+                "Khánh Hòa",
+                "Lâm Đồng",
+                "Đồng Nai",
+                "Tây Ninh",
+                "Hồ Chí Minh",
+                "Đồng Tháp",
+                "Vĩnh Long",
+                "An Giang",
+                "Cần Thơ",
+                "Cà Mau"
+              ],
+              "example": "Hồ Chí Minh"
+            },
+            "required": false,
+            "name": "province",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "example": "Phường Bến Thành"
+            },
+            "required": false,
+            "name": "ward",
+            "in": "query"
           }
         ],
         "responses": {
@@ -14533,6 +14613,15 @@
           },
           {
             "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "seller",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true
@@ -14972,6 +15061,15 @@
             },
             "required": false,
             "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "seller",
             "in": "query"
           },
           {

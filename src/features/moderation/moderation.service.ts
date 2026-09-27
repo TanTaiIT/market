@@ -359,7 +359,7 @@ export const moderationService = {
   async listings(query: ModListingQuery) {
     const pagination = parsePagination(query)
     const { items, total } = await listingService.listForModeration(
-      { status: query.status, category: query.category, q: query.q },
+      { status: query.status, category: query.category, q: query.q, seller: query.seller },
       pagination,
     )
     return {

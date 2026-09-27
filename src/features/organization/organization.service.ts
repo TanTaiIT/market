@@ -31,6 +31,7 @@ import {
   TENANT_STATUS,
   TenantStatus,
   PUSH_CATEGORY,
+  isWardOfProvince,
 } from '../../common/constants'
 import { ConflictError, ForbiddenError, NotFoundError, BadRequestError } from '../../common/errors'
 import { orgNameTokens } from '../../common/utils/orgName'
@@ -98,6 +99,7 @@ export const organizationService = {
         capabilities: ORG_CAPABILITY_PRESETS[orgType],
         provinceCode: input.provinceCode ?? null,
         district: input.district ?? null,
+        ward: input.ward ?? null,
         createdBy: new Types.ObjectId(actorId),
         // Sinh ra không có người phụ trách. `findActiveById` chỉ thấy org `active`, nên tới khi
         // master trao quyền thì org này chưa tồn tại với phần còn lại của hệ thống.
@@ -261,6 +263,17 @@ export const organizationService = {
     if (input.allowOutsiderPosts !== undefined) org.allowOutsiderPosts = input.allowOutsiderPosts
     if (input.rules !== undefined) org.rules = input.rules
     if (input.feedLayout !== undefined) org.feedLayout = input.feedLayout
+    if (input.ward !== undefined) {
+      if (input.ward !== null && !org.provinceCode) {
+        throw new BadRequestError(
+          'Nhóm chưa gắn tỉnh — liên hệ master để gắn tỉnh trước khi chọn phường/xã',
+        )
+      }
+      if (input.ward !== null && !isWardOfProvince(org.provinceCode!, input.ward)) {
+        throw new BadRequestError(`"${input.ward}" không thuộc ${org.provinceCode}`)
+      }
+      org.ward = input.ward
+    }
 
     await org.save()
     return org
@@ -352,7 +365,11 @@ export const organizationService = {
    * Đếm thành viên theo LÔ chứ không từng nhóm một — mười dòng kết quả mà đếm lẻ là mười lượt
    * truy vấn nữa trên đúng đường người dùng đang gõ.
    */
-  async discover(query: string, limit = LOOKUP_LIMIT) {
+  async discover(
+    query: string,
+    where: { province?: string; ward?: string } = {},
+    limit = LOOKUP_LIMIT,
+  ) {
     /*
      * Gõ đúng MỘT MÃ thì trả đúng nhóm đó — kể cả nhóm RIÊNG TƯ.
      *
@@ -370,7 +387,9 @@ export const organizationService = {
       return [toOrganizationLookupDto(byCode, count)]
     }
 
-    const orgs = await organizationRepository.searchPublic(query, limit)
+    // Bộ lọc tỉnh/phường KHÔNG áp cho nhánh mã ở trên: người dán mã muốn đúng nhóm đó, dù bộ lọc
+    // đang để tỉnh khác — trả rỗng là nói với họ rằng mã sai.
+    const orgs = await organizationRepository.searchPublic(query, limit, where)
     const counts = await membershipRepository.countActiveByOrganizations(orgs.map((o) => o._id))
     return orgs.map((org) => toOrganizationLookupDto(org, counts.get(org._id.toString()) ?? 0))
   },
