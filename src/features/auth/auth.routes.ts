@@ -279,7 +279,11 @@ registry.registerPath({
     'cặp token mới cho chính thiết bị này — client phải lưu lại. Tài khoản chỉ có Google (chưa ' +
     'từng đặt mật khẩu) thì 400: đặt mật khẩu lần đầu qua "Quên mật khẩu".',
   security: [{ [bearerAuth.name]: [] }],
-  request: { body: { content: { 'application/json': { schema: changePasswordSchema } } } },
+  request: {
+    // Máy đang đổi mật khẩu gửi push token của nó để vẫn nhận push — mọi máy khác bị gỡ.
+    headers: z.object({ 'x-push-token': z.string().max(220).optional() }),
+    body: { content: { 'application/json': { schema: changePasswordSchema } } },
+  },
   responses: {
     200: jsonResponse('Đã đổi mật khẩu', envelope(authResponseSchema)),
     400: errorResponse('Mật khẩu mới trùng mật khẩu cũ, hoặc tài khoản chưa có mật khẩu'),

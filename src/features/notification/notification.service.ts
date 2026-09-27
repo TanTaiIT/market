@@ -5,8 +5,8 @@ import type { ManagedAudience } from './notification.repository'
 import { CreateNotificationInput, NotificationQuery } from './notification.schema'
 import { toNotificationDto } from './notification.types'
 import { canModerateOrg } from '../../common/authz/policy'
-import { LISTING_REACH, SCOPE_TYPES } from '../../common/constants'
-import type { ListingReach } from '../../common/constants'
+import { LISTING_REACH, PUSH_CATEGORY, SCOPE_TYPES } from '../../common/constants'
+import type { ListingReach, PushCategory } from '../../common/constants'
 import type { Grant } from '../../common/authz/policy'
 import type { OrgActor } from '../../common/utils/actor'
 import { membershipRepository } from '../membership/membership.repository'
@@ -15,6 +15,7 @@ import { userRepository } from '../user/user.repository'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToOrgMembers, emitToUser } from '../../sockets/emit'
+import { pushService } from '../push/push.service'
 
 /**
  * Tên sự kiện realtime của hộp thư. Payload cố ý chỉ có mốc thời gian: client nghe xong thì
@@ -133,15 +134,29 @@ export const notificationService = {
      * `paginateInbox` không loại vì dòng này không mang `actorId`).
      */
     const at = new Date().toISOString()
+    const memberIds = unitId
+      ? await membershipRepository.listActiveUserIdsByUnit(
+          new Types.ObjectId(actor.organizationId),
+          new Types.ObjectId(unitId),
+        )
+      : await membershipRepository.listActiveUserIdsByOrg(actor.organizationId)
     if (unitId) {
-      const memberIds = await membershipRepository.listActiveUserIdsByUnit(
-        new Types.ObjectId(actor.organizationId),
-        new Types.ObjectId(unitId),
-      )
       for (const id of memberIds) emitToUser(id.toString(), NOTIF_EVENT, { at })
     } else {
       emitToOrgMembers(actor.organizationId, NOTIF_EVENT, { at })
     }
+    // Push loại người soạn: họ vừa bấm gửi, rung máy chính họ là nhiễu (hộp thư thì vẫn có dòng).
+    await pushService.notify(
+      memberIds,
+      {
+        category: PUSH_CATEGORY.GROUP_NOTICE,
+        title: input.title,
+        body: input.body,
+        path: null,
+        notificationId: notification._id.toString(),
+      },
+      { exceptUserId: actor.id },
+    )
     return notification
   },
 
@@ -270,6 +285,18 @@ export const notificationService = {
       },
       { exceptUserId: listing.seller.toString() },
     )
+    // `group_activity` tắt theo mặc định — `notify` chỉ ghi cho người đã tự bật (xem push.policy).
+    await pushService.notify(
+      await membershipRepository.listActiveUserIdsByOrg(listing.organizationId),
+      {
+        category: PUSH_CATEGORY.GROUP_ACTIVITY,
+        title: notification.title,
+        body: notification.body,
+        path: `/listing/${listing._id}`,
+        notificationId: notification._id.toString(),
+      },
+      { exceptUserId: listing.seller },
+    )
     return notification
   },
 
@@ -293,9 +320,21 @@ export const notificationService = {
     userId: Types.ObjectId
     title: string
     body: string
+    /**
+     * BẮT BUỘC về kiểu, để call site mới không quên quyết định "sự kiện này có đáng làm phiền
+     * người ta không, và chạm vào thì mở màn nào". `path: null` = mở hộp thư.
+     */
+    push: { category: PushCategory; path: string | null }
   }) {
-    const notification = await notificationRepository.createForUser(input)
+    const { push, ...row } = input
+    const notification = await notificationRepository.createForUser(row)
     emitToUser(input.userId.toString(), NOTIF_EVENT, { at: new Date().toISOString() })
+    await pushService.notify([input.userId], {
+      ...push,
+      title: input.title,
+      body: input.body,
+      notificationId: notification._id.toString(),
+    })
     return notification
   },
 

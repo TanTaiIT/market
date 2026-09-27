@@ -315,6 +315,7 @@ describe('Quét người lạ — hộp thư', () => {
       userId: new Types.ObjectId(owner.id),
       title: 'Riêng chủ tin',
       body: 'Số dư của bạn vừa đổi',
+      push: { category: 'wallet', path: null },
     })
     directId = direct._id.toString()
 

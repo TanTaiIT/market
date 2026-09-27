@@ -76,6 +76,7 @@ import {
   TENANT_STATUS,
   isWardOfProvince,
   type RejectionSeverity,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 import { slugifyWithSuffix } from '../../common/utils/slugify'
 import { currentScope, runUnscoped } from '../../common/tenant/tenantContext'
@@ -838,6 +839,7 @@ export const listingService = {
       await notificationService.notifyUser({
         organizationId: listing.organizationId,
         userId: listing.seller,
+        push: { category: PUSH_CATEGORY.LISTING_STATUS, path: '/mylistings' },
         title: 'Tin của bạn bị từ chối',
         body: `"${listing.title}" — ${bannedContentReason(banned)}`,
       })

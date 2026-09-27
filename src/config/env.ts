@@ -196,6 +196,26 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
 
+  /*
+   * PUSH NOTIFICATION qua Expo Push Service (docs/architecture/push-notification.plan.md).
+   *
+   * MẶC ĐỊNH TẮT: tắt thì `pushService.enqueue` không ghi gì và job push không đăng ký — bật
+   * khi app đã có dev build với credential FCM/APNs thật, không thì mọi push đều thành receipt lỗi.
+   */
+  PUSH_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /**
+   * Access token của Expo, bắt buộc khi bật "Enhanced push security" trên EAS — thiếu nó thì ai
+   * cầm được một push token cũng gửi push giả tới máy đó được. Bỏ trống khi chưa bật tính năng đó.
+   */
+  EXPO_ACCESS_TOKEN: z.string().optional(),
+  /** Lưới an toàn của đường gửi nóng (`setImmediate`): vét dòng tồn do sập giữa chừng hoặc chờ retry. */
+  PUSH_DISPATCH_EVERY: z.string().default('1 minute'),
+  /** Đọc receipt + dọn thiết bị chết. Expo giữ receipt 24h và thường có sau vài phút. */
+  PUSH_RECEIPTS_EVERY: z.string().default('15 minutes'),
+
   /**
    * Số hop reverse proxy đứng trước server — đi thẳng vào `app.set('trust proxy')`, thứ quyết
    * định `req.ip` đọc `X-Forwarded-For` tới đâu.

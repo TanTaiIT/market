@@ -25,6 +25,7 @@ import {
   REPORT_STATUS,
   REPORT_TARGET,
   AUDIT_TARGET,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { Grant, canModerateAnyInOrg, isMaster } from '../../common/authz/policy'
@@ -342,6 +343,7 @@ export const reportService = {
     await notificationService.notifyUser({
       organizationId: report.organizationId,
       userId: report.reporterId,
+      push: { category: PUSH_CATEGORY.REPORT, path: null },
       title: hideTarget ? REPORTER_NOTICE.RESOLVED.title : REPORTER_NOTICE.DISMISSED.title,
       body: (hideTarget ? REPORTER_NOTICE.RESOLVED : REPORTER_NOTICE.DISMISSED).body(
         report.targetTitle,

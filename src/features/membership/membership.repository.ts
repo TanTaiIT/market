@@ -158,6 +158,15 @@ export const membershipRepository = {
    * Trả `null` khi không có bản ghi đang hoạt động — caller phân biệt được "đã gỡ rồi" với
    * "gỡ xong", thay vì báo thành công cho một thao tác không đụng vào gì.
    */
+  /** `userId` của mọi thành viên đang hoạt động của một tổ chức — người nhận push phát chung. */
+  async listActiveUserIdsByOrg(organizationId: Id): Promise<Types.ObjectId[]> {
+    const rows = await Membership.find({ organizationId, ...ACTIVE })
+      .select('userId')
+      .lean()
+      .exec()
+    return rows.map((r) => r.userId)
+  },
+
   /** `userId` của thành viên đang hoạt động trong MỘT nhóm con — để gõ chuông đúng người (audit 4.6). */
   async listActiveUserIdsByUnit(organizationId: Id, unitId: Id): Promise<Types.ObjectId[]> {
     const rows = await Membership.find({ organizationId, unitId, ...ACTIVE })

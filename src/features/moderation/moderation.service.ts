@@ -40,6 +40,7 @@ import {
   type RejectionSeverity,
   REJECTION_SEVERITY,
   AUDIT_TARGET,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 
 /** Mức từ chối duy nhất có hình phạt — `quality` là sai sót, sửa rồi đăng lại. */
@@ -191,6 +192,7 @@ export async function notifyPoster(
     await notificationService.notifyUser({
       organizationId: listing.organizationId,
       userId: listing.seller,
+      push: { category: PUSH_CATEGORY.LISTING_STATUS, path: `/listing/${listing._id}` },
       title: 'Tin của bạn đã được duyệt',
       body: `"${listing.title}" đã lên bảng tin.`,
     })
@@ -210,6 +212,7 @@ export async function notifyPoster(
     await notificationService.notifyUser({
       organizationId: listing.organizationId,
       userId: listing.seller,
+      push: { category: PUSH_CATEGORY.LISTING_STATUS, path: '/mylistings' },
       title: 'Tin của bạn bị từ chối',
       body: `"${listing.title}" — ${reason ?? 'Quản trị không nêu lý do.'}`,
     })
@@ -222,6 +225,7 @@ export async function notifyPoster(
     await notificationService.notifyUser({
       organizationId: listing.organizationId,
       userId: listing.seller,
+      push: { category: PUSH_CATEGORY.LISTING_STATUS, path: '/mylistings' },
       title: 'Tin của bạn đã bị ẩn',
       body: `"${listing.title}" — ${reason ?? 'Quản trị không nêu lý do.'}`,
     })
@@ -265,6 +269,7 @@ async function notifyRemoved(listing: IListingDocument, reason?: string): Promis
   await notificationService.notifyUser({
     organizationId: listing.organizationId,
     userId: listing.seller,
+    push: { category: PUSH_CATEGORY.LISTING_STATUS, path: '/mylistings' },
     title: 'Tin của bạn đã bị gỡ',
     body: reason ? `"${listing.title}" — ${reason}` : `"${listing.title}" không còn trên bảng tin.`,
   })

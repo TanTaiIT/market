@@ -209,6 +209,42 @@ export const userRepository = {
     ).exec()
   },
 
+  /** Trạng thái + công tắc push của một lô người nhận — một truy vấn cho cả lô của dispatcher. */
+  pushAudience(ids: Types.ObjectId[]) {
+    return User.find({ _id: { $in: ids } })
+      .select('isActive pushPrefs')
+      .lean()
+      .exec()
+  },
+
+  /** Người trong danh sách ĐÃ BẬT một nhóm push tắt-theo-mặc-định (`group_activity`). */
+  async optedIntoPush(ids: Types.ObjectId[], category: string): Promise<Types.ObjectId[]> {
+    if (ids.length === 0) return []
+    const rows = await User.find({
+      _id: { $in: ids },
+      isActive: true,
+      'pushPrefs.enabled': { $ne: false },
+      [`pushPrefs.categories.${category}`]: true,
+    })
+      .select('_id')
+      .lean()
+      .exec()
+    return rows.map((r) => r._id)
+  },
+
+  /** Ghi đè từng công tắc được gửi lên, giữ nguyên phần còn lại. */
+  setPushPrefs(
+    id: string | Types.ObjectId,
+    patch: { enabled?: boolean; categories?: Record<string, boolean> },
+  ) {
+    const $set: Record<string, boolean> = {}
+    if (patch.enabled !== undefined) $set['pushPrefs.enabled'] = patch.enabled
+    for (const [key, value] of Object.entries(patch.categories ?? {})) {
+      $set[`pushPrefs.categories.${key}`] = value
+    }
+    return User.findOneAndUpdate({ _id: id }, { $set }, { new: true }).select('pushPrefs').exec()
+  },
+
   /** Avatar của mọi tài khoản — cho job dọn ảnh mồ côi (`upload.cleanup.service.ts`). */
   async allAvatars(): Promise<string[]> {
     const rows = await User.find().select('avatar').lean().exec()

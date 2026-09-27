@@ -37,7 +37,11 @@ export const authController = {
 
   // POST /auth/password/change
   changePassword: catchAsync(async (req, res) => {
-    const result = await authService.changePassword(req.user!.id, req.body)
+    const result = await authService.changePassword(
+      req.user!.id,
+      req.body,
+      req.get('X-Push-Token') ?? undefined,
+    )
     success(res, {
       message: 'Đã đổi mật khẩu — các thiết bị khác đã bị đăng xuất',
       data: toAuthResponseDto(result),

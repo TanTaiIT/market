@@ -12,6 +12,8 @@ import {
 } from '../../common/utils/pagination'
 import { emitToUser } from '../../sockets/emit'
 import { logger } from '../../config/logger'
+import { pushService } from '../push/push.service'
+import { PUSH_CATEGORY } from '../../common/constants'
 
 /**
  * Tên sự kiện socket — khai một chỗ, cả BE lẫn RN đọc từ đây (RN có union `ServerEvent`
@@ -209,6 +211,17 @@ export const supportService = {
      */
     emitToUser(updated!.userId.toString(), SUPPORT_REPLY_EVENT, {
       at: new Date().toISOString(),
+    })
+    /*
+     * Push không phạm luật "một sự việc một kênh" ở trên: nó là kênh ĐẨY cho người không mở app,
+     * không phải chỗ thứ hai để ĐỌC — chạm vào là về đúng chấm đỏ của nút hỗ trợ.
+     */
+    await pushService.notify([updated!.userId], {
+      category: PUSH_CATEGORY.SUPPORT,
+      title: 'Đội ngũ Ghim đã trả lời bạn',
+      body,
+      // Nút hỗ trợ nổi trên các tab (`SupportFab`) — bảng tin là nơi chấm đỏ của nó hiện ra.
+      path: '/feed',
     })
     logger.info('support: master trả lời', { threadId, masterId })
 

@@ -16,6 +16,7 @@ import {
   JOINED_VIA,
   MEMBERSHIP_ROLES,
   TENANT_STATUS,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
 
@@ -86,6 +87,7 @@ export const inviteService = {
       await notificationService.notifyUser({
         organizationId,
         userId: invited._id,
+        push: { category: PUSH_CATEGORY.MEMBERSHIP, path: null },
         title: 'Bạn được mời vào một nhóm',
         body: `${org?.name ?? 'Một tổ chức'} mời bạn tham gia.`,
       })

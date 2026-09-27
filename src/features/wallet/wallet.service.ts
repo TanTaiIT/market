@@ -1,4 +1,5 @@
 import mongoose, { Types } from 'mongoose'
+import { PUSH_CATEGORY } from '../../common/constants'
 import { toXuTransactionDto } from './wallet.types'
 import { walletRepository } from './wallet.repository'
 import { IXuTransactionDocument, XuTxType } from './wallet.model'
@@ -101,6 +102,7 @@ export const walletService = {
       await notificationService.notifyUser({
         organizationId: null,
         userId: input.userId,
+        push: { category: PUSH_CATEGORY.WALLET, path: null },
         title: tx.amount > 0 ? 'Ví Xu vừa được cộng' : 'Ví Xu vừa bị trừ',
         body: `${tx.amount > 0 ? '+' : ''}${tx.amount} Xu — số dư còn ${tx.balanceAfter}. ${tx.note}`.trim(),
       })

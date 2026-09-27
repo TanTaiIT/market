@@ -11,6 +11,7 @@ import { bannedPhraseService } from '../banned-phrase/banned-phrase.service'
 import { bannedContentReason, bannedPhraseIn } from '../moderation/moderation.machine'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToConversation, emitToUser } from '../../sockets/emit'
+import { pushService } from '../push/push.service'
 
 /**
  * CHỈ có danh tính, không kèm org.
@@ -229,6 +230,14 @@ export const chatService = {
         at: message.createdAt.toISOString(),
       })
     }
+    // Push cho người KHÔNG mở app — cùng luật payload mỏng: tên người gửi, không nội dung tin.
+    await pushService.notifyChat({
+      recipientIds: conversation.participants
+        .map((p) => p.user)
+        .filter((userId) => userId.toString() !== actor.id),
+      conversationId: id,
+      senderName: me?.name ?? '',
+    })
 
     return dto
   },

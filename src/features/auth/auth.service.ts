@@ -9,6 +9,7 @@ import { logger } from '../../config/logger'
 import { env } from '../../config/env'
 import { verifyGoogleIdToken } from './google.verify'
 import { disconnectUser } from '../../sockets/emit'
+import { pushService } from '../push/push.service'
 
 function issueTokens(user: IUserDocument, jti: string) {
   const sub = user._id.toString()
@@ -179,6 +180,7 @@ export const authService = {
       if (!rotated) {
         await userRepository.bumpTokenVersion(user._id)
         disconnectUser(user._id.toString())
+        await pushService.revokeDevices(user._id)
         logger.warn('auth: refresh token reuse detected — every session revoked', {
           userId: user._id.toString(),
         })
@@ -197,7 +199,12 @@ export const authService = {
    * sống 15 phút và không đủ để đổi khoá nhà. Thành công thì cắt mọi phiên khác — người đổi mật
    * khẩu thường đang nghi ngờ gì đó — và phát cặp token mới cho chính máy này để họ không bị đá.
    */
-  async changePassword(userId: string, input: ChangePasswordInput): Promise<AuthResult> {
+  async changePassword(
+    userId: string,
+    input: ChangePasswordInput,
+    /** Push token của CHÍNH máy đang đổi (header `X-Push-Token`) — máy này vẫn đăng nhập, giữ lại. */
+    keepPushToken?: string,
+  ): Promise<AuthResult> {
     const user = await userRepository.findById(userId, { withPassword: true })
     if (!user) throw new UnauthorizedError('User no longer valid')
     // Tài khoản Google chưa từng đặt mật khẩu: không có gì để "hiện tại". Đường đúng là quên mật
@@ -217,6 +224,8 @@ export const authService = {
     await user.save()
     await userRepository.bumpTokenVersion(user._id)
     disconnectUser(user._id.toString())
+    // Máy khác vừa bị đá khỏi tài khoản thì cũng thôi nhận push của nó.
+    await pushService.revokeDevices(user._id, { exceptToken: keepPushToken })
     logger.info('auth: password changed, other sessions revoked', { userId })
 
     const fresh = await userRepository.findById(user._id)
@@ -236,6 +245,8 @@ export const authService = {
    */
   async logout(userId: string): Promise<void> {
     await userRepository.bumpTokenVersion(userId)
+    // Đăng xuất là đá MỌI máy — máy bị đá không được tiếp tục nhận push của tài khoản này.
+    await pushService.revokeDevices(userId)
     logger.info('auth: đăng xuất mọi thiết bị', { userId })
   },
 }

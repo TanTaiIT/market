@@ -1,4 +1,5 @@
 import { listingRepository } from './listing.repository'
+import { PUSH_CATEGORY } from '../../common/constants'
 import { runUnscoped } from '../../common/tenant/tenantContext'
 import { logger } from '../../config/logger'
 import { notificationService } from '../notification/notification.service'
@@ -60,6 +61,7 @@ export const listingExpiryService = {
       await notificationService.notifyUser({
         organizationId: l.organizationId ?? null,
         userId: l.seller,
+        push: { category: PUSH_CATEGORY.LISTING_STATUS, path: '/mylistings' },
         title: 'Tin của bạn đã hết hạn',
         body: `"${l.title}" đã rời bảng tin sau ${LISTING_TTL_DAYS} ngày — vào "Tin đã đăng" để gia hạn nếu vẫn còn.`,
       })

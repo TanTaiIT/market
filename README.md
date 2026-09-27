@@ -155,6 +155,10 @@ từ file `.env*`: chính nó chọn file nào được nạp, nên để file t
 Production thật đặt biến qua secret manager của nơi deploy, không mang `.env.production` lên
 server: chung một bộ secret nghĩa là token ký ở máy dev hợp lệ thật trên production.
 
+Push notification TẮT mặc định (`PUSH_ENABLED=false`): bật khi app đã có dev build kèm credential
+FCM trên EAS, và đặt `EXPO_ACCESS_TOKEN` nếu bật *Enhanced push security*. Bật lần đầu trên prod
+thì chạy `npm run sync-indexes:prod -- --apply` để tạo index của `push_devices` / `push_outbox`.
+
 `docker-compose.yml` là stack local. Nó nạp `env_file: [.env, .env.development]`, mà thứ tự ưu
 tiên của Docker là `environment` > `env_file` > `ENV` của Dockerfile — nên `env_file` sẽ nuốt mất
 `ENV NODE_ENV=production` trong image. Vì vậy compose khai `NODE_ENV` tường minh, và deploy thật
@@ -192,6 +196,7 @@ tests/
 | org-unit | ✅ Core | `GET/POST /org-units`, `PATCH/DELETE /org-units/:id` |
 | category | ✅ Core | `GET /categories`, `GET /categories/:id/template` (public) · ghi master-only |
 | chat | ✅ Core | `GET/POST /chats`, `GET/POST /chats/:id/messages`, `POST /chats/:id/read` + socket `chat:*` |
+| push | ✅ Core (tắt mặc định, `PUSH_ENABLED`) | `POST /push/devices{,/unregister}`, `GET/PATCH /push/preferences`, `POST /push/test` — thiết kế: `docs/architecture/push-notification.plan.md` |
 | report / support / wallet / favorites / kyc / moderation | ✅ Core | xem `/docs` — spec là nguồn đầy đủ |
 | upload | ✅ Chữ ký Cloudinary (client upload thẳng) | `POST /uploads/signature` |
 | search | 🚧 Skeleton (501) | `/search` — bảng tin lọc `?q=` bằng regex, Atlas Search để sau |

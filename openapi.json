@@ -4462,6 +4462,194 @@
           "waiting"
         ]
       },
+      "RegisterPushDevice": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "example": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "ios",
+              "android"
+            ]
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "deviceName": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "token",
+          "platform"
+        ],
+        "additionalProperties": false
+      },
+      "UnregisterPushDevice": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "example": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "UpdatePushPreferences": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "categories": {
+            "type": "object",
+            "properties": {
+              "chat": {
+                "type": "boolean"
+              },
+              "listing_status": {
+                "type": "boolean"
+              },
+              "membership": {
+                "type": "boolean"
+              },
+              "report": {
+                "type": "boolean"
+              },
+              "wallet": {
+                "type": "boolean"
+              },
+              "group_notice": {
+                "type": "boolean"
+              },
+              "group_activity": {
+                "type": "boolean"
+              },
+              "support": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "PushPreferences": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "categories": {
+            "type": "object",
+            "properties": {
+              "chat": {
+                "type": "boolean"
+              },
+              "listing_status": {
+                "type": "boolean"
+              },
+              "membership": {
+                "type": "boolean"
+              },
+              "report": {
+                "type": "boolean"
+              },
+              "account": {
+                "type": "boolean"
+              },
+              "wallet": {
+                "type": "boolean"
+              },
+              "group_notice": {
+                "type": "boolean"
+              },
+              "group_activity": {
+                "type": "boolean"
+              },
+              "support": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "chat",
+              "listing_status",
+              "membership",
+              "report",
+              "account",
+              "wallet",
+              "group_notice",
+              "group_activity",
+              "support"
+            ]
+          },
+          "locked": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "account"
+              ]
+            }
+          }
+        },
+        "required": [
+          "enabled",
+          "categories",
+          "locked"
+        ]
+      },
+      "PushDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "ios",
+              "android"
+            ]
+          },
+          "appVersion": {
+            "type": "string"
+          },
+          "deviceName": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "appVersion",
+          "deviceName",
+          "lastSeenAt"
+        ]
+      },
+      "PushTestResult": {
+        "type": "object",
+        "properties": {
+          "devices": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "devices"
+        ]
+      },
       "SendVerificationCode": {
         "type": "object",
         "properties": {
@@ -5762,6 +5950,17 @@
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 220
+            },
+            "required": false,
+            "name": "x-push-token",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -17819,6 +18018,364 @@
           },
           "404": {
             "description": "Không tìm thấy ý kiến",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/devices": {
+      "post": {
+        "operationId": "pushRegisterDevice",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Đăng ký máy này nhận push (gọi mỗi lần mở app)",
+        "description": "Upsert theo token: máy đang thuộc tài khoản khác thì chuyển sang tài khoản đang gọi. Mỗi tài khoản giữ tối đa 10 máy dùng gần nhất.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPushDevice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã đăng ký",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PushDevice"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Token hoặc dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/devices/unregister": {
+      "post": {
+        "operationId": "pushUnregisterDevice",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Gỡ máy này khỏi danh sách nhận push (không cần đăng nhập)",
+        "description": "Gọi trước khi đăng xuất. Token không tồn tại vẫn trả 200.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnregisterPushDevice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã gỡ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Token không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/preferences": {
+      "get": {
+        "operationId": "pushGetPreferences",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Công tắc push của tôi",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Công tắc",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PushPreferences"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "pushUpdatePreferences",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Bật / tắt push theo nhóm",
+        "description": "Chỉ gửi công tắc muốn đổi. Nhóm `account` không tắt được — gửi lên là 400.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePushPreferences"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã lưu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PushPreferences"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/test": {
+      "post": {
+        "operationId": "pushSendTest",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Gửi một push thử tới mọi máy của tôi",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã xếp hàng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PushTestResult"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Push chưa bật trên server",
             "content": {
               "application/json": {
                 "schema": {

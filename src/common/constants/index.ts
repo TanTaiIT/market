@@ -626,3 +626,36 @@ export const NOTIFICATION_RETENTION_DAYS = 90
 
 /** Số dòng lịch sử duyệt giữ trên một tin (audit 1.13) — đủ cho một tranh chấp, không phình document. */
 export const MODERATION_HISTORY_MAX = 20
+
+/**
+ * Nhóm push (docs/architecture/push-notification.plan.md): mỗi nhóm là một công tắc ở màn cài
+ * đặt và một kênh Android riêng — người dùng chỉnh âm thanh/ưu tiên từng loại trong cài đặt hệ
+ * thống. Thêm nhóm = thêm dòng ở đây và ở `PUSH_CATEGORY_CONFIG` (push.policy.ts).
+ */
+export const PUSH_CATEGORY = {
+  CHAT: 'chat',
+  LISTING_STATUS: 'listing_status',
+  MEMBERSHIP: 'membership',
+  REPORT: 'report',
+  ACCOUNT: 'account',
+  WALLET: 'wallet',
+  GROUP_NOTICE: 'group_notice',
+  GROUP_ACTIVITY: 'group_activity',
+  SUPPORT: 'support',
+} as const
+export type PushCategory = (typeof PUSH_CATEGORY)[keyof typeof PUSH_CATEGORY]
+export const PUSH_CATEGORIES = Object.values(PUSH_CATEGORY) as PushCategory[]
+
+/** Vòng đời một dòng `push_outbox` — xem `push.dispatcher.ts`. */
+export const PUSH_OUTBOX_STATUS = {
+  PENDING: 'pending',
+  SENDING: 'sending',
+  SENT: 'sent',
+  FAILED: 'failed',
+  SKIPPED: 'skipped',
+} as const
+export type PushOutboxStatus = (typeof PUSH_OUTBOX_STATUS)[keyof typeof PUSH_OUTBOX_STATUS]
+
+export const PUSH_PLATFORM = { IOS: 'ios', ANDROID: 'android' } as const
+export type PushPlatform = (typeof PUSH_PLATFORM)[keyof typeof PUSH_PLATFORM]
+export const PUSH_PLATFORMS = Object.values(PUSH_PLATFORM) as PushPlatform[]

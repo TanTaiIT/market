@@ -14,6 +14,7 @@ import {
   JOIN_REQUEST_STATUS,
   JOINED_VIA,
   MEMBERSHIP_ROLES,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 
@@ -255,6 +256,7 @@ export const joinRequestService = {
     await notificationService.notifyUser({
       organizationId,
       userId: doc.userId,
+      push: { category: PUSH_CATEGORY.MEMBERSHIP, path: `/org/${organizationId}` },
       title: 'Đơn xin vào tổ chức đã được duyệt',
       body: 'Bạn đã là thành viên. Mở lại ứng dụng và chọn tổ chức này để bắt đầu.',
     })
@@ -285,6 +287,7 @@ export const joinRequestService = {
     await notificationService.notifyUser({
       organizationId,
       userId: doc.userId,
+      push: { category: PUSH_CATEGORY.MEMBERSHIP, path: null },
       title: 'Đơn xin vào tổ chức bị từ chối',
       body: reason ?? 'Quản trị tổ chức không nêu lý do.',
     })

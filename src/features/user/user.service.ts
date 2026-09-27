@@ -32,12 +32,14 @@ import {
   SCOPE_TYPES,
   SYSTEM_ROLES,
   VnProvinceName,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 import { BUCKET_FORMAT, bucketsBetween, resolveRange } from '../../common/report/timeBuckets'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { logger } from '../../config/logger'
 import { disconnectUser } from '../../sockets/emit'
+import { pushService } from '../push/push.service'
 
 /**
  * Tài khoản là toàn cục nên các thao tác ở đây KHÔNG còn scope theo org.
@@ -194,6 +196,8 @@ export const userService = {
       // hạn thì `resolveTenant` chặn ở request kế tiếp — xem docblock.
       await userRepository.bumpTokenVersion(id)
       disconnectUser(id)
+      // Máy đã bị đá ra thì thôi nhận push; mở khoá xong app đăng nhập lại là đăng ký lại.
+      await pushService.revokeDevices(id)
 
       // Khoá một spammer mà để nguyên tin của họ trên bảng thì mới xử được cái tài khoản, chưa
       // xử được cái spam. Ẩn hết — kể cả tin đang chờ duyệt, để chúng thôi chiếm hàng đợi.
@@ -220,6 +224,7 @@ export const userService = {
     await notificationService.notifyUser({
       organizationId: null,
       userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
       title: input.isActive ? 'Tài khoản của bạn đã được mở lại' : 'Tài khoản của bạn đã bị khoá',
       body: input.isActive
         ? 'Bạn có thể đăng nhập và sử dụng lại bình thường.'
@@ -259,6 +264,7 @@ export const userService = {
     await notificationService.notifyUser({
       organizationId: null,
       userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
       title: 'Án phạt đăng tin đã được gỡ',
       body: `${input.reason} — bạn đăng tin lại được bình thường.`,
     })
@@ -296,6 +302,7 @@ export const userService = {
     await notificationService.notifyUser({
       organizationId: null,
       userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
       title: 'Uy tín của bạn đã được phục hồi',
       body: `${input.reason} — tin của bạn lại lên bảng ngay như trước.`,
     })
@@ -328,6 +335,7 @@ export const userService = {
     await notificationService.notifyUser({
       organizationId: null,
       userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
       title: 'Tài khoản của bạn đang bị quản chế',
       body: until
         ? `${input.reason} — đến ${until.toISOString().slice(0, 10)}, tin của bạn sẽ do người khác duyệt.`
@@ -348,6 +356,7 @@ export const userService = {
     await notificationService.notifyUser({
       organizationId: null,
       userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
       title: 'Bạn đã được gỡ quản chế',
       body: 'Tin của bạn lại lên bảng theo bậc uy tín như trước.',
     })
@@ -481,6 +490,7 @@ export const userService = {
       cascade: CASCADE_HIDE_KIND.ACCOUNT_DELETED,
     })
     await Promise.all([
+      pushService.forgetUser(objectId),
       chatRepository.hideAllForUser(objectId),
       joinRequestRepository.cancelAllPendingByUser(id),
       inviteRepository.revokeAllPendingForUser(id, target?.email ?? ''),

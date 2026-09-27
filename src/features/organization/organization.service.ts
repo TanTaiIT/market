@@ -30,6 +30,7 @@ import {
   SYSTEM_ROLES,
   TENANT_STATUS,
   TenantStatus,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 import { ConflictError, ForbiddenError, NotFoundError, BadRequestError } from '../../common/errors'
 import { orgNameTokens } from '../../common/utils/orgName'
@@ -222,6 +223,7 @@ export const organizationService = {
     await notificationService.notifyUser({
       organizationId: org._id,
       userId: user._id,
+      push: { category: PUSH_CATEGORY.MEMBERSHIP, path: `/org/${org._id}` },
       title: 'Bạn được giao phụ trách một tổ chức',
       body: `Bạn giờ là quản trị của "${org.name}".`,
     })

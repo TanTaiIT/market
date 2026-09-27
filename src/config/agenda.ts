@@ -8,6 +8,7 @@ import { machineReviewService } from '../features/moderation/moderation.machine.
 import { listingExpiryService } from '../features/listing/listing.expiry.service'
 import { unverifiedCleanupService } from '../features/auth/unverified-cleanup.service'
 import { walletReconcileService } from '../features/wallet/wallet.reconcile.service'
+import { pushDispatcher } from '../features/push/push.dispatcher'
 import {
   cleanupConfigFromEnv,
   uploadCleanupService,
@@ -30,6 +31,8 @@ const JOBS = {
   LISTING_EXPIRY: 'listing-expiry:sweep',
   UNVERIFIED_CLEANUP: 'unverified-cleanup:sweep',
   WALLET_RECONCILE: 'wallet-reconcile:sweep',
+  PUSH_DISPATCH: 'push:dispatch',
+  PUSH_RECEIPTS: 'push:receipts',
 } as const
 
 let agenda: Agenda | null = null
@@ -117,6 +120,24 @@ export async function startAgenda(address: string = env.MONGO_URI): Promise<void
     { lockLifetime: 10 * 60 * 1000 },
   )
 
+  /*
+   * Push: chỉ đăng ký khi bật — tắt thì không job nào chạy vô ích mỗi phút. `push:dispatch` là
+   * LƯỚI AN TOÀN của đường nóng (`pushDispatcher.kick` ngay sau enqueue): vét dòng chờ retry và
+   * dòng kẹt do process chết giữa chừng.
+   */
+  if (env.PUSH_ENABLED) {
+    agenda.define(
+      JOBS.PUSH_DISPATCH,
+      withJobContext(JOBS.PUSH_DISPATCH, () => pushDispatcher.drain()),
+      { lockLifetime: 5 * 60 * 1000 },
+    )
+    agenda.define(
+      JOBS.PUSH_RECEIPTS,
+      withJobContext(JOBS.PUSH_RECEIPTS, () => pushDispatcher.receiptsSweep()),
+      { lockLifetime: 5 * 60 * 1000 },
+    )
+  }
+
   // Chỉ đăng ký khi có đủ CLOUDINARY_* — thiếu là tính năng chưa bật, đừng chạy một job mà
   // lượt nào cũng bỏ qua rồi ghi log "thiếu env" mỗi ngày.
   if (cleanupConfigFromEnv()) {
@@ -135,11 +156,16 @@ export async function startAgenda(address: string = env.MONGO_URI): Promise<void
   if (cleanupConfigFromEnv()) {
     await agenda.every(env.IMAGE_CLEANUP_EVERY, JOBS.IMAGE_CLEANUP)
   }
+  if (env.PUSH_ENABLED) {
+    await agenda.every(env.PUSH_DISPATCH_EVERY, JOBS.PUSH_DISPATCH)
+    await agenda.every(env.PUSH_RECEIPTS_EVERY, JOBS.PUSH_RECEIPTS)
+  }
   logger.info(
     `⏱️  Agenda started — machine review every ${env.MACHINE_REVIEW_EVERY}` +
       `, listing expiry every ${env.LISTING_EXPIRY_EVERY}` +
       `, unverified cleanup every ${env.UNVERIFIED_CLEANUP_EVERY} (TTL ${env.UNVERIFIED_TTL_DAYS}d)` +
-      (cleanupConfigFromEnv() ? `, image cleanup every ${env.IMAGE_CLEANUP_EVERY}` : ''),
+      (cleanupConfigFromEnv() ? `, image cleanup every ${env.IMAGE_CLEANUP_EVERY}` : '') +
+      (env.PUSH_ENABLED ? `, push dispatch every ${env.PUSH_DISPATCH_EVERY}` : ''),
   )
 }
 

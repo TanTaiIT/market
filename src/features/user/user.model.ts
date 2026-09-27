@@ -67,6 +67,11 @@ export interface IUser {
    * Hệ quả có chủ ý: "Xoá tất cả" không xoá được chọn lọc — nó là một lằn ranh thời gian.
    */
   notificationsClearedAt: Date | null
+  /**
+   * Công tắc push của người này. Chỉ lưu thứ người dùng ĐÃ CHỌN — thiếu field nào thì theo mặc
+   * định của nhóm (`resolvePushPrefs` ở `push.policy.ts`), nên đổi mặc định không cần migration.
+   */
+  pushPrefs?: { enabled?: boolean | null; categories?: Map<string, boolean> | null }
   ratingAvg: number
   ratingCount: number
   lastLoginAt?: Date
@@ -139,6 +144,10 @@ const userSchema = new Schema<IUserDocument>(
       default: [],
     },
     notificationsClearedAt: { type: Date, default: null },
+    pushPrefs: {
+      enabled: { type: Boolean },
+      categories: { type: Map, of: Boolean },
+    },
 
     // Denormalize thống kê người bán để đọc nhanh
     ratingAvg: { type: Number, default: 0, min: 0, max: 5 },
