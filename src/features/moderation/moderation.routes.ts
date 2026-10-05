@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { moderationController } from './moderation.controller'
 import {
   requireAnyModerator,
@@ -12,6 +13,7 @@ import {
   rerouteListingSchema,
   coverageSchema,
   activityQuerySchema,
+  removeListingSchema,
   setListingStatusSchema,
   auditEventSchema,
   overviewResponseSchema,
@@ -35,6 +37,8 @@ import {
 } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 /*
  * Nhánh này là bàn duyệt, và nó KHÔNG đồng nhất một tầng phân quyền: mỗi route tự khai
@@ -97,7 +101,7 @@ router.delete(
   '/listings/:id',
   authenticate,
   requireAnyModerator,
-  validate({ params: modParamsSchema }),
+  validate({ params: modParamsSchema, body: removeListingSchema }),
   moderationController.removeListing,
 )
 
@@ -220,8 +224,15 @@ registry.registerPath({
   operationId: 'moderationRemoveListing',
   tags: ['Moderation'],
   summary: 'Gỡ tin khỏi bảng (soft delete)',
+  description:
+    '`reason` tuỳ chọn, đi thẳng vào thông báo cho người bán. Chỉ trừ uy tín khi tin đã từng ' +
+    'lên bảng và người gỡ có quyền duyệt trên trục của tin — quản trị nhóm gỡ tin sàn mang tên ' +
+    'nhóm thì tin rời sàn nhưng không ghi án.',
   ...protectedRoute,
-  request: { params: modParamsSchema },
+  request: {
+    params: modParamsSchema,
+    body: { content: { 'application/json': { schema: removeListingSchema } } },
+  },
   responses: {
     200: jsonResponse('Đã gỡ', envelope(z.null())),
     401: unauthorized,

@@ -160,10 +160,13 @@ describe('Chừa đúng thứ phải chừa', () => {
   it('là THÀNH VIÊN một nhóm thì bỏ qua', async () => {
     const id = await staleUnverified('la-thanh-vien@ghim.local')
     const { addMember } = await import('../helpers/fixtures')
+    // Chủ nhóm là một tài khoản riêng: master không tự trao quyền quản trị cho chính mình được
+    // nữa (`canGrant`, audit 3.3), nên fixture với `ownerEmail: master.email` sẽ 403.
+    const owner = await registerUser(app, 'chu-truong-don-dep@ghim.local', 'Chủ trường')
     const org = await createOrg(app, master.token, {
       name: 'Trường Dọn Dẹp',
       key: 'truong-don-dep',
-      ownerEmail: master.email,
+      ownerEmail: owner.email,
       provinceCode: HCM,
     })
     await addMember(id.toString(), org.id)

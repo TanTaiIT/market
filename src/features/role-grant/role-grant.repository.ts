@@ -10,8 +10,11 @@ export const roleGrantRepository = {
   },
 
   /** Nạp toàn bộ quyền còn hiệu lực của một người — đầu vào của tầng policy. */
+  /** Chạy trên MỌI request cần phân quyền — `lean`: mapper chỉ đọc field, không cần document (audit 5.9). */
   listActiveByUser(userId: string | Types.ObjectId): Promise<IRoleGrantDocument[]> {
-    return RoleGrant.find({ userId, ...ACTIVE }).exec()
+    return RoleGrant.find({ userId, ...ACTIVE })
+      .lean<IRoleGrantDocument[]>()
+      .exec()
   },
 
   findActiveById(id: string | Types.ObjectId): Promise<IRoleGrantDocument | null> {
@@ -121,6 +124,22 @@ export const roleGrantRepository = {
     return RoleGrant.updateMany(
       { userId, ...ACTIVE },
       { revokedAt: new Date(), revokedBy: null },
+    ).exec()
+  },
+
+  /**
+   * Thu hồi mọi grant của một người TRONG một org (`org` lẫn `org_unit`) — gọi khi gỡ họ khỏi
+   * danh bạ. Thân phận và quyền là một cặp: gỡ thân phận mà để quyền là "admin rỗng ruột" vẫn mở
+   * được bàn duyệt của nhóm mình không còn đứng trong.
+   */
+  revokeAllForUserInOrg(
+    userId: string | Types.ObjectId,
+    orgId: string | Types.ObjectId,
+    revokedBy: Types.ObjectId | null,
+  ) {
+    return RoleGrant.updateMany(
+      { userId, orgId, scopeType: { $in: [SCOPE_TYPES.ORG, SCOPE_TYPES.ORG_UNIT] }, ...ACTIVE },
+      { revokedAt: new Date(), revokedBy },
     ).exec()
   },
 

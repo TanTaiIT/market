@@ -162,3 +162,35 @@ describe('nhãn hệ thống là tên giữ riêng', () => {
       .expect(200)
   })
 })
+
+/**
+ * `scripts/reset-master-password.ts` — đường DUY NHẤT đổi mật khẩu master sau khi cửa
+ * quên-mật-khẩu công khai đóng với master (audit 3.9).
+ */
+describe('reset-master-password — đổi mật khẩu master', () => {
+  it('mật khẩu cũ hết dùng được, mật khẩu mới đăng nhập được, và phiên cũ bị ngắt', async () => {
+    const { resetMasterPassword } = await import('../../scripts/reset-master-password')
+    // Mật khẩu hiện hành là bản `seedMaster` đặt lại ở ca "reused" phía trên.
+    const OLD = 'mat-khau-moi-123'
+    const NEW = 'matkhau-master-moi-2026'
+    const before = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: EMAIL, password: OLD })
+      .expect(200)
+
+    const { userId } = await resetMasterPassword(NEW)
+
+    const { User } = await import('../../src/features/user/user.model')
+    const user = await User.findById(userId).exec()
+    expect(user?.email).toBe(EMAIL)
+
+    await request(app).post('/api/v1/auth/login').send({ email: EMAIL, password: OLD }).expect(401)
+    await request(app).post('/api/v1/auth/login').send({ email: EMAIL, password: NEW }).expect(200)
+    // `tokenVersion` đã bump: refresh token cũ không đổi được phiên mới. Access token cũ cố ý
+    // sống tới hết hạn (xem audit 0.7) nên không kiểm ở đây.
+    await request(app)
+      .post('/api/v1/auth/refresh')
+      .send({ refreshToken: before.body.data.tokens.refreshToken })
+      .expect(401)
+  })
+})

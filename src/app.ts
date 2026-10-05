@@ -7,6 +7,7 @@ import { apiReference } from '@scalar/express-api-reference'
 
 import { env } from './config/env'
 import { logger } from './config/logger'
+import { sanitizeUrl } from './common/observability/redact'
 import { generateOpenApiDocument } from './config/openapi'
 import featureRoutes from './features' // side-effect: đăng ký schema vào OpenAPI registry
 import { notFound } from './middlewares/notFound.middleware'
@@ -39,6 +40,10 @@ async function pingDb(): Promise<boolean> {
 export function createApp(): Application {
   const app = express()
 
+  // `req.ip` — và mọi rate limit theo IP — đọc `X-Forwarded-For` tới hop này. Để `0` sau
+  // Render/LB là toàn bộ người dùng chung một IP; lý do đầy đủ ở `env.TRUST_PROXY`.
+  app.set('trust proxy', env.TRUST_PROXY)
+
   /*
    * ĐỨNG TRƯỚC MỌI THỨ. Thứ gì chạy trước nó thì log ra không có `requestId` — đúng những
    * dòng đầu tiên cần đến khi một request chết ngay ở cửa (CORS, body quá lớn, JSON hỏng).
@@ -53,7 +58,14 @@ export function createApp(): Application {
       credentials: true,
     }),
   )
-  app.use(compression())
+  // Không nén response của /auth (audit 7.10): nén + secret trong body là BREACH — kích thước
+  // response nén tiết lộ từng ký tự của token cho ai đo được nó. Phần còn lại nén như thường.
+  app.use(
+    compression({
+      filter: (req, res) =>
+        !req.path.startsWith(`${env.API_PREFIX}/auth`) && compression.filter(req, res),
+    }),
+  )
   app.use(express.json({ limit: '1mb' }))
   app.use(express.urlencoded({ extended: true }))
 
@@ -69,7 +81,7 @@ export function createApp(): Application {
        * Dòng này chạy trong `res.on(finish)`, vẫn cùng ngữ cảnh async của request, nên
        * `userId` do `authenticate` gắn giữa chuỗi middleware vẫn thấy được.
        */
-      logger.info(`${req.method} ${req.originalUrl} ${res.statusCode}`, {
+      logger.info(`${req.method} ${sanitizeUrl(req.originalUrl)} ${res.statusCode}`, {
         ms: Date.now() - startedAt,
         status: res.statusCode,
       })
@@ -110,6 +122,12 @@ export function createApp(): Application {
   // OpenAPI (code-first từ Zod) + Scalar API Reference
   const openApiDocument = generateOpenApiDocument()
   app.get('/openapi.json', (_req: Request, res: Response) => res.json(openApiDocument))
+  // Scalar tải script từ CDN + inline: CSP mặc định của helmet chặn hết và trang trắng (audit 7.3).
+  // Gỡ header CHỈ cho /docs — API vẫn giữ nguyên CSP.
+  app.use('/docs', (_req: Request, res: Response, next) => {
+    res.removeHeader('Content-Security-Policy')
+    next()
+  })
   app.use('/docs', apiReference({ spec: { url: '/openapi.json' } }))
 
   // 404 + error handlers (đặt cuối cùng)

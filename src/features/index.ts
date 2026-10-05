@@ -30,6 +30,7 @@ import { optionalAuth } from '../middlewares/auth.middleware'
 import { env } from '../config/env'
 import supportRoutes from './support/support.routes'
 import socialFeedbackRoutes from './social-feedback/social-feedback.routes'
+import pushRoutes from './push/push.routes'
 
 const router = Router()
 
@@ -69,6 +70,8 @@ router.use('/field-definitions', fieldDefinitionRoutes)
 router.use('/default-template', defaultTemplateRoutes)
 router.use('/chats', chatRoutes)
 router.use('/notifications', notificationRoutes)
+// Thiết bị nhận push + công tắc — của NGƯỜI, không đọc `X-Org-Id` (cùng lý do với hộp thư).
+router.use('/push', pushRoutes)
 router.use('/reports', reportRoutes)
 // Từ điển hành chính, không thuộc tenant nào — cùng nhóm "dùng chung" với /categories.
 router.use('/locations', locationRoutes)

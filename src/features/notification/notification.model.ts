@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { NOTIFICATION_RETENTION_DAYS } from '../../common/constants'
 
 export interface INotification {
   /**
@@ -111,6 +112,13 @@ notificationSchema.index({ organizationId: 1, createdAt: -1, unitId: 1, userId: 
 // Hộp thư ĐÍCH DANH: nhánh này giờ không còn ràng `organizationId` nên index trên không phục
 // vụ nó — thiếu dòng dưới thì mỗi lần mở màn thông báo là một lượt quét cả bảng.
 notificationSchema.index({ userId: 1, createdAt: -1 })
+
+// Hộp thư giữ `NOTIFICATION_RETENTION_DAYS` ngày rồi Mongo tự dọn (audit 4.6): thông báo là tin
+// của thời điểm, không phải hồ sơ. TTL index không compound được, nên là một index riêng.
+notificationSchema.index(
+  { createdAt: 1 },
+  { expireAfterSeconds: NOTIFICATION_RETENTION_DAYS * 24 * 60 * 60 },
+)
 
 export const Notification: Model<INotificationDocument> = mongoose.model<INotificationDocument>(
   'Notification',

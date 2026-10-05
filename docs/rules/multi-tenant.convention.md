@@ -37,8 +37,9 @@ năng, nó là rò rỉ dữ liệu giữa hai khách hàng khác nhau.
    `Wallet`,
    `XuTransaction`
    — xem §1.3 để biết vì sao và bù bằng gì.
-2. **Không tự viết filter `organizationId` trong repository/service.** Scope đến từ
-   context. Tự viết nghĩa là đang có hai nguồn sự thật, và cái viết tay sẽ sai trước.
+2. **Không tự viết filter `organizationId` trong repository/service để mở rộng phạm vi.**
+   Scope đến từ context. Tự viết nghĩa là đang có hai nguồn sự thật, và cái viết tay sẽ sai
+   trước. Thu hẹp bên trong scope, và `runUnscoped` cho hai ca ở §6.1, là ngoại lệ đã duyệt.
 3. **Ghi luôn rơi về `ownOrgId`.** Không route nào, không role nào, không cờ nào mở rộng
    được phạm vi ghi. Bản ghi của trục công khai (`organizationId: null`) là read-only với
    mọi org khác — quyền ở đó đến từ `role_grants`, không từ tenant scope.
@@ -109,6 +110,15 @@ thì nới scope cho **mọi** truy vấn của collection.
 | `ListingProduct` | Catalog gói tin (đẩy tin, nổi bật…) — bảng giá áp toàn nền tảng, org không có catalog riêng | Không có dữ liệu riêng của khách hàng; ghi chỉ qua API master-only `/listing-products` |
 | `Wallet` | Ví Xu thuộc **tài khoản**, mà tài khoản ở v2 là toàn cục (cùng lý do với `UserTrust`). Gắn plugin thì người chưa vào org nào không có ví, và cùng một người đổi org lại thấy số dư khác | Số dư chỉ đổi qua `walletService.apply()`, trong transaction cùng dòng sổ cái; không repository nào khác chạm `balance` |
 | `XuTransaction` | Sổ cái của ví, đi cùng `Wallet` | Append-only, `idempotencyKey` unique; không có đường sửa/xoá |
+| `KycProfile` | Hồ sơ định danh thuộc **tài khoản** (tạm thời, sẽ gỡ) | `userId` unique; chỉ chính chủ và master đọc |
+| `RoleGrant` | Đã nêu ở trên — ghi thêm cho khớp danh sách thật (`grep -L tenantPlugin`) | Xem dòng `RoleGrant` |
+
+> Danh sách thật của "không gắn plugin" = `grep -L tenantPlugin src/features/*/*.model.ts` cộng
+> các model không có `organizationId` trong schema. `Conversation`/`Message`/`SupportThread`/
+> `SocialFeedback`/`EmailVerification` **có** gắn plugin (`organizationId` có thể `null` — trục
+> công khai), nên KHÔNG nằm trong bảng này dù thuộc về người dùng. `Notification` ở §1.2 nói
+> "dualAxis" và ở đây nói "ngoài plugin": bảng này đúng — model đã ra khỏi plugin, xem
+> `notification.model.ts`.
 
 Muốn thêm một collection vào danh sách này → **dừng lại và hỏi**, không tự quyết.
 
@@ -269,8 +279,35 @@ const rows = await runUnscoped('audit', () => Report.find())
 const rows = await runUnscoped('audit', () => Report.find().exec())
 ```
 
-4. Thêm một call site `runUnscoped` mới là thay đổi đáng review kỹ. Nếu nó nằm trong
-   luồng request, gần như chắc chắn đang làm sai — hỏi trước.
+4. Thêm một call site `runUnscoped` mới là thay đổi đáng review kỹ. Nằm trong luồng
+   request thì phải thuộc đúng một trong hai ca ở §6.1, và `reason` phải nói ra ca nào.
+
+### 6.1 `runUnscoped` TRONG luồng request — hai ca hợp lệ (quyết định 2026-09-26, audit 5.1)
+
+Bản v1 của mục này nói "trong luồng request gần như chắc chắn đang làm sai". Thực tế v2 có 46
+call site, 34 trong `listing`, và chúng đúng — vì tenant scope chỉ diễn đạt được **quan hệ
+đọc** (tôi ở trong nhóm nào), không diễn đạt được **thẩm quyền theo trục** (tôi được duyệt tin
+nào). Hai câu hỏi khác nhau, và ép câu thứ hai vào scope là ép sai chiều: người phụ trách danh
+mục không đứng trong nhóm nào nên scope của họ rỗng, nhưng họ chính là người có quyền trên tin
+sàn mang badge nhóm. Thay vì viết lại 34 site, luật là:
+
+| Ca | Ví dụ | Người gác BẮT BUỘC (chạy trước mọi lượt ghi) |
+|---|---|---|
+| **Xét thẩm quyền theo trục** — đọc một bản ghi để hỏi "ai được xử nó" | `listingService.getForModeration`, `setModerationStatus`, `reportRepository.findByIdForModeration`, `claimOpen` | `assertCanActOnListing` / `assertCanResolve` — phân xử theo `targetOf(listing)`, tức TRỤC của bản ghi, không theo `X-Org-Id` |
+| **Chính chủ** — tin của tôi, bất kể tôi đang đứng ở org nào | `assertOwnerUnscoped` → `update`/`remove`/`renew`/`markSold`, `paginateMine`, các `count*BySeller` cho quota | khoá `seller` = `req.user.id` từ token — hẹp hơn mọi scope, không có gì để rò |
+
+Ba điều KHÔNG đổi: (a) ngoài hai ca này, `runUnscoped` trong request vẫn là sai — hỏi trước;
+(b) `.exec()` phải nằm TRONG callback (§6.3), đây là lỗi đã gặp ba lần (`renew`, `markSold`,
+`update`); (c) cascade từ service này sang collection của service khác (khoá tài khoản ẩn tin,
+rời nhóm ẩn tin, nhóm tạm ngưng ẩn tin) chạy unscoped ở **repository** với `reason` nêu rõ
+chốt thẩm quyền đã qua ở đâu — vì nhánh GHI của plugin chỉ khớp `ownOrgId` của người bấm, một
+`updateMany` có scope sẽ khớp 0 dòng mà không lỗi.
+
+**Filter `organizationId` viết tay (audit 5.11):** `listing.repository.buildFilter` nhận
+`orgId` từ query string là **thu hẹp** bên trong scope, không phải nguồn sự thật thứ hai —
+plugin vẫn `$and` predicate của nó lên trên, nên xin một nhóm mình không đọc được thì ra rỗng.
+Đó là ngoại lệ được duyệt, cùng loại với §2.1 "collection ở §1.3". Viết tay để **mở rộng** thì
+vẫn cấm (§7).
 
 ---
 
@@ -283,7 +320,7 @@ const rows = await runUnscoped('audit', () => Report.find().exec())
 | `pre('save')` để gán `organizationId` | Mongoose chạy validation TRƯỚC pre-save của plugin | `pre('validate')` (plugin đã làm sẵn, đừng tự viết) |
 | `organizationId` mutable | Cho phép chuyển bản ghi sang org khác | `immutable: true` (plugin đã set) |
 | `populate` sang collection không có plugin | Lách được cách ly | Snapshot field |
-| Filter `organizationId` viết tay trong service | Hai nguồn sự thật | Để plugin làm |
+| Filter `organizationId` viết tay trong service để MỞ RỘNG phạm vi | Hai nguồn sự thật | Để plugin làm. Thu hẹp bên trong scope (`buildFilter.orgId`) thì được — xem §6.1 |
 | Bỏ qua `partialFilterExpression` ở unique index | Bản ghi đã xoá giữ chỗ vĩnh viễn | Luôn kèm `{ deletedAt: null }` |
 | Text index trên collection có tenant | Vỡ với scope `$in` nhiều org | Atlas Search |
 

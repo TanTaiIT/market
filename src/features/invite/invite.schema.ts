@@ -1,8 +1,7 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import { INVITE_CHANNELS, INVITE_STATUS, PAGINATION } from '../../common/constants'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 /**
  * Kênh chỉ để BIẾT admin gõ cái gì vào — hệ thống không gửi mail hay SMS.

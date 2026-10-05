@@ -155,6 +155,10 @@ từ file `.env*`: chính nó chọn file nào được nạp, nên để file t
 Production thật đặt biến qua secret manager của nơi deploy, không mang `.env.production` lên
 server: chung một bộ secret nghĩa là token ký ở máy dev hợp lệ thật trên production.
 
+Push notification TẮT mặc định (`PUSH_ENABLED=false`): bật khi app đã có dev build kèm credential
+FCM trên EAS, và đặt `EXPO_ACCESS_TOKEN` nếu bật *Enhanced push security*. Bật lần đầu trên prod
+thì chạy `npm run sync-indexes:prod -- --apply` để tạo index của `push_devices` / `push_outbox`.
+
 `docker-compose.yml` là stack local. Nó nạp `env_file: [.env, .env.development]`, mà thứ tự ưu
 tiên của Docker là `environment` > `env_file` > `ENV` của Dockerfile — nên `env_file` sẽ nuốt mất
 `ENV NODE_ENV=production` trong image. Vì vậy compose khai `NODE_ENV` tường minh, và deploy thật
@@ -190,18 +194,20 @@ tests/
 | join-request | ✅ Core | `POST /join-requests`, `GET /join-requests{,/mine}`, `PATCH /join-requests/:id/{approve,reject}`, `POST /join-requests/bulk-approve` |
 | role-grant | ✅ Core | `POST /role-grants`, `GET /role-grants/mine`, `DELETE /role-grants/:id` |
 | org-unit | ✅ Core | `GET/POST /org-units`, `PATCH/DELETE /org-units/:id` |
-| category | 🚧 Skeleton (501) | `/categories` |
-| chat | 🚧 Skeleton (501) | `/chats` (realtime đã chạy qua socket) |
-| upload | 🚧 Skeleton (501) | `/uploads` |
-| search | 🚧 Skeleton (501) | `/search` |
+| category | ✅ Core | `GET /categories`, `GET /categories/:id/template` (public) · ghi master-only |
+| chat | ✅ Core | `GET/POST /chats`, `GET/POST /chats/:id/messages`, `POST /chats/:id/read` + socket `chat:*` |
+| push | ✅ Core (tắt mặc định, `PUSH_ENABLED`) | `POST /push/devices{,/unregister}`, `GET/PATCH /push/preferences`, `POST /push/test` — thiết kế: `docs/architecture/push-notification.plan.md` |
+| report / support / wallet / favorites / kyc / moderation | ✅ Core | xem `/docs` — spec là nguồn đầy đủ |
+| upload | ✅ Chữ ký Cloudinary (client upload thẳng) | `POST /uploads/signature` |
+| search | 🚧 Skeleton (501) | `/search` — bảng tin lọc `?q=` bằng regex, Atlas Search để sau |
 | review | 🚧 Skeleton (501) | `/reviews` |
 
 > Module skeleton trả `501 Not Implemented` kèm ghi chú TODO trong `*.routes.ts` để triển khai tiếp.
 > Chúng **không** có `registerPath` nên không nằm trong OpenAPI spec — danh sách được ghi vào
 > `info.description` của spec để client biết là "chưa có" thay vì "spec thiếu".
-> Khi làm module `upload` cần cài lại `multer` + `@aws-sdk/client-s3`; job nền cần `bullmq`
-> và một Redis (`ioredis`). Tất cả đã gỡ khỏi `package.json` vì chưa dùng tới — hạ tầng nằm
-> chờ một feature chưa có thì vẫn phải bảo trì, vẫn nằm trong image, mà không đổi lấy được gì.
+> Ảnh đi thẳng từ client lên Cloudinary bằng unsigned preset, BE chỉ nhận URL (`imageUrl.ts`
+> chốt host). Job nền chạy bằng Agenda trên chính Mongo (`config/agenda.ts`), không có Redis —
+> app chạy đúng một instance (quyết định 2026-09-26, audit 7.11).
 
 ## OpenAPI cho client codegen
 
@@ -225,7 +231,7 @@ Script cần `.env` hợp lệ vì `src/config/env.ts` validate env lúc import 
 `JWT_SECRET` là `process.exit(1)`), nhưng **không** kết nối MongoDB.
 
 ## Ghi chú thiết kế
-- **Listing**: `status` (draft/pending/active/sold/expired/rejected/hidden), `location` GeoJSON + `2dsphere` (tìm gần), `images: string[]` (URL, ảnh thật ở S3/Cloudinary), `expiresAt` + job `listing-expiry:sweep` hạ trạng thái (KHÔNG còn TTL index — tin hết hạn phải còn để gia hạn), text index (title+description), compound index `(category, status, createdAt)`.
+- **Listing**: `status` (draft/pending/active/sold/expired/rejected/hidden), `location` GeoJSON + `2dsphere` (tìm gần), `images: string[]` (URL, ảnh thật ở S3/Cloudinary), `expiresAt` + job `listing-expiry:sweep` hạ trạng thái và báo cho người bán (KHÔNG còn TTL index — tin hết hạn phải còn để gia hạn), `?q=` lọc bằng regex trên `title` (text index đã bỏ vì vỡ với scope nhiều org), compound index `(category, status, createdAt)`.
 - **Visibility**: endpoint public chỉ trả tin có status trong `PUBLIC_LISTING_STATUSES`
   (`active`, `sold`, `expired`). Client không được tự truyền `?status=`.
 - **Soft delete**: `deletedAt` cho user & listing. Hook `pre(/^find/)` tự loại trừ, và

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import {
   AUDIT_ACTION,
@@ -9,8 +10,6 @@ import {
   PAGINATION,
 } from '../../common/constants'
 
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
-
 export const modListingQuerySchema = z.object({
   status: z.enum(MODERATABLE_STATUSES).optional(),
   /**
@@ -20,6 +19,11 @@ export const modListingQuerySchema = z.object({
    */
   category: objectId.optional(),
   q: z.string().trim().min(1).max(100).optional(),
+  /**
+   * Mọi tin của MỘT người đăng — màn Người dùng › chi tiết của master. Là bộ lọc, không phải cửa
+   * hậu: scope của người gọi vẫn áp lên trên, quản trị nhóm chỉ thấy tin của người đó TRONG nhóm mình.
+   */
+  seller: objectId.optional(),
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
@@ -60,6 +64,16 @@ export const activityQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(PAGINATION.MAX_LIMIT).optional(),
 })
+
+/**
+ * `DELETE /moderation/listings/:id`. `reason` tuỳ chọn — client hiện gửi DELETE không body — nhưng
+ * có thì đi thẳng vào thông báo cho người bán và dòng nhật ký, nên bàn duyệt NÊN gửi.
+ */
+export const removeListingSchema = z
+  .object({ reason: z.string().trim().min(1).max(300).optional() })
+  .strict()
+  .openapi('RemoveListing')
+export type RemoveListingInput = z.infer<typeof removeListingSchema>
 
 export const setListingStatusSchema = z
   .object({

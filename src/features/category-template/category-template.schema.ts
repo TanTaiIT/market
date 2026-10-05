@@ -1,8 +1,7 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import { FIELD_TYPE } from '../../common/constants'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const templateParamsSchema = z.object({ id: objectId })
 
@@ -13,6 +12,11 @@ export const templateParamsSchema = z.object({ id: objectId })
  */
 export const templateQuerySchema = z.object({
   version: z.coerce.number().int().positive().optional(),
+  /** `templateRef.isFallback` của tin — để ghim đúng NGUỒN, xem `getForCategory` (audit 1.11). */
+  fallback: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
 })
 
 const fieldOptionSchema = z
@@ -94,7 +98,7 @@ const fieldKeySchema = z
  * Bắt khai đủ ở đây thay vì cho tạo field trống rồi sửa sau: field thiếu `label` hay thiếu
  * `options` sẽ hiện ra form đăng tin dưới dạng một ô không ai biết phải điền gì.
  */
-export const fieldDefinitionInputSchema = z
+const fieldDefinitionInputSchema = z
   .object({
     label: z.string().min(1).max(120).openapi({ example: 'Độ chai pin' }),
     type: z.nativeEnum(FIELD_TYPE),
@@ -183,7 +187,6 @@ export const fieldDefinitionSchema = z
   })
   .openapi('FieldDefinition')
 
-export type FieldDefinitionInput = z.infer<typeof fieldDefinitionInputSchema>
 export type CreateFieldDefinitionInput = z.infer<typeof createFieldDefinitionSchema>
 export type TemplateFieldInput = z.infer<typeof templateFieldInputSchema>
 export type TemplateFieldsInput = z.infer<typeof templateFieldsSchema>

@@ -36,6 +36,7 @@ export function toOrganizationCardDto(org: IOrganizationDocument, memberCount: n
     description: org.description,
     provinceCode: org.provinceCode,
     district: org.district,
+    ward: org.ward ?? null,
     memberCount,
     allowJoinRequests: org.allowJoinRequests,
   }
@@ -88,6 +89,7 @@ export function toOrganizationLookupDto(
     coverUrl: org.coverUrl,
     memberCount,
     district: org.district,
+    ward: org.ward ?? null,
     provinceCode: org.provinceCode,
     allowJoinRequests: org.allowJoinRequests,
     allowOutsiderPosts: org.allowOutsiderPosts,
@@ -111,6 +113,7 @@ export function toOrganizationProfileDto(
     description: org.description,
     provinceCode: org.provinceCode,
     district: org.district,
+    ward: org.ward ?? null,
     rules: org.rules,
     allowOutsiderPosts: org.allowOutsiderPosts,
     isPublic: org.isPublic !== false,

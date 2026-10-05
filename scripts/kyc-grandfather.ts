@@ -3,6 +3,7 @@ import mongoose from 'mongoose'
 import { env } from '../src/config/env'
 // Side-effect: bơm `DNS_SERVERS` cho c-ares trước lượt tra SRV đầu — xem `applyDnsOverride`.
 import '../src/config/database'
+import { DRY_RUN, assertWriteConfirmed } from './confirmWrite'
 
 /**
  * Cấp sẵn hồ sơ ĐÃ DUYỆT cho mọi tài khoản có TRƯỚC khi cổng KYC bật.
@@ -18,7 +19,8 @@ import '../src/config/database'
  *
  * Idempotent: chỉ tạo cho `userId` chưa có bản ghi nào.
  *
- * Chạy: npm run kyc:grandfather
+ * Chạy thử: npm run kyc:grandfather -- --dry-run
+ * Chạy:     npm run kyc:grandfather               (prod: CONFIRM_DB=<tên db> …)
  */
 const PLACEHOLDER_ID = '000000000000'
 
@@ -42,6 +44,9 @@ async function main() {
     console.log('✅ không có gì để làm.')
     return
   }
+
+  assertWriteConfirmed('kyc:grandfather')
+  if (DRY_RUN) return
 
   const now = new Date()
   await kyc.insertMany(

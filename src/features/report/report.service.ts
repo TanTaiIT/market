@@ -4,17 +4,28 @@ import { reportRepository } from './report.repository'
 import { CreateReportInput, ReportQuery, ResolveReportInput } from './report.schema'
 import { IReport, IReportDocument } from './report.model'
 import { assertCanActOnListing, listingService } from '../listing/listing.service'
-import { trustRepository } from '../trust/trust.repository'
 import type { TrustState } from '../trust/trust.policy'
 import { userRepository } from '../user/user.repository'
-import { recordAudit } from '../moderation/moderation.service'
+import { notificationService } from '../notification/notification.service'
+import { listingRepository } from '../listing/listing.repository'
+import { membershipRepository } from '../membership/membership.repository'
+import {
+  applyTakedownPenalty,
+  notifyPoster,
+  recordAudit,
+  trustNote,
+} from '../moderation/moderation.service'
 import {
   AUDIT_ACTION,
+  LISTING_REACH,
   LISTING_STATUS,
   MASTER_DISPLAY_NAME,
   MODERATION_ACTION,
+  MODERATION_TRANSITIONS,
   REPORT_STATUS,
   REPORT_TARGET,
+  AUDIT_TARGET,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { Grant, canModerateAnyInOrg, isMaster } from '../../common/authz/policy'
@@ -30,7 +41,44 @@ export interface ReportModerator extends ReportActor {
   grants: Grant[]
 }
 
-function toDto(report: IReportDocument, count: number) {
+/** Tên hiện ra thay cho người tố khi người xem chính là chủ đối tượng bị tố (audit 2.4). */
+const ANONYMOUS_REPORTER = 'Người dùng ẩn danh'
+
+/** Thông báo cho người báo cáo khi báo cáo được xử — xem `resolve`. */
+const REPORTER_NOTICE = {
+  RESOLVED: {
+    title: 'Báo cáo của bạn đã được xử lý',
+    body: (title: string) =>
+      `Tin "${title}" đã bị gỡ khỏi bảng sau khi xem xét. Cảm ơn bạn đã báo.`,
+  },
+  DISMISSED: {
+    title: 'Báo cáo của bạn đã được xem xét',
+    body: (title: string) =>
+      `Tin "${title}" được giữ nguyên sau khi xem xét. Cảm ơn bạn đã báo — vẫn cứ báo nếu thấy có gì bất thường.`,
+  },
+} as const
+
+/**
+ * Đối tượng bị báo cáo thuộc về CHÍNH người đang xem: tin của họ, hoặc chính họ. Quản trị nhóm
+ * cũng là người bán trong nhóm đó, và hàng đợi báo cáo hiện tên người tố — tức người bị tố biết
+ * ai tố mình. Che tên ở đúng những dòng đó; các dòng khác vẫn cần tên để xử.
+ */
+async function ownedTargets(reports: IReportDocument[], viewerId: string): Promise<Set<string>> {
+  const owned = new Set<string>()
+  const listingIds = reports
+    .filter((r) => r.targetType === REPORT_TARGET.LISTING)
+    .map((r) => r.targetId)
+  const sellers = await listingRepository.sellersOf(listingIds)
+  for (const r of reports) {
+    const id = r.targetId.toString()
+    const mine =
+      r.targetType === REPORT_TARGET.USER ? id === viewerId : sellers.get(id) === viewerId
+    if (mine) owned.add(id)
+  }
+  return owned
+}
+
+function toDto(report: IReportDocument, count: number, anonymous = false) {
   return {
     id: report._id.toString(),
     targetType: report.targetType,
@@ -38,7 +86,7 @@ function toDto(report: IReportDocument, count: number) {
     targetTitle: report.targetTitle,
     kind: report.kind,
     quote: report.quote,
-    reporterName: report.reporterName,
+    reporterName: anonymous ? ANONYMOUS_REPORTER : report.reporterName,
     status: report.status,
     count,
     createdAt: report.createdAt.toISOString(),
@@ -49,7 +97,10 @@ function toDto(report: IReportDocument, count: number) {
 type ReportTarget = Pick<
   IReport,
   'targetTitle' | 'organizationId' | 'category' | 'provinceCode' | 'wardCode'
->
+> & {
+  /** Chủ của đối tượng — để chặn tự báo cáo tin của mình (audit 2.5). Không ghi vào báo cáo. */
+  ownerId: string
+}
 
 /**
  * Snapshot đối tượng bị báo cáo (§2.3 cấm populate), và quan trọng hơn: TRỤC của nó.
@@ -62,6 +113,11 @@ type ReportTarget = Pick<
  * - tin công khai → `null` + toạ độ ô (`category`, `provinceCode`, `wardCode`): người phụ trách ô
  *   xử, master là fallback — đúng luật của hàng đợi duyệt (`assertCanActOnListing`).
  *
+ * "Công khai" xét theo `reach`, KHÔNG theo `organizationId`: tin sàn do thành viên đăng vẫn mang
+ * badge nhóm, mà bản trước dùng badge đó làm trục nên báo cáo rơi vào hàng đợi của nhóm — người
+ * phụ trách ô không bao giờ thấy, và nhóm thì gỡ được nhưng không ghi được án (cửa gỡ). Tin sàn
+ * của thành viên vì thế gần như miễn hậu kiểm. Nhóm cầm id vẫn gỡ được qua `canTakedownListing`.
+ *
  * Báo cáo về NGƯỜI không có trục tự nhiên: đóng dấu org người tố đang đứng (như trước), không
  * có org thì lên trục công khai và chỉ master xử (xem `assertCanResolve`).
  *
@@ -73,24 +129,33 @@ type ReportTarget = Pick<
 async function targetOf(input: CreateReportInput, reporterId: string): Promise<ReportTarget> {
   if (input.targetType === REPORT_TARGET.LISTING) {
     const listing = await listingService.getForViewer(input.targetId, reporterId)
-    const isPublic = !listing.organizationId
+    const isPublic = listing.reach === LISTING_REACH.MARKETPLACE
     return {
       targetTitle: listing.title,
-      organizationId: listing.organizationId ?? null,
+      organizationId: isPublic ? null : (listing.organizationId ?? null),
       category: isPublic ? listing.category : null,
       provinceCode: isPublic ? listing.provinceCode : null,
       wardCode: isPublic ? listing.wardCode : null,
+      ownerId: listing.seller.toString(),
     }
   }
 
   const user = await userRepository.findById(input.targetId)
   if (!user) throw new NotFoundError('Không tìm thấy người dùng này')
+  /*
+   * Báo cáo về NGƯỜI chỉ đóng dấu org khi người bị tố CŨNG ở trong org đó (audit 2.5): quản trị
+   * nhóm xử được (gỡ khỏi nhóm), và hàng đợi của nhóm không dính báo cáo về người lạ. Người bị tố
+   * không thuộc nhóm nào của người tố thì lên trục công khai — master xử.
+   */
+  const ownOrgId = currentScope()?.ownOrgId ?? null
+  const sharesOrg = ownOrgId ? await membershipRepository.findActive(user._id, ownOrgId) : null
   return {
     targetTitle: user.name,
-    organizationId: currentScope()?.ownOrgId ?? null,
+    organizationId: sharesOrg ? ownOrgId : null,
     category: null,
     provinceCode: null,
     wardCode: null,
+    ownerId: user._id.toString(),
   }
 }
 
@@ -112,7 +177,11 @@ async function assertCanResolve(report: IReportDocument, grants: Grant[]): Promi
   }
 
   if (report.targetType === REPORT_TARGET.LISTING) {
-    const listing = await listingService.getForModeration(report.targetId.toString())
+    // `withDeleted`: báo cáo về tin đã xoá (dữ liệu trước khi xoá tin tự đóng báo cáo) vẫn phải
+    // xét được trục để người có quyền đóng nó bằng `ignore`, thay vì 404 mãi mãi.
+    const listing = await listingService.getForModeration(report.targetId.toString(), {
+      withDeleted: true,
+    })
     // Cửa GỠ: đóng một báo cáo là rút tin xuống, không phải cho tin đi tiếp. Điều này vá luôn
     // một đường nửa vời — `targetOf` đóng dấu `organizationId` của tin công khai mang org lên
     // báo cáo, nên nhóm MỞ được báo cáo rồi lại 403 khi định xử nó.
@@ -129,11 +198,14 @@ export const reportService = {
   async create(input: CreateReportInput, actor: ReportActor) {
     if (input.targetId === actor.id) throw new BadRequestError('Không tự báo cáo chính mình')
 
-    const [target, reporter] = await Promise.all([
+    const [{ ownerId, ...target }, reporter] = await Promise.all([
       targetOf(input, actor.id),
       userRepository.findById(actor.id),
     ])
     if (!reporter) throw new NotFoundError('User not found')
+    // Chặn tự báo cáo tin của mình ở đây, cạnh chốt "tự báo cáo chính mình" — cùng một trò: tự tố để
+    // kéo người duyệt vào, hoặc để xoá dấu vết bằng `hide_target`.
+    if (ownerId === actor.id) throw new BadRequestError('Không tự báo cáo tin của mình')
 
     try {
       const report = await reportRepository.create({
@@ -160,13 +232,18 @@ export const reportService = {
   },
 
   /** Hàng đợi theo scope đã dựng ở `requireReportReader` — plugin lo việc lọc hai trục. */
-  async list(query: ReportQuery) {
+  async list(query: ReportQuery, viewerId: string) {
     const pagination = parsePagination(query)
     const { items, total } = await reportRepository.paginate(query.status, pagination)
-    const counts = await reportRepository.countsByTarget(items.map((r) => r.targetId))
+    const [counts, owned] = await Promise.all([
+      reportRepository.countsByTarget(items.map((r) => r.targetId)),
+      ownedTargets(items, viewerId),
+    ])
 
     return {
-      items: items.map((r) => toDto(r, counts.get(r.targetId.toString()) ?? 1)),
+      items: items.map((r) =>
+        toDto(r, counts.get(r.targetId.toString()) ?? 1, owned.has(r.targetId.toString())),
+      ),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },
@@ -186,10 +263,41 @@ export const reportService = {
     const moderator = await userRepository.findById(actor.id)
     const byName = moderator?.name ?? 'Quản trị'
     const hideTarget = input.action === 'hide_target' && report.targetType === REPORT_TARGET.LISTING
+    const outcome = {
+      status: hideTarget ? REPORT_STATUS.RESOLVED : REPORT_STATUS.DISMISSED,
+      resolution: {
+        action: input.action,
+        byUserId: new Types.ObjectId(actor.id),
+        byName,
+        at: new Date(),
+      },
+    }
+
+    /*
+     * NHẬN XỬ trước mọi side-effect. Phép kiểm `status !== OPEN` ở trên chỉ chặn lượt gọi TUẦN
+     * TỰ: hai moderator cùng bấm thì cả hai đọc được `open`, cùng qua cửa, cùng ẩn tin và cùng
+     * trừ uy tín — người bán mất hai bậc cho một báo cáo. CAS trên `status: open` là cửa chỉ
+     * một người lọt; người kia nhận 409 và không chạy tiếp.
+     */
+    const claimed = await reportRepository.claimOpen(report._id, outcome)
+    if (!claimed) throw new ConflictError('Báo cáo vừa được người khác xử lý — tải lại rồi xem')
+
     /** Bậc uy tín sau khi trừ — chỉ có khi báo cáo được xác minh. Dùng cho dòng nhật ký. */
     let trust: TrustState | null = null
 
-    if (hideTarget) {
+    // Trạng thái TRƯỚC khi ẩn — `applyTakedownPenalty` cần nó để biết tin đã từng lên bảng chưa.
+    // Đọc SAU khi đã nhận xử, và đọc kể cả tin đã xoá: báo cáo mồ côi vẫn phải đóng được.
+    const before = hideTarget
+      ? await listingService.getForModeration(report.targetId.toString(), { withDeleted: true })
+      : null
+    // Tin đã xoá, đã từ chối, hay đang ẩn thì không còn gì để ẩn — máy trạng thái của
+    // `setModerationStatus` sẽ từ chối, mà báo cáo thì vẫn phải đóng được. Chỉ ĐÓNG, không phạt.
+    const canHide =
+      before !== null &&
+      !before.deletedAt &&
+      MODERATION_TRANSITIONS[LISTING_STATUS.HIDDEN].includes(before.status)
+
+    if (hideTarget && before && canHide) {
       // `grants` là bắt buộc: `setModerationStatus` tự chốt phạm vi duyệt theo TRỤC của tin —
       // cùng phép kiểm `assertCanResolve` vừa làm, giữ lại vì đây là hàm public có caller khác.
       const hidden = await listingService.setModerationStatus(
@@ -204,45 +312,61 @@ export const reportService = {
       )
 
       /*
-       * Uy tín trừ ở ĐÂY chứ không ở `applyTrustEffect`.
+       * Uy tín trừ ở ĐÂY chứ không ở `applyTrustEffect` (hàm đó cố tình bỏ qua `hidden`: ẩn tin
+       * là thao tác vận hành). Ẩn vì một báo cáo ĐÃ ĐƯỢC XÁC MINH thì khác — tin đã lọt qua
+       * kiểm duyệt, tới tay người mua, rồi mới bị chính họ tố giác.
        *
-       * `applyTrustEffect` cố tình bỏ qua trạng thái `hidden`: ẩn tin là thao tác vận hành,
-       * có thể vì lý do ngoài lỗi người đăng. Nhưng ẩn vì một báo cáo ĐÃ ĐƯỢC XÁC MINH thì
-       * khác hẳn — đó là kết luận "người này làm sai", và là loại vi phạm nguy hiểm nhất:
-       * tin đã lọt qua kiểm duyệt, đã tới tay người mua, rồi mới bị chính họ tố giác.
+       * Nhưng đi qua `applyTakedownPenalty` chứ không `record` thẳng: cửa `hide_target` mở cho cả
+       * quản trị nhóm với tin sàn mang badge nhóm (`canTakedownListing`), mà án uy tín trên toàn
+       * sàn thì chỉ người có quyền DUYỆT trục đó mới ghi được. Bản trước để nhóm tự báo cáo rồi
+       * tự gỡ là hạ bậc bất kỳ ai từng đăng dưới tên nhóm.
        *
-       * Không sợ trừ hai lần: `resolveAllForTarget` đóng mọi báo cáo còn mở của cùng một tin
-       * trong một lượt, và lượt gọi thứ hai bị chặn ngay ở `status !== OPEN` phía trên.
+       * Không sợ trừ hai lần: cùng một báo cáo thì `claimOpen` ở trên chỉ cho một người qua; hai
+       * báo cáo KHÁC NHAU về cùng một tin thì `before` đọc sau khi nhận xử, nên hoặc thấy tin đã
+       * `hidden` (không phạt), hoặc thua CAS trong `setModerationStatus` (409, chưa kịp phạt).
+       * `resolveAllForTarget` bên dưới đóng nốt các báo cáo còn mở của cùng tin trong một lượt.
        */
-      trust = await trustRepository.record(hidden.seller, false)
+      trust = await applyTakedownPenalty(hidden, actor, before.status)
+
+      // Người bán phải biết tin mình vừa biến mất vì sao — nhất là khi họ vừa bị trừ bậc. Bản
+      // trước đi thẳng `setModerationStatus` nên bỏ qua `notifyPoster` mà bàn duyệt vẫn gọi.
+      await notifyPoster(hidden, LISTING_STATUS.HIDDEN, `Bị báo cáo: ${report.kind}`)
     }
 
-    await reportRepository.resolveAllForTarget(report.targetId, report.organizationId, {
-      status: hideTarget ? REPORT_STATUS.RESOLVED : REPORT_STATUS.DISMISSED,
-      resolution: {
-        action: input.action,
-        byUserId: new Types.ObjectId(actor.id),
-        byName,
-        at: new Date(),
-      },
+    await reportRepository.resolveAllForTarget(report.targetId, report.organizationId, outcome)
+
+    /*
+     * Người báo cáo được biết kết quả (audit 2.3): họ là người duy nhất trong vòng này không có
+     * màn nào để tự xem — người bán thấy tin mình biến mất, bàn duyệt thấy hàng đợi vơi đi, còn
+     * người tố thì chỉ thấy im lặng và lần sau không báo nữa. Không nêu án uy tín của người bán.
+     */
+    await notificationService.notifyUser({
+      organizationId: report.organizationId,
+      userId: report.reporterId,
+      push: { category: PUSH_CATEGORY.REPORT, path: null },
+      title: hideTarget ? REPORTER_NOTICE.RESOLVED.title : REPORTER_NOTICE.DISMISSED.title,
+      body: (hideTarget ? REPORTER_NOTICE.RESOLVED : REPORTER_NOTICE.DISMISSED).body(
+        report.targetTitle,
+      ),
     })
 
     await recordAudit(
       { id: actor.id, name: byName },
       {
         action: hideTarget ? AUDIT_ACTION.REPORT_RESOLVE : AUDIT_ACTION.REPORT_DISMISS,
+        // Đuôi uy tín chỉ xuất hiện khi lượt gỡ THẬT SỰ ghi án — in "bậc 0" cho lượt không phạt
+        // là nói với quản trị nhóm rằng họ vừa hạ bậc ai đó, trong khi họ không có quyền đó.
         summary: hideTarget
-          ? `Gỡ "${report.targetTitle}" sau báo cáo · uy tín bậc ${trust?.level ?? 0}`
+          ? `Gỡ "${report.targetTitle}" sau báo cáo${trustNote(trust)}`
           : `Bỏ qua báo cáo về "${report.targetTitle}"`,
-        targetType: 'report',
+        targetType: AUDIT_TARGET.REPORT,
         targetId: report._id,
       },
-      // Trục công khai (`null`) thì `recordAudit` chỉ ghi logger: `AuditLog` chưa dual-axis —
-      // cùng hạng mục nợ trong v2-org-permission.plan.md, không phải việc của báo cáo.
+      // Trục công khai (`null`) ghi dưới `organizationId: null` — `AuditLog` dual-axis (audit 1.13).
       report.organizationId,
     )
 
-    const updated = await reportRepository.findByIdForModeration(id)
-    return toDto(updated!, 0)
+    const owned = await ownedTargets([claimed], actor.id)
+    return toDto(claimed, 0, owned.has(claimed.targetId.toString()))
   },
 }

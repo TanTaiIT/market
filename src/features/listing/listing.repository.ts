@@ -3,17 +3,31 @@ import { Listing, IListing, IListingDocument } from './listing.model'
 import { AttrQuery, ListingQuery } from './listing.schema'
 import { PaginationParams } from '../../common/utils/pagination'
 import {
+  type CascadeHideKind,
+  IN_ORG_REACHES,
   LISTING_STATUS,
+  LIVE_LISTING_STATUSES,
   MODERATABLE_STATUSES,
   LISTING_REACH,
+  PUBLIC_LISTING_STATUSES,
   REPORT_TIMEZONE,
   ListingStatus,
+  REJECTION_SEVERITY,
+  MODERATION_HISTORY_MAX,
 } from '../../common/constants'
 
 import { runUnscoped } from '../../common/tenant/tenantContext'
 
 /** Hai trạng thái đều là 'đang chiếm một slot của hàng đợi duyệt'. */
 const PENDING_STATUSES = [LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIFIED]
+
+/**
+ * Ảnh của tin xoá mềm được giữ thêm chừng này ngày (audit 4.8): xoá mềm là để còn khôi phục, mà
+ * job dọn ảnh coi tin đó như không tồn tại thì sau 2 ngày ảnh mất thật, khôi phục thành tin trắng.
+ */
+const SOFT_DELETE_IMAGE_GRACE_DAYS = 30
+const softDeleteImageGraceCutoff = () =>
+  new Date(Date.now() - SOFT_DELETE_IMAGE_GRACE_DAYS * 24 * 60 * 60 * 1000)
 
 /** `status` không nằm trong query schema công khai — chỉ caller nội bộ mới được ép. */
 export type ListingFilterParams = Partial<ListingQuery> & { status?: ListingStatus }
@@ -23,6 +37,7 @@ export interface ModerationFilter {
   status?: ListingStatus
   category?: string
   q?: string
+  seller?: string
 }
 
 function escapeRegex(input: string): string {
@@ -82,9 +97,13 @@ export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDo
   if (params.ward) filter['location.ward'] = params.ward
 
   if (params.minPrice != null || params.maxPrice != null) {
+    // Kéo hai đầu thanh giá ngược nhau thì hiểu theo ý người dùng, không 400 (audit 1.15).
+    const both = params.minPrice != null && params.maxPrice != null
+    const lo = both ? Math.min(params.minPrice!, params.maxPrice!) : params.minPrice
+    const hi = both ? Math.max(params.minPrice!, params.maxPrice!) : params.maxPrice
     filter.price = {}
-    if (params.minPrice != null) filter.price.$gte = params.minPrice
-    if (params.maxPrice != null) filter.price.$lte = params.maxPrice
+    if (lo != null) filter.price.$gte = lo
+    if (hi != null) filter.price.$lte = hi
   }
 
   // ponytail: regex thay cho $text vì text index không sống chung được với scope nhiều org
@@ -96,6 +115,20 @@ export function buildFilter(params: ListingFilterParams): FilterQuery<IListingDo
   }
 
   return filter
+}
+
+/**
+ * Ẩn hàng loạt bằng PIPELINE update: `restoreTo` chụp TRẠNG THÁI TRƯỚC của từng tin trong cùng
+ * một lượt ghi, để đường đảo ngược (`restoreCascaded`) trả tin chờ về chờ, tin hiện về hiện —
+ * không đoán. `moderation` ghi đè cả object; tin bàn duyệt đã ẩn từ trước không nằm trong bộ lọc
+ * (không còn LIVE) nên không bị đụng.
+ */
+function cascadeHidePipeline(moderation: IListing['moderation']) {
+  return [
+    {
+      $set: { status: LISTING_STATUS.HIDDEN, moderation: { ...moderation, restoreTo: '$status' } },
+    },
+  ]
 }
 
 export const listingRepository = {
@@ -148,7 +181,7 @@ export const listingRepository = {
         seller: sellerId,
         status: LISTING_STATUS.REJECTED,
         'moderation.at': { $gte: since },
-        'moderation.severity': { $ne: 'quality' },
+        'moderation.severity': { $ne: REJECTION_SEVERITY.QUALITY },
       })
         .sort({ 'moderation.at': -1 })
         .select('moderation.at')
@@ -174,9 +207,9 @@ export const listingRepository = {
           seller: sellerId,
           status: LISTING_STATUS.REJECTED,
           'moderation.at': { $gte: since },
-          'moderation.severity': { $ne: 'quality' },
+          'moderation.severity': { $ne: REJECTION_SEVERITY.QUALITY },
         },
-        { $set: { 'moderation.severity': 'quality' } },
+        { $set: { 'moderation.severity': REJECTION_SEVERITY.QUALITY } },
       ).exec(),
     )
     return res.modifiedCount
@@ -194,7 +227,7 @@ export const listingRepository = {
         'moderation.at': { $gte: since },
         // `$ne` chứ không `$eq: violation`: tin bị từ chối TRƯỚC ngày phân mức không có
         // field này, và ân xá ngược cho chúng là tự xoá lịch sử vi phạm.
-        'moderation.severity': { $ne: 'quality' },
+        'moderation.severity': { $ne: REJECTION_SEVERITY.QUALITY },
       }).exec(),
     )
   },
@@ -214,7 +247,10 @@ export const listingRepository = {
    * mảng id truyền vào, và đó là hành vi ĐÚNG: tin đã gỡ không hiện lại chỉ vì ai đó từng lưu.
    */
   findByIds(ids: Types.ObjectId[]) {
-    return Listing.find({ _id: { $in: ids } })
+    // Cùng luật với `getForViewer`: tin đã ẩn/từ chối/đang chờ không hiện trong "Tin đã lưu".
+    // Nhánh org của scope không kẹp `status` (bàn duyệt cần thấy đủ), nên thành viên gửi
+    // `X-Org-Id` từng thấy cả tin `hidden` của nhóm — kèm lý do ẩn — chỉ vì đã từng bấm tim.
+    return Listing.find({ _id: { $in: ids }, status: { $in: PUBLIC_LISTING_STATUSES } })
   },
 
   async paginate(params: ListingFilterParams, { skip, limit }: PaginationParams) {
@@ -280,9 +316,18 @@ export const listingRepository = {
    *
    * Người gọi phải bọc `runUnscoped` — xem `listingExpiryService.sweep`.
    */
-  async expireDue(now: Date): Promise<number> {
+  /** Tin tới hạn — trả về danh sách để job BÁO cho người bán trước khi hạ (audit 1.20/4.9). */
+  findDue(now: Date) {
+    return Listing.find({ status: LISTING_STATUS.ACTIVE, expiresAt: { $lte: now } })
+      .select('_id seller title organizationId')
+      .lean()
+      .exec()
+  },
+
+  async expireByIds(ids: Types.ObjectId[]): Promise<number> {
+    if (ids.length === 0) return 0
     const res = await Listing.updateMany(
-      { status: LISTING_STATUS.ACTIVE, expiresAt: { $lte: now } },
+      { _id: { $in: ids }, status: LISTING_STATUS.ACTIVE },
       { $set: { status: LISTING_STATUS.EXPIRED } },
     ).exec()
     return res.modifiedCount
@@ -290,6 +335,23 @@ export const listingRepository = {
 
   updateById(id: string, update: Partial<IListing>) {
     return Listing.findByIdAndUpdate(id, update, { new: true, runValidators: true })
+  },
+
+  /**
+   * Ghi có CHỐT trạng thái — compare-and-set cho bàn duyệt. Người bấm sau khi tin đã đổi tay
+   * (một moderator khác vừa xử, máy vừa duyệt) khớp 0 document và nhận `null`, thay vì đè lên
+   * phán quyết vừa ghi. Cùng cơ chế với `applyMachineVerdict` nhưng cho người thật.
+   */
+  updateByIdIfStatus(id: string, expected: ListingStatus, update: Partial<IListing>) {
+    return Listing.findOneAndUpdate({ _id: id, status: expected }, update, {
+      new: true,
+      runValidators: true,
+    })
+  },
+
+  /** Đọc KỂ CẢ tin đã xoá mềm — cho báo cáo về một tin không còn: vẫn phải xét được trục để đóng. */
+  findByIdWithDeleted(id: string) {
+    return Listing.findById(id).setOptions({ withDeleted: true })
   },
 
   /**
@@ -333,17 +395,183 @@ export const listingRepository = {
    * Ẩn cả tin CHỜ DUYỆT chứ không riêng tin đang hiển thị: để chúng lại là hàng đợi của người
    * duyệt vẫn đầy rác của một tài khoản đã khoá.
    */
+  /** `_id` mọi tin còn sống của một người — để đóng báo cáo về chúng trước khi ẩn hàng loạt. */
+  liveIdsBySeller(sellerId: Types.ObjectId): Promise<Types.ObjectId[]> {
+    return runUnscoped('lock account: liệt kê tin còn sống để đóng báo cáo', () =>
+      Listing.find({
+        seller: sellerId,
+        status: { $in: LIVE_LISTING_STATUSES },
+      })
+        .select('_id')
+        .lean()
+        .exec()
+        .then((rows) => rows.map((r) => r._id)),
+    )
+  },
+
   hideAllBySeller(sellerId: Types.ObjectId, moderation: IListing['moderation']) {
     return runUnscoped('lock account: hide every live listing of the locked user', () =>
       Listing.updateMany(
+        { seller: sellerId, status: { $in: LIVE_LISTING_STATUSES } },
+        cascadeHidePipeline(moderation),
+      ).exec(),
+    )
+  },
+
+  /**
+   * Tin đang sống của một người trên MỌI trục — trần theo bậc uy tín là trần cho CON NGƯỜI, không
+   * cho một nhóm hay một danh mục. Chỉ ra một con số nên bỏ scope là hợp lệ, cùng lý do
+   * `countPendingInOrg`.
+   */
+  countLiveBySeller(sellerId: Types.ObjectId): Promise<number> {
+    return runUnscoped('quota: đếm tin đang sống của người này trên mọi trục', () =>
+      Listing.countDocuments({ seller: sellerId, status: { $in: LIVE_LISTING_STATUSES } }).exec(),
+    )
+  },
+
+  // ── RỜI / BỊ GỠ KHỎI NHÓM · NHÓM BỊ TẠM NGƯNG ──────────────────────────────
+  // Cascade chạy từ membership/organization service — không có scope của người bị ảnh hưởng,
+  // và nhánh GHI của plugin chỉ khớp `ownOrgId` của người bấm, nên phải unscoped (xem
+  // `demoteGroupOpen` cho cùng cái bẫy "updateMany khớp 0 dòng, không lỗi, không log").
+
+  /** `_id` tin còn sống mà người này đăng TRONG một nhóm (hai bậc trong nhóm, không tính tin sàn). */
+  liveInternalIdsBySellerInOrg(
+    sellerId: Types.ObjectId,
+    organizationId: Types.ObjectId,
+  ): Promise<Types.ObjectId[]> {
+    return runUnscoped('rời nhóm: liệt kê tin trong nhóm còn sống để đóng báo cáo', () =>
+      Listing.find({
+        seller: sellerId,
+        organizationId,
+        reach: { $in: IN_ORG_REACHES },
+        status: { $in: LIVE_LISTING_STATUSES },
+      })
+        .select('_id')
+        .lean()
+        .exec()
+        .then((rows) => rows.map((r) => r._id)),
+    )
+  },
+
+  hideAllBySellerInOrg(
+    sellerId: Types.ObjectId,
+    organizationId: Types.ObjectId,
+    moderation: IListing['moderation'],
+  ) {
+    return runUnscoped('rời nhóm: ẩn tin trong nhóm của người không còn trong nhóm', () =>
+      Listing.updateMany(
         {
           seller: sellerId,
-          status: {
-            $in: [LISTING_STATUS.ACTIVE, LISTING_STATUS.PENDING, LISTING_STATUS.PENDING_UNVERIFIED],
-          },
+          organizationId,
+          reach: { $in: IN_ORG_REACHES },
+          status: { $in: LIVE_LISTING_STATUSES },
         },
-        { status: LISTING_STATUS.HIDDEN, moderation },
+        cascadeHidePipeline(moderation),
       ).exec(),
+    )
+  },
+
+  /**
+   * Nhóm bị tạm ngưng: tin trong nhóm ĐANG HIỆN ẩn hết. Chỉ `ACTIVE`, không đụng tin chờ — tin
+   * chờ vốn không ai thấy, và giữ nguyên trạng thái là thứ cho phép mở lại nhóm mà không phải
+   * đoán tin nào từng chờ, tin nào từng hiện.
+   */
+  hideActiveInOrg(
+    organizationId: Types.ObjectId,
+    moderation: IListing['moderation'],
+  ): Promise<number> {
+    return runUnscoped('nhóm tạm ngưng: ẩn tin trong nhóm đang hiện', async () => {
+      const res = await Listing.updateMany(
+        { organizationId, reach: { $in: IN_ORG_REACHES }, status: LISTING_STATUS.ACTIVE },
+        cascadeHidePipeline(moderation),
+      ).exec()
+      return res.modifiedCount
+    })
+  },
+
+  /**
+   * Mở lại nhóm: trả về bảng ĐÚNG LÔ tin mà lượt tạm ngưng đã ẩn — nhận ra bằng `moderation.reason`
+   * cố định. Tin bàn duyệt ẩn vì lý do khác trong lúc nhóm ngưng thì không được hồi sinh theo.
+   * Tin quá `expiresAt` trong lúc ẩn sẽ được `listing-expiry` hạ xuống ở lượt quét kế.
+   */
+  /** Danh mục tạm đóng: tin đang hiện trong đó ẩn hết, mọi trục — bày hàng ở gian đã dỡ biển (audit 1.20). */
+  hideActiveInCategory(
+    categoryId: Types.ObjectId,
+    moderation: IListing['moderation'],
+  ): Promise<number> {
+    return runUnscoped('danh mục tạm đóng: ẩn tin đang hiện trong danh mục', async () => {
+      const res = await Listing.updateMany(
+        { category: categoryId, status: LISTING_STATUS.ACTIVE },
+        cascadeHidePipeline(moderation),
+      ).exec()
+      return res.modifiedCount
+    })
+  },
+
+  /**
+   * Đảo ngược ĐÚNG LÔ cascade: về trạng thái đã chụp ở `restoreTo`, sạch `moderation`. Tin bàn
+   * duyệt ẩn vì lý do khác (không có dấu) không hồi sinh theo; tin quá `expiresAt` trong lúc ẩn
+   * sẽ được `listing-expiry` hạ ở lượt quét kế.
+   */
+  restoreCascaded(
+    filter: FilterQuery<IListingDocument>,
+    cascade: CascadeHideKind,
+  ): Promise<number> {
+    return runUnscoped('cascade: trả tin về trạng thái trước khi bị ẩn hàng loạt', async () => {
+      const res = await Listing.updateMany(
+        {
+          ...filter,
+          status: LISTING_STATUS.HIDDEN,
+          'moderation.cascade': cascade,
+          'moderation.restoreTo': { $exists: true },
+        },
+        [{ $set: { status: '$moderation.restoreTo' } }, { $unset: 'moderation' }],
+      ).exec()
+      return res.modifiedCount
+    })
+  },
+
+  /** Ghi ô mới; `clearTemplate` gỡ `templateRef` cũ khi bộ thuộc tính không khớp template mới. */
+  reroute(id: string, update: Partial<IListing>, clearTemplate: boolean) {
+    return runUnscoped('reroute: ghi ô mới, quyền là master trục công khai', () =>
+      Listing.findByIdAndUpdate(
+        id,
+        { $set: update, ...(clearTemplate ? { $unset: { templateRef: 1 } } : {}) },
+        { new: true, runValidators: true },
+      ).exec(),
+    )
+  },
+
+  /** `seller` của nhiều tin, kể cả đã xoá — cho hàng đợi báo cáo che tên người tố với chính chủ (audit 2.4). */
+  sellersOf(ids: Types.ObjectId[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return Promise.resolve(new Map())
+    return runUnscoped('report: tra chủ tin để che tên người tố với chính chủ', () =>
+      Listing.find({ _id: { $in: ids } })
+        .setOptions({ withDeleted: true })
+        .select('seller')
+        .lean()
+        .exec()
+        .then((rows) => new Map(rows.map((r) => [r._id.toString(), r.seller.toString()]))),
+    )
+  },
+
+  /** Nối một dòng vào lịch sử duyệt, giữ `MODERATION_HISTORY_MAX` dòng mới nhất (audit 1.13). */
+  appendModerationHistory(
+    id: Types.ObjectId | string,
+    entry: NonNullable<IListing['moderationHistory']>[number],
+  ) {
+    return runUnscoped('lịch sử duyệt: nối dòng cho tin vừa đổi trạng thái', () =>
+      Listing.updateOne(
+        { _id: id },
+        { $push: { moderationHistory: { $each: [entry], $slice: -MODERATION_HISTORY_MAX } } },
+      ).exec(),
+    )
+  },
+
+  /** Tin đã tạo với cùng `Idempotency-Key` của cùng người bán — trả lại thay vì đăng đôi (audit 1.18). */
+  findBySellerAndKey(sellerId: Types.ObjectId, idempotencyKey: string) {
+    return runUnscoped('đăng tin: tra khoá chống đăng đôi của chính chủ', () =>
+      Listing.findOne({ seller: sellerId, idempotencyKey }).exec(),
     )
   },
 
@@ -618,13 +846,15 @@ export const listingRepository = {
    * hiển thị" thay vì "mọi trạng thái" — đúng ngược với thứ tab "Tất cả" của bàn duyệt cần.
    */
   async paginateForModeration(
-    { status, category, q }: ModerationFilter,
+    { status, category, q, seller }: ModerationFilter,
     { skip, limit }: PaginationParams,
   ) {
     const filter: FilterQuery<IListingDocument> = {
       status: status ?? { $in: [...MODERATABLE_STATUSES] },
     }
     if (category) filter.category = new Types.ObjectId(category)
+    // Đi trọn index `{ organizationId, seller, status, … }` (có scope org) hoặc `{ seller, createdAt }`.
+    if (seller) filter.seller = new Types.ObjectId(seller)
     if (q) {
       const term = new RegExp(escapeRegex(q), 'i')
       // Cả tên người đăng: quản trị thường lần theo một người bán đáng ngờ, không nhớ đúng tiêu
@@ -742,7 +972,13 @@ export const listingRepository = {
    */
   async allImageRefs(): Promise<string[]> {
     const rows = await runUnscoped('image cleanup: gom URL ảnh của mọi tin', () =>
-      Listing.find().select('images posterAvatar').lean().exec(),
+      Listing.find({
+        $or: [{ deletedAt: null }, { deletedAt: { $gte: softDeleteImageGraceCutoff() } }],
+      })
+        .setOptions({ withDeleted: true })
+        .select('images posterAvatar')
+        .lean()
+        .exec(),
     )
     return rows.flatMap((r) => [...r.images, r.posterAvatar])
   },

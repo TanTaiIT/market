@@ -1,11 +1,12 @@
 import { Types } from 'mongoose'
+import { roleGrantService } from '../role-grant/role-grant.service'
 import { notificationRepository } from './notification.repository'
 import type { ManagedAudience } from './notification.repository'
 import { CreateNotificationInput, NotificationQuery } from './notification.schema'
 import { toNotificationDto } from './notification.types'
 import { canModerateOrg } from '../../common/authz/policy'
-import { LISTING_REACH, SCOPE_TYPES } from '../../common/constants'
-import type { ListingReach } from '../../common/constants'
+import { LISTING_REACH, PUSH_CATEGORY, SCOPE_TYPES } from '../../common/constants'
+import type { ListingReach, PushCategory } from '../../common/constants'
 import type { Grant } from '../../common/authz/policy'
 import type { OrgActor } from '../../common/utils/actor'
 import { membershipRepository } from '../membership/membership.repository'
@@ -14,6 +15,7 @@ import { userRepository } from '../user/user.repository'
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToOrgMembers, emitToUser } from '../../sockets/emit'
+import { pushService } from '../push/push.service'
 
 /**
  * Tên sự kiện realtime của hộp thư. Payload cố ý chỉ có mốc thời gian: client nghe xong thì
@@ -23,7 +25,7 @@ import { emitToOrgMembers, emitToUser } from '../../sockets/emit'
 const NOTIF_EVENT = 'notif:new'
 
 /** Người đọc hộp thư. `organizationId` chỉ còn dùng cho `scope=managed` (bàn quản trị). */
-type Viewer = { id: string; organizationId: string | null; grants: Grant[] }
+type Viewer = { id: string; organizationId: string | null; grants?: Grant[] }
 
 /*
  * Hộp thư đọc từ MỌI nhóm người ta tham gia — xem `list` bên dưới, nơi nó được dựng.
@@ -46,7 +48,9 @@ type Viewer = { id: string; organizationId: string | null; grants: Grant[] }
  * điều kiện nhóm. Còn staff nhóm con chỉ thấy phần trong tầm với của họ, đúng bằng thứ họ gửi
  * được, nên bàn quản trị không thành đường vòng đọc thông báo của nhóm khác.
  */
-async function managedAudience(viewer: Viewer): Promise<ManagedAudience | null> {
+async function managedAudience(
+  viewer: Viewer & { grants: Grant[] },
+): Promise<ManagedAudience | null> {
   const { organizationId } = viewer
   if (!organizationId) return null
 
@@ -123,11 +127,36 @@ export const notificationService = {
     })
 
     /*
-     * Phát cho cả nhóm. KHÔNG loại người soạn: khác `notifyGroupOfListing`, thông báo do quản
-     * trị soạn cũng gửi TỚI họ (họ là thành viên, và `paginateInbox` không loại vì dòng này
-     * không mang `actorId`). Loại họ ở đây sẽ làm chuông im trong khi hộp thư có thêm một dòng.
+     * Phát cho đúng NGƯỜI NHẬN. Cấp tổ chức → phòng của cả org. Nhóm con → từng thành viên của
+     * nhóm con (audit 4.6): bản trước gõ chuông cả org cho một tin chỉ nhóm con đọc được, người
+     * ngoài nhóm con mở hộp thư ra chẳng thấy gì mới. KHÔNG loại người soạn: khác
+     * `notifyGroupOfListing`, thông báo do quản trị soạn cũng gửi TỚI họ (họ là thành viên, và
+     * `paginateInbox` không loại vì dòng này không mang `actorId`).
      */
-    emitToOrgMembers(actor.organizationId, NOTIF_EVENT, { at: new Date().toISOString() })
+    const at = new Date().toISOString()
+    const memberIds = unitId
+      ? await membershipRepository.listActiveUserIdsByUnit(
+          new Types.ObjectId(actor.organizationId),
+          new Types.ObjectId(unitId),
+        )
+      : await membershipRepository.listActiveUserIdsByOrg(actor.organizationId)
+    if (unitId) {
+      for (const id of memberIds) emitToUser(id.toString(), NOTIF_EVENT, { at })
+    } else {
+      emitToOrgMembers(actor.organizationId, NOTIF_EVENT, { at })
+    }
+    // Push loại người soạn: họ vừa bấm gửi, rung máy chính họ là nhiễu (hộp thư thì vẫn có dòng).
+    await pushService.notify(
+      memberIds,
+      {
+        category: PUSH_CATEGORY.GROUP_NOTICE,
+        title: input.title,
+        body: input.body,
+        path: null,
+        notificationId: notification._id.toString(),
+      },
+      { exceptUserId: actor.id },
+    )
     return notification
   },
 
@@ -142,7 +171,10 @@ export const notificationService = {
     const pagination = parsePagination(query)
 
     if (query.scope === 'managed') {
-      const audience = await managedAudience(viewer)
+      // Chỉ nạp grant khi thật sự cần: `inbox` quyết định phạm vi bằng membership, nạp grant cho
+      // nó là một truy vấn thừa trên đúng đường đi nóng nhất của màn thông báo.
+      const grants = viewer.grants ?? (await roleGrantService.grantsOf(viewer.id))
+      const audience = await managedAudience({ ...viewer, grants })
       // Không quản lý dòng nào thì trả trang RỖNG, không phải 403: `scope` là tham số của một
       // route ai cũng gọi được, và 403 ở đây sẽ làm màn thông báo thường vỡ nếu client gõ nhầm.
       if (!audience) {
@@ -253,6 +285,18 @@ export const notificationService = {
       },
       { exceptUserId: listing.seller.toString() },
     )
+    // `group_activity` tắt theo mặc định — `notify` chỉ ghi cho người đã tự bật (xem push.policy).
+    await pushService.notify(
+      await membershipRepository.listActiveUserIdsByOrg(listing.organizationId),
+      {
+        category: PUSH_CATEGORY.GROUP_ACTIVITY,
+        title: notification.title,
+        body: notification.body,
+        path: `/listing/${listing._id}`,
+        notificationId: notification._id.toString(),
+      },
+      { exceptUserId: listing.seller },
+    )
     return notification
   },
 
@@ -276,9 +320,21 @@ export const notificationService = {
     userId: Types.ObjectId
     title: string
     body: string
+    /**
+     * BẮT BUỘC về kiểu, để call site mới không quên quyết định "sự kiện này có đáng làm phiền
+     * người ta không, và chạm vào thì mở màn nào". `path: null` = mở hộp thư.
+     */
+    push: { category: PushCategory; path: string | null }
   }) {
-    const notification = await notificationRepository.createForUser(input)
+    const { push, ...row } = input
+    const notification = await notificationRepository.createForUser(row)
     emitToUser(input.userId.toString(), NOTIF_EVENT, { at: new Date().toISOString() })
+    await pushService.notify([input.userId], {
+      ...push,
+      title: input.title,
+      body: input.body,
+      notificationId: notification._id.toString(),
+    })
     return notification
   },
 
@@ -295,20 +351,37 @@ export const notificationService = {
     const existing = await notificationRepository.findById(id)
     if (!existing) throw new NotFoundError('Notification not found')
 
+    /*
+     * Người bấm phải nằm trong ĐỐI TƯỢNG NHẬN — cùng luật `paginateInbox` dùng để liệt kê: đích
+     * danh thì đúng người, phát chung thì đang là thành viên nhóm đó (đúng nhóm con nếu có) và
+     * vào nhóm trước khi thông báo ra đời.
+     *
+     * Bản trước chỉ `findById` rồi trả DTO. ObjectId đoán được (timestamp + counter), nên bất kỳ
+     * ai đăng nhập cũng đọc được `title`/`body` thông báo riêng của người khác — số dư ví, lý do
+     * khoá tài khoản, lý do từ chối tin. 404 chứ không 403: không xác nhận thông báo đó tồn tại.
+     */
+    const membership = existing.organizationId
+      ? await membershipRepository.findActive(userId, existing.organizationId)
+      : null
+    const inAudience = existing.userId
+      ? existing.userId.equals(viewerId)
+      : membership !== null &&
+        membership.joinedAt <= existing.createdAt &&
+        (!existing.unitId ||
+          (membership.unitId !== null && existing.unitId.equals(membership.unitId)))
+    if (!inAudience) throw new NotFoundError('Notification not found')
+
     if (existing.actorId && existing.organizationId) {
       await membershipRepository.markNotificationsSeen(
         viewerId,
         existing.organizationId,
         existing.createdAt,
       )
-      // Đọc lại mốc vừa ghi thay vì tự dựng: người bấm có thể KHÔNG còn là thành viên nhóm đó
-      // (vừa rời nhóm), lúc ấy `updateOne` không khớp gì và mốc phải giữ nguyên `null`.
-      const membership = await membershipRepository.findActive(userId, existing.organizationId)
+      // `membership` ở trên là bản TRƯỚC khi đẩy mốc — đọc lại để trả đúng mốc vừa ghi.
+      const fresh = await membershipRepository.findActive(userId, existing.organizationId)
       return toNotificationDto(existing, {
         id: userId,
-        seenAt: new Map([
-          [existing.organizationId.toString(), membership?.notificationsSeenAt ?? null],
-        ]),
+        seenAt: new Map([[existing.organizationId.toString(), fresh?.notificationsSeenAt ?? null]]),
       })
     }
 

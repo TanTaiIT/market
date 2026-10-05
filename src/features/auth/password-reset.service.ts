@@ -1,8 +1,9 @@
 import { CODE_PURPOSE } from './email-verification.model'
-import { sendPasswordResetCode } from './email.sender'
+import { mailEnabled, sendPasswordResetCode } from './email.sender'
 import { consumeCode, dropCode, issueCode, issueTicket } from './verification-code.service'
 import { userRepository } from '../user/user.repository'
-import { BadRequestError } from '../../common/errors'
+import { roleGrantRepository } from '../role-grant/role-grant.repository'
+import { BadRequestError, ServiceUnavailableError } from '../../common/errors'
 import { logger } from '../../config/logger'
 
 /**
@@ -38,9 +39,31 @@ export const passwordResetService = {
    * với "không", vì thư chỉ đi khi tài khoản tồn tại. Lỗi thật vẫn nằm trong log.
    */
   async requestReset(email: string): Promise<void> {
+    // Mail tắt thì nói thẳng 503 cho MỌI địa chỉ (audit 3.8): im lặng 200 rồi không có mã nào tới
+    // là người dùng thật kẹt ngoài cửa mà tưởng mình gõ sai email. Cùng câu cho mọi email nên
+    // không dò được tài khoản.
+    if (!mailEnabled()) {
+      logger.error(
+        'password reset requested while mail is disabled — set GMAIL_USER/GMAIL_APP_PASSWORD',
+      )
+      throw new ServiceUnavailableError('Đặt lại mật khẩu tạm không khả dụng — liên hệ hỗ trợ')
+    }
+
     const user = await userRepository.findByEmail(email)
     if (!user || !user.isActive) {
       logger.info('password reset requested for unusable account', { email })
+      return
+    }
+
+    /*
+     * Master KHÔNG đi cửa công khai (quyết định 3.9): tài khoản này với tay tới mọi org, nên một
+     * hộp thư bị chiếm không được phép biến thành quyền master. Im lặng y hệt địa chỉ lạ — nói
+     * "đây là master" cũng là câu trả lời cho máy dò. Đổi mật khẩu master đi qua
+     * `npm run reset-master-password` với `MASTER_PASSWORD` mới, tức là cần quyền vào nơi deploy,
+     * đúng mức nghiêm trọng của việc đó.
+     */
+    if (await roleGrantRepository.isMasterUser(user._id)) {
+      logger.warn('password reset refused for master account', { userId: user._id.toString() })
       return
     }
 

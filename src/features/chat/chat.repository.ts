@@ -12,8 +12,22 @@ import { PaginationParams } from '../../common/utils/pagination'
  * quên bước đó là mở đường đọc hội thoại của người lạ bằng cách đoán id.
  */
 export const chatRepository = {
-  create(data: Partial<IConversation>) {
-    return Conversation.create(data)
+  /**
+   * Bấm "Nhắn tin" hai lần cùng lúc: cả hai lượt đọc "chưa có" rồi cùng tạo, unique index để đúng
+   * một bên thắng — bên thua đọc lại hội thoại vừa được tạo thay vì 500 (audit 4.5).
+   */
+  async create(data: Partial<IConversation>) {
+    try {
+      return await Conversation.create(data)
+    } catch (err) {
+      if ((err as { code?: number }).code !== 11000 || !data.listingId || !data.buyerId) throw err
+      const raced = await Conversation.findOne({
+        listingId: data.listingId,
+        buyerId: data.buyerId,
+      }).exec()
+      if (!raced) throw err
+      return raced
+    }
   },
 
   findById(id: string) {

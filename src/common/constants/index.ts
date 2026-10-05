@@ -146,11 +146,8 @@ export type ScopeType = (typeof SCOPE_TYPES)[keyof typeof SCOPE_TYPES]
  * `system` (master) KHÔNG thuộc trục nào: master phủ cả hai theo thiết kế, đó là vai vận hành
  * hệ thống chứ không phải một chân trong bàn duyệt.
  */
-export const ORG_AXIS_SCOPES: ScopeType[] = [SCOPE_TYPES.ORG, SCOPE_TYPES.ORG_UNIT]
-export const CATEGORY_AXIS_SCOPES: ScopeType[] = [
-  SCOPE_TYPES.CATEGORY_PROVINCE,
-  SCOPE_TYPES.CATEGORY_WARD,
-]
+const ORG_AXIS_SCOPES: ScopeType[] = [SCOPE_TYPES.ORG, SCOPE_TYPES.ORG_UNIT]
+const CATEGORY_AXIS_SCOPES: ScopeType[] = [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]
 
 export type GrantAxis = 'org' | 'category'
 
@@ -290,6 +287,20 @@ export const PUBLIC_LISTING_STATUSES: ListingStatus[] = [
 ]
 
 /**
+ * Tin ĐANG SỐNG của một người: đang hiện hoặc đang chờ lên. Đây là tập mà trần theo bậc uy tín
+ * đếm, mà khoá tài khoản / rời nhóm phải ẩn, và mà báo cáo còn nghĩa để xử — ba chỗ từng tự
+ * liệt kê ba mảng giống nhau.
+ */
+export const LIVE_LISTING_STATUSES: ListingStatus[] = [
+  LISTING_STATUS.ACTIVE,
+  LISTING_STATUS.PENDING,
+  LISTING_STATUS.PENDING_UNVERIFIED,
+]
+
+/** Hai bậc TRONG NHÓM — nội dung nhóm đứng tên, khác tin sàn chỉ mang badge nhóm. */
+export const IN_ORG_REACHES: ListingReach[] = [LISTING_REACH.MEMBERS, LISTING_REACH.GROUP_OPEN]
+
+/**
  * Bậc phủ sóng mà NGƯỜI LẠ đọc được. Đặt ngay cạnh `PUBLIC_LISTING_STATUSES` là có chủ ý: hai
  * mảng này cùng nhau là câu trả lời ĐẦY ĐỦ cho "một người không quan hệ gì với nhóm thấy được
  * gì", và tách chúng ra hai đầu file là cách để sửa một cái mà quên cái kia.
@@ -408,6 +419,84 @@ export const ACTION_BY_DECISION = {
 } as const
 export type ModerationDecision = keyof typeof ACTION_BY_DECISION
 
+/**
+ * Trạng thái TRƯỚC mà mỗi quyết định của bàn duyệt được phép đứng lên — máy trạng thái của
+ * `setModerationStatus`. Cùng-trạng-thái không nằm trong bảng: lớp ngoài coi là no-op (không
+ * uy tín, không báo, không nhật ký), vì bấm "duyệt" lần hai lên tin đang active từng cộng thêm
+ * một bài sạch mỗi lần bấm.
+ *
+ * `sold`/`expired` KHÔNG nhận `active`: hồi sinh tin đã bán là việc chủ tin đăng tin mới, còn
+ * tin hết hạn là `renew` của chính chủ — bàn duyệt không có việc gì với hai trạng thái đó ngoài
+ * ẩn. `rejected` không nhận `hidden`: tin đã bị từ chối không ở trên bảng để mà ẩn.
+ */
+export const MODERATION_TRANSITIONS: Record<ModerationDecision, readonly ListingStatus[]> = {
+  [LISTING_STATUS.ACTIVE]: [
+    LISTING_STATUS.PENDING,
+    LISTING_STATUS.PENDING_UNVERIFIED,
+    LISTING_STATUS.HIDDEN,
+    LISTING_STATUS.REJECTED,
+  ],
+  [LISTING_STATUS.REJECTED]: [
+    LISTING_STATUS.PENDING,
+    LISTING_STATUS.PENDING_UNVERIFIED,
+    LISTING_STATUS.ACTIVE,
+    LISTING_STATUS.HIDDEN,
+  ],
+  [LISTING_STATUS.HIDDEN]: [
+    LISTING_STATUS.PENDING,
+    LISTING_STATUS.PENDING_UNVERIFIED,
+    LISTING_STATUS.ACTIVE,
+    LISTING_STATUS.SOLD,
+    LISTING_STATUS.EXPIRED,
+  ],
+}
+
+/**
+ * Cách một báo cáo bị đóng KHÔNG do người duyệt bấm: đối tượng bị xoá/gỡ/ẩn hàng loạt trước khi
+ * ai kịp xử. Ghi vào `resolution.action` để phân biệt với `hide_target`/`ignore` của người thật.
+ */
+/** `targetType` của một dòng nhật ký duyệt — cùng từ vựng ở mọi call-site (audit 5.10). */
+export const AUDIT_TARGET = { LISTING: 'listing', REPORT: 'report' } as const
+
+export const REPORT_AUTO_RESOLUTION = {
+  TARGET_REMOVED: 'target_removed',
+} as const
+
+/**
+ * Lý do ẩn tin do HỆ THỐNG cascade — chuỗi cố định, vì đường phục hồi
+ * (`restoreHiddenInOrgByReason`) nhận ra lô tin mình đã ẩn bằng đúng chuỗi này. Người đăng đọc
+ * được nó qua `review` của tin, nên viết bằng ngôn ngữ của họ.
+ */
+export const CASCADE_HIDE_REASON = {
+  ORG_SUSPENDED: 'Nhóm đang bị tạm ngưng',
+  LEFT_ORG: 'Bạn đã rời nhóm',
+  REMOVED_FROM_ORG: 'Bạn đã bị gỡ khỏi nhóm',
+  ACCOUNT_DELETED: 'Tài khoản đã xoá',
+  CATEGORY_DISABLED: 'Danh mục đang tạm đóng',
+} as const
+
+/**
+ * LOẠI cascade đã ẩn tin — dấu máy đọc, khác `CASCADE_HIDE_REASON` là câu người đọc. Đường đảo
+ * ngược (mở khoá tài khoản, mở lại nhóm) nhận ra đúng lô của mình bằng dấu này, không bằng so
+ * chuỗi lý do — chuỗi thì có ngày đổi câu chữ.
+ */
+export const CASCADE_HIDE_KIND = {
+  ACCOUNT_LOCKED: 'account_locked',
+  ACCOUNT_DELETED: 'account_deleted',
+  ORG_SUSPENDED: 'org_suspended',
+  LEFT_ORG: 'left_org',
+  REMOVED_FROM_ORG: 'removed_from_org',
+  CATEGORY_DISABLED: 'category_disabled',
+} as const
+export type CascadeHideKind = (typeof CASCADE_HIDE_KIND)[keyof typeof CASCADE_HIDE_KIND]
+
+/**
+ * Số phiên refresh (thiết bị) giữ cho một tài khoản. Phiên thứ 21 đá phiên cũ nhất — và vì token
+ * của phiên bị đá không còn trong danh sách, lượt refresh từ máy đó bị xử như tái dùng (cắt mọi
+ * phiên). 20 là đủ rộng để chuyện đó chỉ xảy ra với tài khoản bị chia sẻ, không với người thật.
+ */
+export const REFRESH_SESSIONS_MAX = 20
+
 // Vết kiểm toán của thao tác quản trị. Tên dạng `<đối tượng>.<hành động>` để grep ra nhóm.
 export const AUDIT_ACTION = {
   LISTING_APPROVE: 'listing.approve',
@@ -432,6 +521,8 @@ export type AuditAction = (typeof AUDIT_ACTION)[keyof typeof AUDIT_ACTION]
  * Ngược lại thì mọi cú bấm từ chối đều trừng phạt, đúng cái bất công vừa sửa.
  */
 export const REJECTION_SEVERITIES = ['quality', 'violation'] as const
+/** Cùng giá trị với `REJECTION_SEVERITIES`, dạng object để call-site hết so chuỗi thô (audit 5.10). */
+export const REJECTION_SEVERITY = { QUALITY: 'quality', VIOLATION: 'violation' } as const
 export type RejectionSeverity = (typeof REJECTION_SEVERITIES)[number]
 
 /**
@@ -523,3 +614,48 @@ export const SOCIAL_FEEDBACK_STATUS = {
 } as const
 export type SocialFeedbackStatus =
   (typeof SOCIAL_FEEDBACK_STATUS)[keyof typeof SOCIAL_FEEDBACK_STATUS]
+
+/** Trần giá tin — chốt sanity, không phải luật giá: 999 tỷ là ngoài mọi món đồ cũ (audit 1.15). */
+export const LISTING_PRICE_MAX = 999_999_999_999
+
+/**
+ * Hộp thư giữ chừng này ngày rồi Mongo tự dọn qua TTL index (audit 4.6) — thông báo là tin của
+ * thời điểm, không phải hồ sơ. Prod: cần `sync-indexes:prod` để index có hiệu lực.
+ */
+export const NOTIFICATION_RETENTION_DAYS = 90
+
+/** Số dòng lịch sử duyệt giữ trên một tin (audit 1.13) — đủ cho một tranh chấp, không phình document. */
+export const MODERATION_HISTORY_MAX = 20
+
+/**
+ * Nhóm push (docs/architecture/push-notification.plan.md): mỗi nhóm là một công tắc ở màn cài
+ * đặt và một kênh Android riêng — người dùng chỉnh âm thanh/ưu tiên từng loại trong cài đặt hệ
+ * thống. Thêm nhóm = thêm dòng ở đây và ở `PUSH_CATEGORY_CONFIG` (push.policy.ts).
+ */
+export const PUSH_CATEGORY = {
+  CHAT: 'chat',
+  LISTING_STATUS: 'listing_status',
+  MEMBERSHIP: 'membership',
+  REPORT: 'report',
+  ACCOUNT: 'account',
+  WALLET: 'wallet',
+  GROUP_NOTICE: 'group_notice',
+  GROUP_ACTIVITY: 'group_activity',
+  SUPPORT: 'support',
+} as const
+export type PushCategory = (typeof PUSH_CATEGORY)[keyof typeof PUSH_CATEGORY]
+export const PUSH_CATEGORIES = Object.values(PUSH_CATEGORY) as PushCategory[]
+
+/** Vòng đời một dòng `push_outbox` — xem `push.dispatcher.ts`. */
+export const PUSH_OUTBOX_STATUS = {
+  PENDING: 'pending',
+  SENDING: 'sending',
+  SENT: 'sent',
+  FAILED: 'failed',
+  SKIPPED: 'skipped',
+} as const
+export type PushOutboxStatus = (typeof PUSH_OUTBOX_STATUS)[keyof typeof PUSH_OUTBOX_STATUS]
+
+export const PUSH_PLATFORM = { IOS: 'ios', ANDROID: 'android' } as const
+export type PushPlatform = (typeof PUSH_PLATFORM)[keyof typeof PUSH_PLATFORM]
+export const PUSH_PLATFORMS = Object.values(PUSH_PLATFORM) as PushPlatform[]

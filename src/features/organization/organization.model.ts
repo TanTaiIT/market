@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { softDeletePlugin } from '../../common/db/softDelete.plugin'
 import {
   FEED_LAYOUTS,
   FeedLayout,
@@ -22,7 +23,13 @@ export interface IOrganization {
   verificationTier: VerificationTier
   /** Tên tỉnh trong danh sách đóng 34 đơn vị. `null` = org tổng quát không gắn địa bàn. */
   provinceCode: string | null
+  /**
+   * Quận/huyện CŨ, chữ tự do — chỉ còn để hiển thị dữ liệu trước 01/07/2025. Không lọc theo nó:
+   * cấp quận đã bỏ, và chữ tự do không so khớp được. Địa bàn cấp dưới tỉnh giờ là `ward`.
+   */
   district: string | null
+  /** Phường/xã theo danh mục đóng (`isWardOfProvince`), cùng nguồn với tin đăng. `null` = chưa khai. */
+  ward: string | null
   /**
    * Hồ sơ nhóm — thứ người ngoài nhìn thấy khi mở link chia sẻ.
    *
@@ -100,6 +107,7 @@ const organizationSchema = new Schema<IOrganizationDocument>(
 
     provinceCode: { type: String, default: null, trim: true },
     district: { type: String, default: null, trim: true, maxlength: 100 },
+    ward: { type: String, default: null, trim: true, maxlength: 100 },
 
     joinCode: { type: String, required: true, uppercase: true, trim: true },
     avatarUrl: { type: String, default: null },
@@ -133,6 +141,16 @@ organizationSchema.pre('validate', function syncDerivedKeys(next) {
   next()
 })
 
+/*
+ * Soft delete — cùng hook với mọi model có `deletedAt` khác (User, Listing, OrgUnit…).
+ *
+ * Model này từng là ngoại lệ duy nhất: repository tự viết `deletedAt: null` ở từng query, và
+ * method mới nhất (`allImageUrls`) đã quên — job dọn ảnh vì thế giữ ảnh của org đã xoá như
+ * đang được dùng. Hook ở model là chỗ duy nhất không ai phải nhớ. `withDeleted` cho đường cần
+ * đọc cả bản đã xoá (không có caller nào hôm nay, giữ cùng hợp đồng với các model kia).
+ */
+organizationSchema.plugin(softDeletePlugin)
+
 // Organization *là* tenant nên KHÔNG gắn tenantPlugin — truy cập nó đi qua
 // organization.repository (chạy runUnscoped), đó là nơi duy nhất được phép.
 /*
@@ -143,6 +161,8 @@ organizationSchema.index({ nameTokens: 1 })
 // Đường tra của ô "tìm nhóm" và của mọi đơn xin gia nhập. Unique để hai org không bao giờ
 // chung một mã — chính index này là trọng tài khi hai lượt sinh mã đụng nhau.
 organizationSchema.index({ joinCode: 1 }, { unique: true })
+// Bộ lọc tỉnh/phường của màn "Tìm nhóm". Tỉnh đứng trước: lọc phường luôn đi kèm tỉnh (schema chốt).
+organizationSchema.index({ provinceCode: 1, ward: 1 })
 
 export const Organization: Model<IOrganizationDocument> = mongoose.model<IOrganizationDocument>(
   'Organization',

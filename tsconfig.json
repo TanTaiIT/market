@@ -2,9 +2,16 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
-    // moduleResolution để MẶC ĐỊNH theo "module": "commonjs" (= node10, y hệt "node").
-    // Ghi tường minh "node" thì TS 6 báo TS5107 (deprecated, TS 7 bỏ hẳn) ngay trên file này,
-    // mà VS Code đang được trỏ vào TS 6 của repo cha qua "js/ts.tsdk.path".
+    /*
+     * Ghi tường minh `node10` dù TS 6 (VS Code đang trỏ vào TS 6 của repo cha qua
+     * "js/ts.tsdk.path") báo TS5107 deprecated ngay trên file này. Để MẶC ĐỊNH thì TS 5.9 hiểu
+     * là node10, còn TS 6 rơi về `bundler`: resolve `zod` 3.25 qua `exports` → mất
+     * `ZodTypeAny`/`ZodError`, socket.io mất `cors` — 21 lỗi GIẢ nằm trong code thật.
+     * Một lỗi có lời giải trên tsconfig tốt hơn 21 lỗi sai chỗ; `tsc` 5.9 của chính project
+     * không báo gì. Hết hẳn khi project lên TS 6 và thêm `"ignoreDeprecations": "6.0"`
+     * (TS 5.9 không nhận giá trị này, nên chưa thêm được).
+     */
+    "moduleResolution": "node10",
     "lib": ["ES2022"],
     "strict": true,
     "noImplicitOverride": true,

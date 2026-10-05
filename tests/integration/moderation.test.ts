@@ -518,10 +518,11 @@ describe('Nhật ký hoạt động mang theo hậu quả uy tín', () => {
     await raiseTo(member.id, 2)
     const id = await createListing(member, 'Tin bị từ chối có ghi bậc')
 
+    // `violation` tường minh: từ chối mức `quality` không đụng uy tín nên không có bậc để ghi.
     await request(app)
       .patch(`/api/v1/moderation/listings/${id}`)
       .set(as(owner))
-      .send({ status: 'rejected', reason: 'Ảnh không rõ sản phẩm' })
+      .send({ status: 'rejected', reason: 'Hàng không được phép bán', severity: 'violation' })
       .expect(200)
 
     const feed = await request(app).get('/api/v1/moderation/activity').set(as(owner)).expect(200)

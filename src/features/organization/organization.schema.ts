@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import {
   FEED_LAYOUTS,
@@ -6,10 +7,10 @@ import {
   TENANT_STATUS,
   VERIFICATION_TIERS,
   PAGINATION,
+  VN_PROVINCE_NAMES,
+  isWardOfProvince,
 } from '../../common/constants'
 import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const organizationSummarySchema = z
   .object({
@@ -59,6 +60,7 @@ export const organizationLookupSchema = z
     coverUrl: z.string().nullable(),
     memberCount: z.number(),
     district: z.string().nullable(),
+    ward: z.string().nullable(),
     provinceCode: z.string().nullable(),
     allowJoinRequests: z.boolean(),
     allowOutsiderPosts: z.boolean(),
@@ -82,6 +84,7 @@ export const organizationProfileSchema = z
     description: z.string(),
     provinceCode: z.string().nullable(),
     district: z.string().nullable(),
+    ward: z.string().nullable(),
     memberCount: z.number(),
     /** Số tin đăng trong 7 ngày qua — nhịp sống của nhóm, thứ quyết định có đáng vào hay không. */
     postsThisWeek: z.number(),
@@ -114,12 +117,43 @@ export const organizationProfileSchema = z
   .openapi('OrganizationProfile')
 
 /**
+ * Phường phải đi kèm tỉnh, và phải thuộc đúng tỉnh đó — thiếu chốt này thì `?ward=Phường Vũng Tàu`
+ * không kèm tỉnh trả rỗng mà không ai biết vì sao, còn `{ provinceCode: 'Hà Nội', ward: 'Phường Bến
+ * Thành' }` ghi được một địa bàn không tồn tại.
+ */
+function wardBelongsToProvince(provinceKey: 'province' | 'provinceCode') {
+  return (value: Record<string, unknown>, ctx: z.RefinementCtx) => {
+    const province = value[provinceKey] as string | undefined
+    const ward = value.ward as string | undefined
+    if (!ward) return
+    if (!province) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ward'],
+        message: 'Chọn tỉnh trước khi chọn phường/xã',
+      })
+    } else if (!isWardOfProvince(province, ward)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['ward'],
+        message: `"${ward}" không thuộc ${province}`,
+      })
+    }
+  }
+}
+
+/**
  * `q` TUỲ CHỌN: bỏ trống nghĩa là "gợi ý cho tôi", đúng trạng thái đầu của màn khám phá nhóm.
  * Bỏ mức tối thiểu 2 ký tự cùng lý do — không còn là dropdown tra cứu mà là một danh sách.
  */
-export const organizationLookupQuerySchema = z.object({
-  q: z.string().max(80).optional(),
-})
+export const organizationLookupQuerySchema = z
+  .object({
+    q: z.string().max(80).optional(),
+    province: z.enum(VN_PROVINCE_NAMES).optional().openapi({ example: 'Hồ Chí Minh' }),
+    // Không enum như `province`: 3.321 phường/xã nhồi vào OpenAPI sẽ phình spec (cùng lý do ở tin đăng).
+    ward: z.string().max(100).optional().openapi({ example: 'Phường Bến Thành' }),
+  })
+  .superRefine(wardBelongsToProvince('province'))
 
 /**
  * Bảng tổ chức của master. Khác `lookup` ở điểm quyết định: `lookup` là route CÔNG KHAI và chỉ
@@ -172,6 +206,7 @@ export const organizationCardSchema = z
     description: z.string(),
     provinceCode: z.string().nullable(),
     district: z.string().nullable(),
+    ward: z.string().nullable(),
     memberCount: z.number(),
     allowJoinRequests: z.boolean(),
   })
@@ -207,8 +242,10 @@ export const createOrganizationSchema = z
     orgType: z.nativeEnum(ORG_TYPES).optional(),
     provinceCode: z.string().max(60).optional(),
     district: z.string().max(100).optional(),
+    ward: z.string().max(100).optional(),
   })
   .strict()
+  .superRefine(wardBelongsToProvince('provinceCode'))
   .openapi('CreateOrganization')
 
 /**
@@ -256,6 +293,11 @@ export const updateOrganizationSchema = z
     rules: z.array(z.string().trim().min(1).max(200)).max(10).optional(),
     /** Bảng tin bày một tin một dòng (`feed`) hay hai tin một dòng (`grid`). */
     feedLayout: z.nativeEnum(FEED_LAYOUTS).optional(),
+    /**
+     * Phường/xã của nhóm, thuộc TỈNH của nhóm (service chốt — tỉnh không có trong body). `null` =
+     * gỡ. Tỉnh không sửa ở đây: nó do master đặt lúc tạo nhóm.
+     */
+    ward: z.string().trim().min(1).max(100).nullable().optional(),
   })
   .strict()
   .openapi('UpdateOrganization')

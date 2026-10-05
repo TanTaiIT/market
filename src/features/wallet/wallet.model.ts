@@ -62,6 +62,9 @@ export const XU_TX_TYPES = [
 ] as const
 export type XuTxType = (typeof XU_TX_TYPES)[number]
 
+/** Trần một lượt master cộng/trừ tay (audit 4.3) — gõ thừa một số 0 không được thành một triệu Xu. */
+export const XU_ADJUST_MAX = 1_000_000
+
 /**
  * Một dòng sổ cái. APPEND-ONLY: không có đường sửa, không có đường xoá — ghi sai thì ghi thêm
  * một dòng ngược dấu. Vì thế model này cố tình không có `deletedAt` lẫn hook soft-delete.
@@ -121,6 +124,27 @@ const xuTransactionSchema = new Schema<IXuTransactionDocument>(
 xuTransactionSchema.index({ idempotencyKey: 1 }, { unique: true })
 // Lịch sử ví của một người, mới nhất trước — đường đọc duy nhất của màn hình ví.
 xuTransactionSchema.index({ userId: 1, createdAt: -1 })
+
+/*
+ * Sổ cái APPEND-ONLY bằng cơ chế, không bằng kỷ luật (audit 4.3): mọi đường sửa/xoá qua Mongoose
+ * bị chặn ngay ở hook. Đối soát chỉ đọc (`aggregate`); migration đi qua driver thô — cố ý ngoài
+ * tầm hook, và đó là việc phải ghi sổ `_migrations`.
+ */
+const APPEND_ONLY = 'xu_transactions là sổ cái append-only — không sửa, không xoá'
+for (const hook of [
+  'updateOne',
+  'updateMany',
+  'findOneAndUpdate',
+  'findOneAndReplace',
+  'replaceOne',
+  'deleteOne',
+  'deleteMany',
+  'findOneAndDelete',
+] as const) {
+  xuTransactionSchema.pre(hook, function () {
+    throw new Error(APPEND_ONLY)
+  })
+}
 
 export const XuTransaction: Model<IXuTransactionDocument> = mongoose.model<IXuTransactionDocument>(
   'XuTransaction',

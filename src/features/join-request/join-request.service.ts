@@ -14,6 +14,7 @@ import {
   JOIN_REQUEST_STATUS,
   JOINED_VIA,
   MEMBERSHIP_ROLES,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 
@@ -38,7 +39,8 @@ async function joinPublicNow(
   // Membership TRƯỚC, bản ghi đơn sau — cùng thứ tự và cùng lý do như `approve`: đứt gánh giữa
   // chừng theo thứ tự này để lại "đã là thành viên, đơn còn chờ" (bấm lại là xong), còn thứ tự
   // ngược lại để lại "đơn đã duyệt mà không có membership" — người dùng kẹt và không ai thấy.
-  await membershipRepository.create({
+  // `activate` chứ không `create`: người từng rời/bị gỡ vào lại nhóm công khai phải đi được.
+  await membershipRepository.activate({
     userId: new Types.ObjectId(actorId),
     organizationId,
     role: MEMBERSHIP_ROLES.MEMBER,
@@ -176,8 +178,14 @@ export const joinRequestService = {
   },
 
   async cancel(actorId: string, requestId: string) {
-    const doc = await this.getPending(requestId)
+    // Chốt CHỦ ĐƠN trước, trạng thái sau (audit 3.15): hỏi trạng thái trước là nói cho người lạ
+    // biết đơn X "đã duyệt" hay "đang chờ" trước khi biết họ có quyền hỏi không.
+    const doc = await joinRequestRepository.findById(requestId)
+    if (!doc) throw new NotFoundError('Không tìm thấy đơn')
     if (doc.userId.toString() !== actorId) throw new ForbiddenError('Không phải đơn của bạn')
+    if (doc.status !== JOIN_REQUEST_STATUS.PENDING) {
+      throw new ConflictError(`Đơn đã ở trạng thái "${doc.status}"`)
+    }
 
     const updated = await joinRequestRepository.updateById(requestId, {
       status: JOIN_REQUEST_STATUS.CANCELLED,
@@ -228,7 +236,7 @@ export const joinRequestService = {
     // duyệt nhưng không có membership" — người dùng bị kẹt và không ai nhìn ra.
     const existing = await membershipRepository.findActive(doc.userId, organizationId)
     if (!existing) {
-      await membershipRepository.create({
+      await membershipRepository.activate({
         userId: doc.userId,
         organizationId,
         role: MEMBERSHIP_ROLES.MEMBER,
@@ -248,6 +256,7 @@ export const joinRequestService = {
     await notificationService.notifyUser({
       organizationId,
       userId: doc.userId,
+      push: { category: PUSH_CATEGORY.MEMBERSHIP, path: `/org/${organizationId}` },
       title: 'Đơn xin vào tổ chức đã được duyệt',
       body: 'Bạn đã là thành viên. Mở lại ứng dụng và chọn tổ chức này để bắt đầu.',
     })
@@ -278,6 +287,7 @@ export const joinRequestService = {
     await notificationService.notifyUser({
       organizationId,
       userId: doc.userId,
+      push: { category: PUSH_CATEGORY.MEMBERSHIP, path: null },
       title: 'Đơn xin vào tổ chức bị từ chối',
       body: reason ?? 'Quản trị tổ chức không nêu lý do.',
     })

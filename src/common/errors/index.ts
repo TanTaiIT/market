@@ -53,5 +53,24 @@ export class NotImplementedError extends ApiError {
   }
 }
 
+/** Tính năng đang tắt vì thiếu hạ tầng (mail…) — lỗi của HỆ THỐNG, nói thẳng thay vì im lặng 200. */
+export class ServiceUnavailableError extends ApiError {
+  constructor(message = 'Tạm không khả dụng') {
+    super(httpStatus.SERVICE_UNAVAILABLE, message)
+  }
+}
+
+/**
+ * Luật nghiệp vụ vi phạm ở TẦNG MODEL (`pre('validate')`). Model không biết HTTP nên không ném
+ * `ApiError`; lớp riêng để `errorConverter` nhận ra và trả 400 — thay cho việc service dò
+ * `constructor === Error`, thứ vừa mong manh vừa biến mọi Error trơn khác thành 400 (audit 5.8).
+ */
+export class DomainRuleError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'DomainRuleError'
+  }
+}
+
 export { ApiError }
 export type { ErrorDetail }

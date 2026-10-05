@@ -1,4 +1,6 @@
 import type { Request } from 'express'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { conversationQuerySchema } from './chat.schema'
 import { chatService, type ChatActor } from './chat.service'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
@@ -24,7 +26,10 @@ export const chatController = {
 
   // GET /chats
   list: catchAsync(async (req, res) => {
-    const { items, meta } = await chatService.list(req.query as never, actorOf(req))
+    const { items, meta } = await chatService.list(
+      queryOf(req, conversationQuerySchema),
+      actorOf(req),
+    )
     success(res, { message: 'Conversations', data: items, meta })
   }),
 
@@ -38,7 +43,7 @@ export const chatController = {
   messages: catchAsync(async (req, res) => {
     const { items, meta } = await chatService.messages(
       req.params.id,
-      req.query as never,
+      queryOf(req, conversationQuerySchema),
       actorOf(req),
     )
     success(res, { message: 'Messages', data: items, meta })

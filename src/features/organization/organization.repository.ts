@@ -107,9 +107,18 @@ export const organizationRepository = {
    *
    * Từ khoá rỗng = trả nhóm đầu danh sách, đúng nhu cầu "Gợi ý cho bạn" lúc chưa gõ gì.
    */
-  searchPublic(query: string, limit: number): Promise<IOrganizationDocument[]> {
+  searchPublic(
+    query: string,
+    limit: number,
+    where: { province?: string; ward?: string } = {},
+  ): Promise<IOrganizationDocument[]> {
     const branches = nameBranches(query)
-    const base = { ...ALIVE, ...PUBLIC }
+    const base = {
+      ...ALIVE,
+      ...PUBLIC,
+      ...(where.province ? { provinceCode: where.province } : {}),
+      ...(where.ward ? { ward: where.ward } : {}),
+    }
     return Organization.find(branches.length > 0 ? { ...base, $or: branches } : base)
       .sort({ name: 1 })
       .limit(limit)

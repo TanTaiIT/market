@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { DomainRuleError } from '../../common/errors'
 import {
   SYSTEM_ROLES,
   SCOPE_TYPES,
@@ -106,36 +107,39 @@ const roleGrantSchema = new Schema<IRoleGrantDocument>(
 roleGrantSchema.pre('validate', function enforceScopeShape(next) {
   const allowed = ROLE_SCOPES[this.role]
   if (!allowed?.includes(this.scopeType)) {
-    return next(new Error(`Role "${this.role}" không dùng được với scope "${this.scopeType}"`))
+    return next(
+      new DomainRuleError(`Role "${this.role}" không dùng được với scope "${this.scopeType}"`),
+    )
   }
 
   const { required } = SCOPE_SHAPE[this.scopeType]
   for (const field of required) {
-    if (!this.get(field)) return next(new Error(`scope "${this.scopeType}" thiếu ${field}`))
+    if (!this.get(field))
+      return next(new DomainRuleError(`scope "${this.scopeType}" thiếu ${field}`))
   }
   for (const field of SCOPE_FIELDS) {
     if (!required.includes(field) && this.get(field)) {
-      return next(new Error(`scope "${this.scopeType}" không được mang ${field}`))
+      return next(new DomainRuleError(`scope "${this.scopeType}" không được mang ${field}`))
     }
   }
   const geoScopes: ScopeType[] = [SCOPE_TYPES.CATEGORY_PROVINCE, SCOPE_TYPES.CATEGORY_WARD]
   if (!geoScopes.includes(this.scopeType) && this.provinceCodes.length > 0) {
-    return next(new Error('provinceCodes chỉ có nghĩa với scope trục danh mục'))
+    return next(new DomainRuleError('provinceCodes chỉ có nghĩa với scope trục danh mục'))
   }
 
   if (this.scopeType === SCOPE_TYPES.CATEGORY_WARD) {
     // Đúng một tỉnh: cặp (tỉnh, phường) là thứ duy nhất định danh được ô — xem `wardCodes`.
     if (this.provinceCodes.length !== 1) {
-      return next(new Error('scope category_ward cần đúng một tỉnh trong provinceCodes'))
+      return next(new DomainRuleError('scope category_ward cần đúng một tỉnh trong provinceCodes'))
     }
     if (this.wardCodes.length === 0) {
-      return next(new Error('scope category_ward cần ít nhất một phường'))
+      return next(new DomainRuleError('scope category_ward cần ít nhất một phường'))
     }
     const province = this.provinceCodes[0]
     const stray = this.wardCodes.find((ward) => !isWardOfProvince(province, ward))
-    if (stray) return next(new Error(`"${stray}" không thuộc ${province}`))
+    if (stray) return next(new DomainRuleError(`"${stray}" không thuộc ${province}`))
   } else if (this.wardCodes.length > 0) {
-    return next(new Error('wardCodes chỉ có nghĩa với scope category_ward'))
+    return next(new DomainRuleError('wardCodes chỉ có nghĩa với scope category_ward'))
   }
   next()
 })

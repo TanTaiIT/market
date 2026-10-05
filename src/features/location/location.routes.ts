@@ -1,11 +1,14 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { locationController } from './location.controller'
 import { wardQuerySchema, provinceResponseSchema, wardListResponseSchema } from './location.schema'
 import { validate } from '../../middlewares/validate.middleware'
 import { registry, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 // Công khai, không cần đăng nhập: đây là từ điển hành chính, không phải dữ liệu của tenant nào.
 router.get('/provinces', locationController.provinces)

@@ -775,3 +775,41 @@ describe('Một ô chỉ có một người phụ trách', () => {
     }).expect(200)
   }, 60_000)
 })
+
+describe('Bàn trục danh mục KHÔNG kéo theo nhánh org của người duyệt', () => {
+  let internalId = ''
+
+  beforeAll(async () => {
+    // Người phụ trách danh mục ĐỒNG THỜI là thành viên của một trường — ca rất thường gặp (giáo
+    // viên được cấp ô "Việc làm × HCM"). Trường có một tin NỘI BỘ đang chờ duyệt.
+    const { addMember } = await import('../helpers/fixtures')
+    await addMember(catManager.id, orgIdOf(ORG))
+
+    const res = await request(app)
+      .post('/api/v1/listings')
+      .set(orgAuth(orgMember.token, ORG))
+      .send({ ...listingPayload('Tin nội bộ chờ duyệt của trường', jobs), reach: 'members' })
+      .expect(201)
+    internalId = res.body.data._id
+    expect(res.body.data.status).toBe('pending')
+  }, 60_000)
+
+  it('gửi X-Org-Id của trường mình vẫn KHÔNG thấy tin nội bộ chưa duyệt trong hàng đợi danh mục', async () => {
+    const res = await request(app)
+      .get('/api/v1/moderation/public-queue')
+      .set(orgAuth(catManager.token, ORG))
+      .expect(200)
+
+    const rows = res.body.data as { _id: string; reach: string }[]
+    expect(rows.map((l) => l._id)).not.toContain(internalId)
+    expect(rows.every((l) => l.reach === 'marketplace')).toBe(true)
+  })
+
+  it('nhưng bàn duyệt của CHÍNH trường thì vẫn thấy nó — hai trục, hai bàn', async () => {
+    const res = await request(app)
+      .get('/api/v1/moderation/listings?status=pending')
+      .set(orgAuth(orgOwner.token, ORG))
+      .expect(200)
+    expect(res.body.data.map((l: { _id: string }) => l._id)).toContain(internalId)
+  })
+})

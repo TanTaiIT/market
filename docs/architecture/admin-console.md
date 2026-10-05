@@ -173,7 +173,7 @@ lệch ngay lần đầu có người rút báo cáo hoặc admin gộp nhầm.
 | `{ organizationId: 1, status: 1, createdAt: -1 }` | Hàng đợi báo cáo mở, mới nhất trước |
 | `{ organizationId: 1, targetType: 1, targetId: 1 }` | Gom nhóm “N lượt báo cáo” + chặn một người báo cáo hai lần |
 
-### 3.4 `AuditLog` — `tenantPlugin`, `chainReadable: false`
+### 3.4 `AuditLog` — `tenantPlugin` dual-axis (`organizationId: null` = trục công khai), `chainReadable: false`
 
 Panel *“Vừa diễn ra”* nhìn như tính năng trang trí, nhưng nó là **vết kiểm toán của thao tác
 kiểm duyệt**: ai gỡ tin của ai, lúc nào, vì sao. Không có nó thì tranh chấp “tin tôi bị gỡ oan”

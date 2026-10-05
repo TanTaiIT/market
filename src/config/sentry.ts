@@ -60,6 +60,16 @@ export function reportServerError(err: unknown, info: { method: string; route: s
   })
 }
 
+/** Lỗi của một job nền — không có request, nên chỉ có tên job để gom nhóm. No-op khi chưa bật. */
+export function reportJobError(err: unknown, job: string): void {
+  if (!Sentry.isInitialized()) return
+
+  Sentry.withScope((scope) => {
+    scope.setTag('job', job)
+    Sentry.captureException(err)
+  })
+}
+
 /**
  * Đẩy hết phần còn trong bộ đệm trước khi process chết.
  *

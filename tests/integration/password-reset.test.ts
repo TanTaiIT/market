@@ -3,7 +3,14 @@ import request from 'supertest'
 import mongoose from 'mongoose'
 import { MongoMemoryReplSet } from 'mongodb-memory-server'
 import type { Application } from 'express'
-import { PASSWORD, TestUser, createTestApp, registerUser, startTestDb } from '../helpers/fixtures'
+import {
+  PASSWORD,
+  TestUser,
+  createTestApp,
+  makeMaster,
+  registerUser,
+  startTestDb,
+} from '../helpers/fixtures'
 
 /**
  * Quên mật khẩu bằng mã 6 số.
@@ -199,4 +206,16 @@ describe('Mã của cửa này không mở được cửa kia', () => {
       .send({ code: maReset })
       .expect(400)
   }, 60_000)
+})
+
+describe('Master không đi cửa quên mật khẩu công khai (audit 3.9)', () => {
+  it('trả 200 y hệt địa chỉ lạ, nhưng KHÔNG có mã nào được gửi và mã bịa không đổi được vé', async () => {
+    const master = await makeMaster(app, 'master@ghim.local')
+    daGui.delete(master.email)
+
+    await forgot(master.email).expect(200)
+
+    expect(daGui.has(master.email)).toBe(false)
+    await verifyCode(master.email, '123456').expect(400)
+  })
 })

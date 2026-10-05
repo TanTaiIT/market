@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { bannedPhraseController } from './banned-phrase.controller'
 import {
   bannedPhraseParamsSchema,
@@ -11,6 +12,8 @@ import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 // Master-only TOÀN BỘ, kể cả GET — khác `categories`: công bố danh sách cấm là phát cẩm nang
 // lách luật cho người đăng ("viết chệch đi một chữ là qua"). Người thường chỉ thấy hệ quả của

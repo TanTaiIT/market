@@ -1,4 +1,6 @@
 import { moderationService } from './moderation.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { modListingQuerySchema, activityQuerySchema } from './moderation.schema'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { moderatorActor, orgActor } from '../../common/utils/actor'
 import { success } from '../../common/utils/apiResponse'
@@ -6,7 +8,7 @@ import { success } from '../../common/utils/apiResponse'
 export const moderationController = {
   // GET /moderation/public-queue
   publicQueue: catchAsync(async (req, res) => {
-    const { items, meta } = await moderationService.publicQueue(req.query as never)
+    const { items, meta } = await moderationService.publicQueue(queryOf(req, modListingQuerySchema))
     success(res, { message: 'Hàng đợi trục danh mục', data: items, meta })
   }),
 
@@ -35,13 +37,13 @@ export const moderationController = {
 
   // GET /moderation/listings
   listings: catchAsync(async (req, res) => {
-    const { items, meta } = await moderationService.listings(req.query as never)
+    const { items, meta } = await moderationService.listings(queryOf(req, modListingQuerySchema))
     success(res, { message: 'Listings for moderation', data: items, meta })
   }),
 
   // GET /moderation/activity
   activity: catchAsync(async (req, res) => {
-    const { items, meta } = await moderationService.activity(req.query as never)
+    const { items, meta } = await moderationService.activity(queryOf(req, activityQuerySchema))
     success(res, { message: 'Activity', data: items, meta })
   }),
 
@@ -62,10 +64,11 @@ export const moderationController = {
 
   // DELETE /moderation/listings/:id
   removeListing: catchAsync(async (req, res) => {
-    await moderationService.removeListing(req.params.id, {
-      ...moderatorActor(req),
-      grants: req.grants!,
-    })
+    await moderationService.removeListing(
+      req.params.id,
+      { ...moderatorActor(req), grants: req.grants! },
+      req.body,
+    )
     success(res, { message: 'Listing removed' })
   }),
 }

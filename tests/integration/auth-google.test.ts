@@ -140,3 +140,19 @@ describe('Chốt chống chiếm tài khoản trước', () => {
     await google(`${OWNED_EMAIL}|sub-chu-that`).expect(200)
   }, 60_000)
 })
+
+describe('Tài khoản Google đã xoá (audit 3.5)', () => {
+  it('xoá tài khoản rồi đăng nhập Google lại bằng cùng `sub` → tài khoản mới, không 500', async () => {
+    const first = await google('xoa-roi@gmail.com|sub-xoa').expect(200)
+    const token = first.body.data.tokens.accessToken as string
+    await request(app)
+      .delete('/api/v1/users/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+
+    // Bản trước: `googleId` unique KHÔNG partial theo `deletedAt`, tài khoản xoá mềm giữ chỗ
+    // `sub` vĩnh viễn → `findByGoogleId` không thấy, `create` đụng index → 500.
+    const again = await google('xoa-roi@gmail.com|sub-xoa').expect(200)
+    expect(again.body.data.user.id).not.toBe(first.body.data.user.id)
+  }, 60_000)
+})

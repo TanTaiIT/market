@@ -1,8 +1,8 @@
 import { z } from 'zod'
+import { PAGINATION } from '../../common/constants'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import { SUPPORT_BODY_MAX, SUPPORT_SIDE } from './support.model'
-
-export const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const sendSupportSchema = z.object({
   body: z
@@ -28,14 +28,13 @@ export const supportQueueQuerySchema = z.object({
     .default('true')
     .transform((v) => v === 'true'),
   page: z.coerce.number().int().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
+  limit: z.coerce.number().int().min(1).max(PAGINATION.MAX_LIMIT).optional(),
 })
 
 const supportMessageSchema = z.object({
   from: z.nativeEnum(SUPPORT_SIDE),
   body: z.string(),
   at: z.string().datetime(),
-  byUserId: objectId,
 })
 
 export const myThreadSchema = z

@@ -240,7 +240,12 @@ export const categoryTemplateService = {
     return this.getForCategory(categoryId, version)
   },
 
-  async getForCategory(categoryId: string, version?: number): Promise<ResolvedTemplate> {
+  async getForCategory(
+    categoryId: string,
+    version?: number,
+    /** Nguồn của bản ghim — `templateRef.isFallback`. Bỏ trống = không biết, thử riêng rồi chung. */
+    isFallback?: boolean,
+  ): Promise<ResolvedTemplate> {
     /*
      * `version` = "dựng lại đúng bộ field mà tin này được tạo ra với nó" (form sửa tin).
      *
@@ -249,10 +254,23 @@ export const categoryTemplateService = {
      * thể đã bị xoá, mà sửa tin bằng một form hơi lệch vẫn tốt hơn là không sửa được.
      */
     if (version != null) {
+      /*
+       * Ghim theo (NGUỒN, version) chứ không theo version trần (audit 1.11): template riêng của
+       * danh mục và bản chung đánh số độc lập, nên "v2" có thể là hai bộ field khác hẳn nhau. Biết
+       * nguồn thì chỉ tra đúng nguồn đó; không biết (client cũ chỉ gửi version) thì giữ thứ tự
+       * cũ: riêng trước, chung sau.
+       */
+      const fromCategory =
+        isFallback === true
+          ? null
+          : await resolve(
+              await categoryTemplateRepository.findByCategoryAndVersion(categoryId, version),
+            )
       const pinned =
-        (await resolve(
-          await categoryTemplateRepository.findByCategoryAndVersion(categoryId, version),
-        )) ?? (await resolve(await categoryTemplateRepository.findFallbackByVersion(version)))
+        fromCategory ??
+        (isFallback === false
+          ? null
+          : await resolve(await categoryTemplateRepository.findFallbackByVersion(version)))
       if (pinned) return pinned
     }
 
@@ -325,10 +343,11 @@ export const categoryTemplateService = {
      * field mà form của họ chưa từng hiện ra.
      */
     version?: number,
+    isFallback?: boolean,
   ): Promise<
     ValidatedAttributes & { templateId: string | null; version: number; isFallback: boolean }
   > {
-    const template = await this.getForCategory(categoryId, version)
+    const template = await this.getForCategory(categoryId, version, isFallback)
     const { attributes, attrs } = validateAttributes(template, raw ?? {})
 
     return {

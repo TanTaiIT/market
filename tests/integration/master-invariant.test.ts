@@ -179,8 +179,8 @@ describe('Bất biến 2 — không ai xem được thông tin master', () => {
    * sẵn trong dữ liệu của từng org và rò ra ở lần đổi code sau — nên chốt nằm ở lúc ghi, và
    * test phải đi qua đúng đường ghi đó chứ không tự dựng sẵn dòng audit rồi tự soi lại.
    *
-   * Phải là tin TRONG ORG: audit chỉ ghi khi có org để xếp vào (`audit skipped` với trục công
-   * khai). Đó cũng đúng kịch bản nguy hiểm — master mượn `X-Org-Id` vào duyệt hộ một trường.
+   * Tin TRONG ORG là kịch bản nguy hiểm: master mượn `X-Org-Id` vào duyệt hộ một trường, và dòng
+   * audit rơi vào sổ mà quản trị trường đó đọc được (trục công khai ghi dưới `organizationId: null`).
    */
   it('master duyệt tin trong org → audit ghi nhãn hệ thống, không ghi tên thật', async () => {
     const id = await postToOrg('Bán xe đạp cũ')

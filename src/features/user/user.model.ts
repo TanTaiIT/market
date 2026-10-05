@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { softDeletePlugin } from '../../common/db/softDelete.plugin'
 import { hash, verify } from '@node-rs/bcrypt'
 import { GENDER, Gender, VN_PROVINCE_NAMES } from '../../common/constants'
 import type { VnProvinceName } from '../../common/constants/vnProvince'
@@ -46,6 +47,12 @@ export interface IUser {
    */
   tokenVersion: number
   /**
+   * Phiên refresh đang mở — mỗi thiết bị một `jti` (audit 3.7). Refresh XOAY jti của đúng phiên
+   * đó; token mang jti không còn trong danh sách là token đã bị xoay, tức có bản sao đang được
+   * dùng → cắt mọi phiên. Tối đa `REFRESH_SESSIONS_MAX`, cũ nhất rơi ra trước.
+   */
+  sessions: { jti: string; createdAt: Date; lastUsedAt: Date }[]
+  /**
    * Mốc "dọn hộp thư": chỉ đọc thông báo tạo SAU thời điểm này. `null` = chưa dọn lần nào.
    *
    * Nằm trên `User` chứ không trên `Membership`, và cũng không phải một cột `deletedBy` trên
@@ -60,6 +67,11 @@ export interface IUser {
    * Hệ quả có chủ ý: "Xoá tất cả" không xoá được chọn lọc — nó là một lằn ranh thời gian.
    */
   notificationsClearedAt: Date | null
+  /**
+   * Công tắc push của người này. Chỉ lưu thứ người dùng ĐÃ CHỌN — thiếu field nào thì theo mặc
+   * định của nhóm (`resolvePushPrefs` ở `push.policy.ts`), nên đổi mặc định không cần migration.
+   */
+  pushPrefs?: { enabled?: boolean | null; categories?: Map<string, boolean> | null }
   ratingAvg: number
   ratingCount: number
   lastLoginAt?: Date
@@ -89,10 +101,10 @@ const userSchema = new Schema<IUserDocument>(
     /**
      * `sub` của Google — khoá ổn định của một tài khoản Google, KHÔNG đổi khi họ đổi email.
      *
-     * `sparse` để hàng nghìn tài khoản mật khẩu (không có field này) không đụng unique index.
      * Khớp theo `sub` TRƯỚC khi khớp theo email: email đổi được, `sub` thì không.
+     * Unique index khai ở cuối file, partial như `email` — xem ghi chú ở đó.
      */
-    googleId: { type: String, unique: true, sparse: true, default: undefined },
+    googleId: { type: String, default: undefined },
     avatar: { type: String, default: '' },
     gender: { type: String, enum: Object.values(GENDER), default: GENDER.UNDISCLOSED },
     // `_id: false`: subdoc thuần dữ liệu, không cần khoá riêng để tham chiếu tới.
@@ -118,7 +130,24 @@ const userSchema = new Schema<IUserDocument>(
     // Tài khoản có TRƯỚC trường này không mang nó -> Mongoose hydrate thành 0, khớp với refresh
     // token cũ (cũng không có `ver`, đọc là 0). Không cần migration, không ai bị đá ra.
     tokenVersion: { type: Number, default: 0 },
+    sessions: {
+      type: [
+        new Schema(
+          {
+            jti: { type: String, required: true },
+            createdAt: { type: Date, required: true },
+            lastUsedAt: { type: Date, required: true },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
     notificationsClearedAt: { type: Date, default: null },
+    pushPrefs: {
+      enabled: { type: Boolean },
+      categories: { type: Map, of: Boolean },
+    },
 
     // Denormalize thống kê người bán để đọc nhanh
     ratingAvg: { type: Number, default: 0, min: 0, max: 5 },
@@ -146,6 +175,17 @@ const userSchema = new Schema<IUserDocument>(
 // nằm ở `memberships`, không ở bảng này.
 // partialFilterExpression: thiếu nó thì một tài khoản đã xoá giữ chỗ email vĩnh viễn.
 userSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { deletedAt: null } })
+/*
+ * `googleId` cũng partial theo `deletedAt`, cùng lý do với `email`: bản trước là `unique + sparse`,
+ * nên tài khoản Google đã xoá mềm giữ chỗ `sub` vĩnh viễn — người đó đăng nhập Google lại là
+ * `findByGoogleId` (lọc `deletedAt: null`) không thấy, `create` đụng index, 500. `$type: 'string'`
+ * thay cho `sparse`: hàng nghìn tài khoản mật khẩu không có field này vẫn không vào index.
+ * Production: `npm run sync-indexes:prod` để gỡ index cũ và tạo bản này (`autoIndex` tắt ở prod).
+ */
+userSchema.index(
+  { googleId: 1 },
+  { unique: true, partialFilterExpression: { googleId: { $type: 'string' }, deletedAt: null } },
+)
 // KHÔNG index `phone`: nó chỉ được đọc/ghi như một field hồ sơ, không call-site nào lọc theo
 // nó. Thêm lại khi có đường "tìm người theo số" thật — index không ai dùng vẫn phải cập nhật
 // mỗi lượt ghi và vẫn chiếm chỗ trong bộ nhớ.
@@ -174,17 +214,9 @@ userSchema.methods.comparePassword = async function comparePassword(candidate: s
   return verify(candidate, this.password)
 }
 
-// Mặc định loại bản ghi đã soft-delete khỏi mọi query find
-function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
-  if (!this.getOptions().withDeleted) {
-    this.where({ deletedAt: null })
-  }
-  next()
-}
-
-userSchema.pre(/^find/, excludeDeleted)
+// Soft-delete lọc mặc định + `countDocuments` (KHÔNG khớp /^find/) — một plugin cho mọi model (audit 5.10).
 // `countDocuments` KHÔNG khớp /^find/ (AGENT §10) — `countUsable` đếm master còn đăng nhập
 // được, mà thiếu hook này thì đúng tài khoản vừa bị xoá lại được tính là "vẫn còn master".
-userSchema.pre('countDocuments', excludeDeleted)
+userSchema.plugin(softDeletePlugin)
 
 export const User: Model<IUserDocument> = mongoose.model<IUserDocument>('User', userSchema)

@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { categoryTemplateController } from './category-template.controller'
 import {
   defaultTemplateVersionParamsSchema,
@@ -26,6 +27,8 @@ import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../
  * `GET /categories/:id/template` của danh mục đang dùng nó.
  */
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 router.get(
   '/',

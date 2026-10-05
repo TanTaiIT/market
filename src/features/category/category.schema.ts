@@ -1,10 +1,9 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import { templateFieldInputSchema } from '../category-template/category-template.schema'
 
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
-
-export const categorySlugSchema = z
+const categorySlugSchema = z
   .string()
   .min(2)
   .max(60)
@@ -20,7 +19,7 @@ export const categorySlugSchema = z
  *
  * `max(8)` khớp `maxlength` của model: đủ cho emoji ghép ZWJ mà không thành chỗ nhét chuỗi.
  */
-export const categoryIconSchema = z
+const categoryIconSchema = z
   .string()
   .trim()
   .min(1, 'Danh mục phải có biểu tượng')

@@ -2,6 +2,7 @@ import { Server as HttpServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
 import { verifyAccessToken } from '../common/utils/jwt'
 import { membershipRepository } from '../features/membership/membership.repository'
+import { userRepository } from '../features/user/user.repository'
 import { env } from '../config/env'
 import { logger } from '../config/logger'
 import { registerChatHandlers } from './chat.socket'
@@ -31,6 +32,9 @@ export function initSockets(httpServer: HttpServer): SocketServer {
     } catch {
       return next(new Error('Invalid token'))
     }
+
+    // Cùng chốt với `resolveTenant`: token còn hạn không có nghĩa tài khoản còn dùng được.
+    if (!(await userRepository.isUsable(userId))) return next(new Error('Account is disabled'))
 
     /*
      * Org là TUỲ CHỌN của phiên socket, không còn là điều kiện để bắt tay.

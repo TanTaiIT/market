@@ -1,8 +1,18 @@
 import { Types } from 'mongoose'
 import { moderationRepository } from './moderation.repository'
-import { ActivityQuery, ModListingQuery, SetListingStatusInput } from './moderation.schema'
+import {
+  ActivityQuery,
+  ModListingQuery,
+  RemoveListingInput,
+  SetListingStatusInput,
+} from './moderation.schema'
 import { toAuditEventDto } from './moderation.types'
-import { assertCanActOnListing, listingService } from '../listing/listing.service'
+import {
+  assertCanActOnListing,
+  listingService,
+  targetOf,
+  toModerationListing,
+} from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { IListingDocument } from '../listing/listing.model'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
@@ -22,15 +32,23 @@ import {
   MASTER_DISPLAY_NAME,
   MODERATION_ACTION,
   MODERATION_QUEUE,
+  PUBLIC_LISTING_STATUSES,
+  REPORT_AUTO_RESOLUTION,
   SCOPE_TYPES,
   ModerationQueue,
   VN_PROVINCE_NAMES,
+  type RejectionSeverity,
+  REJECTION_SEVERITY,
+  AUDIT_TARGET,
+  PUSH_CATEGORY,
 } from '../../common/constants'
-import { Grant } from '../../common/authz/policy'
+
+/** Mức từ chối duy nhất có hình phạt — `quality` là sai sót, sửa rồi đăng lại. */
+const PENALIZING_SEVERITY: RejectionSeverity = REJECTION_SEVERITY.VIOLATION
+import { Grant, canApproveListing } from '../../common/authz/policy'
 import { parsePagination, buildPaginationMeta } from '../../common/utils/pagination'
 import { emitToOrgAdmins } from '../../sockets/emit'
 import { runUnscoped } from '../../common/tenant/tenantContext'
-import { logger } from '../../config/logger'
 
 /**
  * CHỈ có `id`. Thao tác duyệt chạy trên cả hai trục, nên "người duyệt thuộc nhóm nào" không
@@ -61,10 +79,9 @@ const ACTION_BY_STATUS: Record<string, AuditAction> = {
  * plugin tự lấy org từ scope thì nó lấy nhầm org của NGƯỜI DUYỆT: vết duyệt một tin công khai
  * rơi vào nhật ký của org họ, nơi admin org đó đọc được qua `GET /moderation/activity`.
  *
- * Trục danh mục chưa có chỗ ghi (`AuditLog` là collection có tenant) — ghi log hệ thống rồi đi
- * tiếp, trả `null`. Đây là MỘT đường xử lý cho mọi call-site: trước đây `reroute` tự bỏ qua,
- * `setListingStatus`/`removeListing` thì ghi nhầm, cùng một tình huống mà ba cách khác nhau.
- * Chuyển `AuditLog` sang dual-axis là việc còn nợ (v2-org-permission.plan.md).
+ * Trục danh mục ghi dưới `organizationId: null` (`AuditLog` dual-axis từ audit 1.13); master và
+ * người phụ trách danh mục đọc qua `GET /moderation/activity`. Một đường cho mọi call-site — trước
+ * đây `reroute` tự bỏ qua, `setListingStatus`/`removeListing` thì ghi nhầm sổ.
  */
 export async function recordAudit(
   actor: { id: string; name: string },
@@ -79,15 +96,6 @@ export async function recordAudit(
   },
   subjectOrgId: Types.ObjectId | null,
 ) {
-  if (!subjectOrgId) {
-    logger.info('audit skipped (public axis has no org to file under)', {
-      actorId: actor.id,
-      action: entry.action,
-      summary: entry.summary,
-    })
-    return null
-  }
-
   // Khai `organizationId` TƯỜNG MINH và chạy unscoped: để plugin tự lấy từ scope thì vết
   // duyệt rơi vào nhật ký org của NGƯỜI DUYỆT, không phải org sở hữu tin. Cùng lệch đó khiến
   // master duyệt hộ org khác sẽ ghi nhầm sổ — và với người duyệt không có nhóm thì lệnh ghi
@@ -100,7 +108,8 @@ export async function recordAudit(
       ...entry,
     }),
   )
-  emitToOrgAdmins(subjectOrgId.toString(), 'admin:activity', toAuditEventDto(log))
+  // Trục công khai không có phòng quản trị nào để gõ chuông — master đọc qua `GET /moderation/activity`.
+  if (subjectOrgId) emitToOrgAdmins(subjectOrgId.toString(), 'admin:activity', toAuditEventDto(log))
   return log
 }
 
@@ -114,11 +123,19 @@ export async function recordAudit(
 async function applyTrustEffect(
   listing: IListingDocument,
   status: ListingStatus,
-  context: { actorId: string; previousStatus: ListingStatus },
+  context: { actorId: string; previousStatus: ListingStatus; severity?: RejectionSeverity },
 ): Promise<TrustState | null> {
   const approved = status === LISTING_STATUS.ACTIVE
   const rejected = status === LISTING_STATUS.REJECTED
   if (!approved && !rejected) return null
+
+  /*
+   * Từ chối vì SAI SÓT không phải phán quyết về con người. `REJECTION_SEVERITIES` hứa `quality`
+   * "KHÔNG đụng uy tín", và cửa sổ phạt 7 ngày đã giữ lời từ trước — nhưng chỗ này thì không:
+   * mọi lượt từ chối đều `record(false)`, nên cú bấm MẶC ĐỊNH của người duyệt cũng hạ bậc, đúng
+   * cái bất công mà `severity` sinh ra để sửa. Không có `severity` (caller cũ) tính như mặc định.
+   */
+  if (rejected && context.severity !== PENALIZING_SEVERITY) return null
 
   /*
    * TỰ duyệt tin của chính mình KHÔNG tính. Đây là lỗ farm uy tín, và nó rẻ đến mức không thể
@@ -155,7 +172,7 @@ async function applyTrustEffect(
  * bảng hay không. Không hiện ra đây thì quản trị chỉ thấy "đã từ chối" mà không biết hậu quả
  * thật của cú bấm vừa rồi. Rỗng khi lượt này không đụng tới uy tín (ẩn/hiện lại tin).
  */
-const trustNote = (trust: TrustState | null) => (trust ? ` · uy tín bậc ${trust.level}` : '')
+export const trustNote = (trust: TrustState | null) => (trust ? ` · uy tín bậc ${trust.level}` : '')
 
 /**
  * Báo cho NGƯỜI ĐĂNG kết quả duyệt tin của họ.
@@ -175,6 +192,7 @@ export async function notifyPoster(
     await notificationService.notifyUser({
       organizationId: listing.organizationId,
       userId: listing.seller,
+      push: { category: PUSH_CATEGORY.LISTING_STATUS, path: `/listing/${listing._id}` },
       title: 'Tin của bạn đã được duyệt',
       body: `"${listing.title}" đã lên bảng tin.`,
     })
@@ -194,6 +212,7 @@ export async function notifyPoster(
     await notificationService.notifyUser({
       organizationId: listing.organizationId,
       userId: listing.seller,
+      push: { category: PUSH_CATEGORY.LISTING_STATUS, path: '/mylistings' },
       title: 'Tin của bạn bị từ chối',
       body: `"${listing.title}" — ${reason ?? 'Quản trị không nêu lý do.'}`,
     })
@@ -206,19 +225,53 @@ export async function notifyPoster(
     await notificationService.notifyUser({
       organizationId: listing.organizationId,
       userId: listing.seller,
+      push: { category: PUSH_CATEGORY.LISTING_STATUS, path: '/mylistings' },
       title: 'Tin của bạn đã bị ẩn',
       body: `"${listing.title}" — ${reason ?? 'Quản trị không nêu lý do.'}`,
     })
   }
 }
 
-/** Gỡ hẳn tin khỏi bảng: nặng hơn ẩn, và cũng là thứ người bán cần biết ngay nhất. */
-async function notifyRemoved(listing: IListingDocument): Promise<void> {
+/**
+ * Trừ uy tín cho một lượt GỠ đã xác minh — `removeListing` và `report.resolve(hide_target)`.
+ *
+ * Chữ của `ACTION_BY_DECISION` nói takedown không ghi án, vì cửa gỡ RỘNG hơn cửa duyệt:
+ * `canTakedownListing` cho quản trị nhóm rút tin sàn mang tên nhóm — đó là quyền *từ chối cho
+ * mượn tên*, không phải quyền phán "vi phạm quy định sàn". Nhưng "tin đã lọt qua hệ thống, tới
+ * tay người mua rồi mới bị phát hiện" là vi phạm nặng nhất, bỏ hẳn án là bậc uy tín chỉ còn đo
+ * được khâu tiền kiểm. Nên KHÔNG bỏ, chỉ ghi án khi đủ ba điều:
+ *
+ * 1. Tin từng tới tay người mua — trạng thái TRƯỚC khi gỡ nằm trong `PUBLIC_LISTING_STATUSES`.
+ *    Gỡ tin đang chờ là dọn hàng đợi, không phải hậu kiểm.
+ * 2. Người gỡ có quyền DUYỆT trên trục của tin (`canApproveListing`), tức đúng người có thẩm
+ *    quyền phán vi phạm cho tin đó. Quản trị nhóm gỡ tin sàn mang badge thì tin rời sàn, nhưng
+ *    án lên hồ sơ toàn sàn không thuộc về họ — trước bản này họ tự báo cáo rồi bấm gỡ là hạ
+ *    được bậc của bất kỳ thành viên nào ở một trục họ không có quyền.
+ * 3. Không tự xử tin của chính mình — cùng chốt với `applyTrustEffect`. Hàng đợi người ngoài
+ *    (`pending_unverified`) trung tính theo chốt 1 luôn: tin đó chưa từng lên bảng.
+ */
+export async function applyTakedownPenalty(
+  listing: IListingDocument,
+  actor: { id: string; grants: Grant[] },
+  previousStatus: ListingStatus,
+): Promise<TrustState | null> {
+  if (!PUBLIC_LISTING_STATUSES.includes(previousStatus)) return null
+  if (!canApproveListing(actor.grants, targetOf(listing))) return null
+  if (listing.seller.toString() === actor.id) return null
+  return trustRepository.record(listing.seller, false)
+}
+
+/**
+ * Gỡ hẳn tin khỏi bảng: nặng hơn ẩn, và cũng là thứ người bán cần biết ngay nhất. Có lý do thì
+ * nói ra — "không còn trên bảng tin" suông là câu người bán không biết phải sửa gì.
+ */
+async function notifyRemoved(listing: IListingDocument, reason?: string): Promise<void> {
   await notificationService.notifyUser({
     organizationId: listing.organizationId,
     userId: listing.seller,
+    push: { category: PUSH_CATEGORY.LISTING_STATUS, path: '/mylistings' },
     title: 'Tin của bạn đã bị gỡ',
-    body: `"${listing.title}" không còn trên bảng tin.`,
+    body: reason ? `"${listing.title}" — ${reason}` : `"${listing.title}" không còn trên bảng tin.`,
   })
 }
 
@@ -306,11 +359,11 @@ export const moderationService = {
   async listings(query: ModListingQuery) {
     const pagination = parsePagination(query)
     const { items, total } = await listingService.listForModeration(
-      { status: query.status, category: query.category, q: query.q },
+      { status: query.status, category: query.category, q: query.q, seller: query.seller },
       pagination,
     )
     return {
-      items,
+      items: items.map(toModerationListing),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },
@@ -332,6 +385,11 @@ export const moderationService = {
     const existing = await listingService.getForModeration(id)
     assertCanActOnListing(existing, actor.grants, ACTION_BY_DECISION[input.status])
 
+    // Cùng trạng thái = no-op ở CẢ hai lớp: không uy tín, không báo, không nhật ký. Bấm "duyệt"
+    // lần hai lên tin đang active từng cộng thêm một bài sạch mỗi lần bấm — một nhóm thân thiện
+    // bấm 5 lần là phục hồi bậc cho người vừa bị phạt.
+    if (existing.status === input.status) return toModerationListing(existing)
+
     const name = await actorName(actor)
     const previousStatus = existing.status
     const listing = await listingService.setModerationStatus(
@@ -351,6 +409,7 @@ export const moderationService = {
     const trust = await applyTrustEffect(listing, input.status, {
       actorId: actor.id,
       previousStatus,
+      severity: input.severity,
     })
 
     const action = ACTION_BY_STATUS[input.status]
@@ -362,7 +421,7 @@ export const moderationService = {
           input.status === LISTING_STATUS.REJECTED
             ? `Từ chối "${listing.title}" · ${input.reason}${trustNote(trust)}`
             : `${input.status === LISTING_STATUS.ACTIVE ? 'Ghim' : 'Ẩn'} "${listing.title}"${trustNote(trust)}`,
-        targetType: 'listing',
+        targetType: AUDIT_TARGET.LISTING,
         targetId: listing._id,
         fromStatus: previousStatus,
         toStatus: input.status,
@@ -371,7 +430,7 @@ export const moderationService = {
     )
 
     await notifyPoster(listing, input.status, input.reason)
-    return listing
+    return toModerationListing(listing)
   },
 
   /**
@@ -386,7 +445,7 @@ export const moderationService = {
       pagination,
     )
     return {
-      items,
+      items: items.map(toModerationListing),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
   },
@@ -492,7 +551,7 @@ export const moderationService = {
       {
         action: AUDIT_ACTION.LISTING_REASSIGN,
         summary,
-        targetType: 'listing',
+        targetType: AUDIT_TARGET.LISTING,
         targetId: listing._id,
         fromStatus: before.status,
         toStatus: listing.status,
@@ -501,7 +560,7 @@ export const moderationService = {
       orgId,
     )
 
-    return listing
+    return toModerationListing(listing)
   },
 
   /**
@@ -516,32 +575,42 @@ export const moderationService = {
     // họ phải mở được màn chi tiết của chính tin đó. Chốt bằng cửa hẹp hơn là 403 ngay ở bước
     // nhìn, và tính năng gỡ thành vô dụng.
     assertCanActOnListing(listing, grants, MODERATION_ACTION.TAKEDOWN)
-    return listing
+    return toModerationListing(listing)
   },
 
-  async removeListing(id: string, actor: ModeratorActor & { grants: Grant[] }) {
-    assertCanActOnListing(
-      await listingService.getForModeration(id),
-      actor.grants,
-      MODERATION_ACTION.TAKEDOWN,
-    )
+  async removeListing(
+    id: string,
+    actor: ModeratorActor & { grants: Grant[] },
+    input: RemoveListingInput = {},
+  ) {
+    const existing = await listingService.getForModeration(id)
+    assertCanActOnListing(existing, actor.grants, MODERATION_ACTION.TAKEDOWN)
 
     const name = await actorName(actor)
     const listing = await listingService.removeByModerator(id, actor.grants)
 
-    // Gỡ tin tính như một lần bị từ chối. Nặng hơn thì đúng hơn — tin này đã LỌT qua hệ thống
-    // và đã tới tay người mua, khác hẳn tin bị chặn từ hàng đợi — nhưng thang bậc hiện tại chỉ
-    // có một nấc giáng. Phân mức độ vi phạm là việc của hệ điểm mới, không phải chỗ này.
-    const trust = await trustRepository.record(listing!.seller, false)
-    await notifyRemoved(listing!)
+    // Gỡ tin đã lên bảng tính như một lần bị từ chối vì vi phạm — nhưng chỉ khi người gỡ có
+    // quyền phán trên trục của tin và tin đã từng tới tay người mua. Xem `applyTakedownPenalty`.
+    const trust = await applyTakedownPenalty(listing!, actor, existing.status)
+    await notifyRemoved(listing!, input.reason)
+    // Tin đã rời bảng thì báo cáo về nó cũng xong — người gỡ chính là người xử.
+    await reportRepository.resolveAllOpenForListings([listing!._id], {
+      action: REPORT_AUTO_RESOLUTION.TARGET_REMOVED,
+      byUserId: new Types.ObjectId(actor.id),
+      byName: name,
+    })
 
     await recordAudit(
       { ...actor, name },
       {
         action: AUDIT_ACTION.LISTING_REMOVE,
-        summary: `Gỡ "${listing!.title}" khỏi bảng${trustNote(trust)}`,
-        targetType: 'listing',
+        summary:
+          `Gỡ "${listing!.title}" khỏi bảng` +
+          (input.reason ? ` · ${input.reason}` : '') +
+          trustNote(trust),
+        targetType: AUDIT_TARGET.LISTING,
         targetId: listing!._id,
+        fromStatus: existing.status,
       },
       listing!.organizationId,
     )

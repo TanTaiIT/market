@@ -19,7 +19,7 @@ export const bearerAuth = registry.registerComponent('securitySchemes', 'bearerA
   bearerFormat: 'JWT',
 })
 
-export const errorResponseSchema = z
+const errorResponseSchema = z
   .object({
     success: z.literal(false),
     message: z.string(),
@@ -65,8 +65,7 @@ export const paginationMetaSchema = z.object({
  * SoT của phần mount: `src/features/index.ts` — thêm/bỏ module thì sửa cả hai chỗ.
  */
 const NOT_IMPLEMENTED_MODULES = [
-  '/uploads — upload ảnh lên S3',
-  '/search — full-text search',
+  '/search — full-text search (bảng tin đã lọc ?q= bằng regex; Atlas Search để sau)',
   '/reviews — đánh giá người bán',
 ]
 

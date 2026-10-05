@@ -432,3 +432,46 @@ describe('Nhóm công khai — vào ngay', () => {
     expect(await isMemberOf(user.id, org.id)).toBe(1)
   }, 120_000)
 })
+
+const bearer = (u: TestUser) => ({ Authorization: `Bearer ${u.token}` })
+
+describe('Rút đơn — chốt CHỦ ĐƠN trước trạng thái (audit 3.15)', () => {
+  it('người khác rút đơn → 403 kể cả khi đơn đã duyệt: không lộ trạng thái đơn của người lạ', async () => {
+    const owner2 = await registerUser(app, 'rut-chu@example.com', 'Chủ đơn')
+    const stranger = await registerUser(app, 'rut-la@example.com', 'Người lạ')
+    const id = (await sendRequest(owner2).expect(201)).body.data.id
+
+    await request(app).delete(`/api/v1/join-requests/${id}`).set(bearer(stranger)).expect(403)
+
+    await request(app)
+      .patch(`/api/v1/join-requests/${id}/approve`)
+      .set(asOwner())
+      .send({})
+      .expect(200)
+
+    // Trước đây: 409 "đơn đã approved" — người lạ biết được kết quả đơn không phải của mình.
+    await request(app).delete(`/api/v1/join-requests/${id}`).set(bearer(stranger)).expect(403)
+  })
+
+  it('chính chủ rút đơn đã duyệt → 409, nêu rõ trạng thái', async () => {
+    const user = await registerUser(app, 'rut-da-duyet@example.com', 'Đã duyệt')
+    const id = (await sendRequest(user).expect(201)).body.data.id
+    await request(app)
+      .patch(`/api/v1/join-requests/${id}/approve`)
+      .set(asOwner())
+      .send({})
+      .expect(200)
+
+    const res = await request(app).delete(`/api/v1/join-requests/${id}`).set(bearer(user))
+    expect(res.status).toBe(409)
+    expect(res.body.message).toContain('approved')
+  })
+
+  it('đơn không tồn tại → 404', async () => {
+    const user = await registerUser(app, 'rut-khong-co@example.com', 'Không có đơn')
+    await request(app)
+      .delete(`/api/v1/join-requests/${new mongoose.Types.ObjectId().toString()}`)
+      .set(bearer(user))
+      .expect(404)
+  })
+})

@@ -1,6 +1,7 @@
 import { notificationService } from './notification.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { notificationQuerySchema } from './notification.schema'
 import { toNotificationDto } from './notification.types'
-import { roleGrantService } from '../role-grant/role-grant.service'
 import { currentScope } from '../../common/tenant/tenantContext'
 import { orgActor } from '../../common/utils/actor'
 import { catchAsync } from '../../common/utils/catchAsync'
@@ -16,19 +17,11 @@ export const notificationController = {
      * nên người đăng tin trên trục danh mục vẫn phải biết tin mình được duyệt hay bị từ chối.
      * Chỉ nhánh phát chung mới cần org, và không có org thì đơn giản là không có nhánh đó.
      */
-    const organizationId = currentScope()?.ownOrgId ?? null
-
-    // Chỉ nạp grant khi thật sự cần: `inbox` quyết định phạm vi bằng membership, nạp grant cho
-    // nó là một truy vấn thừa trên đúng đường đi nóng nhất của màn thông báo.
-    const grants =
-      (req.query as { scope?: string }).scope === 'managed'
-        ? await roleGrantService.grantsOf(req.user!.id)
-        : []
-
-    const { items, meta } = await notificationService.list(req.query as never, {
+    const { items, meta } = await notificationService.list(queryOf(req, notificationQuerySchema), {
       id: req.user!.id,
-      organizationId: organizationId?.toString() ?? null,
-      grants,
+      organizationId: currentScope()?.ownOrgId?.toString() ?? null,
+      // Grant chỉ cần cho `scope=managed` — service tự nạp khi thiếu (audit 5.7).
+      grants: req.grants,
     })
     success(res, { message: 'Notifications', data: items, meta })
   }),

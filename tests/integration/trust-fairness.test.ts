@@ -92,11 +92,16 @@ describe('Uy tín — không farm được bằng cách tự duyệt tin của m
   }, 60_000)
 
   it('người KHÁC duyệt thì vẫn cộng bình thường — chốt trên không làm hỏng đường thật', async () => {
+    // Bậc 1 để tin THẬT SỰ vào hàng đợi: bậc 2 tự lên bảng, và "duyệt" một tin đang active là
+    // no-op từ khi có máy trạng thái (1.4) — không còn cộng điểm cho một cú bấm vô nghĩa.
+    await setTrustLevel(memberA.id, 1)
     const created = await postInOrg(memberA, ORG_A, 'Tin của thành viên').expect(201)
+    expect(created.body.data.status).toBe('pending')
 
     await decide(ownerA, ORG_A, created.body.data._id, 'active').expect(200)
 
-    expect(await trustOf(memberA.id)).toMatchObject({ cleanApprovals: 1 })
+    // `setTrustLevel(1)` đặt 5 bài sạch sẵn; một lượt duyệt thật cộng đúng một.
+    expect(await trustOf(memberA.id)).toMatchObject({ cleanApprovals: 6 })
   }, 60_000)
 
   it('tự từ chối tin của mình cũng không trừ bậc — chốt chặn cả hai chiều', async () => {
@@ -148,6 +153,7 @@ describe('Uy tín — người bán thấy được vị thế của mình', () 
       canSelfPublish: true,
       cleanApprovalsNeeded: 0,
       penalty: null,
+      probation: null,
     })
     // Cố tình KHÔNG lộ con số bậc — bậc chặn trần nên nó không nói thêm được gì.
     expect(res.body.data.standing).not.toHaveProperty('trustLevel')
@@ -202,12 +208,30 @@ describe('Uy tín — mức độ từ chối quyết định cái giá', () => 
     expect(q.body.data.limit).toBe(3) // hạn mức bậc 0 nguyên vẹn
   }, 60_000)
 
+  it('từ chối vì SAI SÓT ở bậc 1: bậc lẫn chuỗi sạch giữ nguyên — ca trên đo ở bậc 0 nên không phân biệt được', async () => {
+    const seller = await freshMember('quality-lv1@fair.local')
+    // Bậc 1 với 5 bài sạch đã tích — đúng thứ một lượt `record(false)` sẽ xoá nếu luật sai.
+    await setTrustLevel(seller.id, 1)
+    const created = await postInOrg(seller, ORG_A, 'Tin ảnh mờ bậc 1').expect(201)
+    expect(created.body.data.status).toBe('pending')
+
+    await decide(ownerA, ORG_A, created.body.data._id, 'rejected', 'Ảnh chưa rõ').expect(200)
+
+    expect(await trustOf(seller.id)).toMatchObject({ level: 1, cleanApprovals: 5 })
+    const q = await request(app).get('/api/v1/listings/quota').set(bearer(seller)).expect(200)
+    expect(q.body.data.standing.penalty).toBeNull()
+    expect(q.body.data.limit).toBe(5) // hạn mức bậc 1 nguyên vẹn
+  }, 60_000)
+
   it('từ chối vì VI PHẠM: trừ bậc và vào cửa sổ phạt', async () => {
     const seller = await freshMember('violation@fair.local')
-    // Cho họ một bài sạch trước để có bậc mà trừ.
+    // Bậc 1 để tin vào hàng đợi (bậc 2 tự lên bảng, duyệt lại là no-op). Một lượt duyệt thật
+    // cộng một bài sạch lên 5 bài có sẵn — đủ để có thứ mà lượt từ chối xoá.
+    await setTrustLevel(seller.id, 1)
     const clean = await postInOrg(seller, ORG_A, 'Tin sạch đầu tiên').expect(201)
+    expect(clean.body.data.status).toBe('pending')
     await decide(ownerA, ORG_A, clean.body.data._id, 'active').expect(200)
-    expect(await trustOf(seller.id)).toMatchObject({ cleanApprovals: 1 })
+    expect(await trustOf(seller.id)).toMatchObject({ level: 1, cleanApprovals: 6 })
 
     const bad = await postInOrg(seller, ORG_A, 'Tin vi phạm quy định').expect(201)
     await request(app)
@@ -322,6 +346,7 @@ describe('Vị thế — "còn mấy tin nữa" phải đếm cả phần đã �
       canSelfPublish: true,
       cleanApprovalsNeeded: 0,
       penalty: null,
+      probation: null,
     })
   }, 90_000)
 })

@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { DomainRuleError } from '../../common/errors'
 
 /**
  * HỒ SƠ ĐỊNH DANH NGƯỜI BÁN — yêu cầu tuân thủ của Bộ Công Thương.
@@ -88,10 +89,10 @@ kycProfileSchema.pre('validate', function enforceSubjectShape(next) {
   const companyFields = ['companyName', 'companyAddress', 'companyTaxCode'] as const
   if (this.subjectType === 'company') {
     const missing = companyFields.find((f) => !this.get(f))
-    if (missing) return next(new Error(`Hồ sơ công ty thiếu ${missing}`))
+    if (missing) return next(new DomainRuleError(`Hồ sơ công ty thiếu ${missing}`))
   } else {
     const stray = companyFields.find((f) => this.get(f))
-    if (stray) return next(new Error(`Hồ sơ cá nhân không mang ${stray}`))
+    if (stray) return next(new DomainRuleError(`Hồ sơ cá nhân không mang ${stray}`))
   }
   next()
 })

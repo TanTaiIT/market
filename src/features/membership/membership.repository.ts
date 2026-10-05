@@ -1,6 +1,12 @@
 import { ClientSession, Types } from 'mongoose'
 import { Membership, IMembership, IMembershipDocument } from './membership.model'
-import { MEMBERSHIP_STATUS, REPORT_TIMEZONE } from '../../common/constants'
+import {
+  JOINED_VIA,
+  MEMBERSHIP_ROLES,
+  MEMBERSHIP_STATUS,
+  REPORT_TIMEZONE,
+} from '../../common/constants'
+import type { JoinedVia, MembershipRole } from '../../common/constants'
 import { PaginationParams } from '../../common/utils/pagination'
 
 type Id = string | Types.ObjectId
@@ -44,6 +50,42 @@ export const membershipRepository = {
 
   create(data: Partial<IMembership>, session?: ClientSession) {
     return Membership.create([data], { session }).then(([doc]) => doc)
+  },
+
+  /**
+   * Vào nhóm — lần đầu hay VÀO LẠI đều đi qua đây.
+   *
+   * `archiveOne` giữ nguyên document khi gỡ người (lịch sử là của tổ chức), mà cặp
+   * `{userId, organizationId}` là unique KHÔNG partial: `create` cho người từng bị gỡ nổ E11000
+   * → 500 ở cả bốn đường vào nhóm (đơn công khai, duyệt đơn, nhận lời mời, master trao quyền).
+   * Upsert theo cặp khoá thì bản ghi cũ sống lại với `joinedAt` mới — vào lại là một lần vào
+   * mới, thông báo của quãng họ vắng mặt không phải của họ (`paginateInbox` lọc theo `joinedAt`).
+   *
+   * Caller vẫn `findActive` trước: người ĐANG ở trong nhóm không được reset `joinedAt`.
+   */
+  activate(data: {
+    userId: Types.ObjectId
+    organizationId: Types.ObjectId
+    role: MembershipRole
+    unitId?: Types.ObjectId | null
+    joinedVia: JoinedVia
+  }): Promise<IMembershipDocument> {
+    return Membership.findOneAndUpdate(
+      { userId: data.userId, organizationId: data.organizationId },
+      {
+        $set: {
+          status: MEMBERSHIP_STATUS.ACTIVE,
+          archivedAt: null,
+          joinedAt: new Date(),
+          role: data.role,
+          unitId: data.unitId ?? null,
+          joinedVia: data.joinedVia,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    )
+      .exec()
+      .then((doc) => doc!)
   },
 
   /** Chốt "người này có thuộc org đó không" — gọi trên mọi request có org scope. */
@@ -116,6 +158,24 @@ export const membershipRepository = {
    * Trả `null` khi không có bản ghi đang hoạt động — caller phân biệt được "đã gỡ rồi" với
    * "gỡ xong", thay vì báo thành công cho một thao tác không đụng vào gì.
    */
+  /** `userId` của mọi thành viên đang hoạt động của một tổ chức — người nhận push phát chung. */
+  async listActiveUserIdsByOrg(organizationId: Id): Promise<Types.ObjectId[]> {
+    const rows = await Membership.find({ organizationId, ...ACTIVE })
+      .select('userId')
+      .lean()
+      .exec()
+    return rows.map((r) => r.userId)
+  },
+
+  /** `userId` của thành viên đang hoạt động trong MỘT nhóm con — để gõ chuông đúng người (audit 4.6). */
+  async listActiveUserIdsByUnit(organizationId: Id, unitId: Id): Promise<Types.ObjectId[]> {
+    const rows = await Membership.find({ organizationId, unitId, ...ACTIVE })
+      .select('userId')
+      .lean()
+      .exec()
+    return rows.map((r) => r.userId)
+  },
+
   archiveOne(userId: Id, organizationId: Id): Promise<IMembershipDocument | null> {
     return Membership.findOneAndUpdate(
       { userId, organizationId, ...ACTIVE },
@@ -135,6 +195,36 @@ export const membershipRepository = {
     return Membership.updateMany(
       { userId, ...ACTIVE },
       { status: MEMBERSHIP_STATUS.ARCHIVED, archivedAt: new Date() },
+    ).exec()
+  },
+
+  /**
+   * Thân phận `admin` đi kèm một grant org — MỘT đường cho cả `organizationService.grantAdmin`
+   * lẫn `POST /role-grants` scope `org`, để hai cửa cấp quyền không lệch nhau: cửa nào cũng ra
+   * "có quyền VÀ có mặt trong danh bạ với nhãn admin".
+   */
+  async ensureAdmin(userId: Types.ObjectId, organizationId: Types.ObjectId) {
+    const existing = await this.findActive(userId, organizationId)
+    if (existing) {
+      if (existing.role !== MEMBERSHIP_ROLES.ADMIN) {
+        existing.role = MEMBERSHIP_ROLES.ADMIN
+        await existing.save()
+      }
+      return existing
+    }
+    return this.activate({
+      userId,
+      organizationId,
+      role: MEMBERSHIP_ROLES.ADMIN,
+      joinedVia: JOINED_VIA.ROSTER,
+    })
+  },
+
+  /** Chiều ngược của `ensureAdmin`: thu hồi grant org thì nhãn trong danh bạ về `member`. */
+  demoteAdmin(userId: Id, organizationId: Id) {
+    return Membership.updateOne(
+      { userId, organizationId, ...ACTIVE, role: MEMBERSHIP_ROLES.ADMIN },
+      { role: MEMBERSHIP_ROLES.MEMBER },
     ).exec()
   },
 }

@@ -164,7 +164,7 @@ Gate sau Phase 6: `typecheck` sạch · `oxlint` sạch · `prettier` sạch · 
 
 | Hạng mục | Vì sao chưa làm |
 |---|---|
-| `AuditLog` chưa dual-axis | Vết kiểm toán vẫn là collection có tenant, nên thao tác trên tin trục công khai (reassign) chỉ ghi được `logger`, không vào `moderation_events`. Cần cùng cách xử lý như `Listing`. |
+| ~~`AuditLog` chưa dual-axis~~ | Xong ở audit 2026-09-26 (1.13): `AuditLog` gắn `tenantPlugin` dual-axis, thao tác trên trục công khai ghi dưới `organizationId: null`; master / người phụ trách danh mục đọc qua `GET /moderation/activity`. Tin có thêm `moderationHistory` (chuỗi quyết định, cả máy lẫn người). |
 | Chưa có màn "2 tab" tách người ngoài | Dữ liệu đã tách (`pending_unverified` + hàng đợi `org_outsider`); còn thiếu endpoint lọc sẵn theo tab để client khỏi tự ghép. |
 | Gỡ khoá quyền đăng sau khi bị chặn | Bị chặn vì 3 tin từ chối/7 ngày thì hiện phải chờ hết cửa sổ; chưa có thao tác quản trị để gỡ sớm. |
 | Đường mời / roster / SSO | `joinedVia` đã chừa chỗ, nhưng ba cơ chế join của §7.4 vẫn là vòng sau. |

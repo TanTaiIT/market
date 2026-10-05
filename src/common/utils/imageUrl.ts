@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { env } from '../../config/env'
 
 const CLOUDINARY_HOST = 'res.cloudinary.com'
 
@@ -30,7 +31,9 @@ function hostOf(value: string): string | null {
  *    của người mua.
  * 3. **Ảnh chết theo host lạ.** Bảng tin phụ thuộc vào một domain mình không kiểm soát.
  *
- * Chỉ chốt HOST, không chốt cloud name: đổi tài khoản Cloudinary không phải là lý do sửa code.
+ * Chốt host luôn; chốt cả CLOUD NAME khi server biết nó (`CLOUDINARY_CLOUD_NAME`, audit 1.16) —
+ * host là chung cho mọi tài khoản Cloudinary, ai cũng đăng ký được một cloud, nên chỉ chốt host là
+ * nhận ảnh của cloud lạ với đủ ba rủi ro trên. Đổi tài khoản = đổi env, không phải sửa code.
  *
  * Dùng cho ảnh TIN ĐĂNG và avatar/cover NHÓM — tức mọi ảnh đi lên bảng tin. Avatar của một tài
  * khoản đi qua `userAvatarUrl` ngay dưới, vì nó có thêm một nguồn hợp lệ mà ba lý do trên không

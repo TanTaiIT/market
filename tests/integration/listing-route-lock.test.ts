@@ -179,7 +179,8 @@ describe('Master chuyển ô — phường phải theo tỉnh', () => {
     // Giữ 'Phường Bến Thành' của HCM lại dưới Hà Nội là một ô không ai phủ: manager phường của
     // Hà Nội không giữ phường đó, nên tin tụt lên cấp tỉnh mà không ai biết vì sao.
     expect(cell.wardCode).toBeNull()
-    expect(cell.status).toBe('pending')
+    // Chỉ đổi tỉnh thì giữ trạng thái (audit 1.6): nội dung không đổi, chỉ đổi người chịu trách nhiệm.
+    expect(cell.status).toBe('active')
   })
 
   it('không đổi tỉnh thì phường giữ nguyên', async () => {

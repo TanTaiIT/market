@@ -15,7 +15,7 @@ export const registerSchema = z
       .openapi({ example: 'Nguyễn Văn A' }),
     email: z.string().email().openapi({ example: 'nguyenvana@example.com' }),
     phone: z.string().min(8).max(15).optional().openapi({ example: '0901234567' }),
-    password: z.string().min(6, 'Password must be at least 6 characters').max(72),
+    password: z.string().min(8, 'Mật khẩu tối thiểu 8 ký tự').max(72),
   })
   .strict()
   .openapi('RegisterInput')
@@ -133,7 +133,19 @@ export const resetPasswordSchema = z
      * Cùng ràng buộc với `registerSchema.password` — một mật khẩu đặt lại phải qua đúng cửa mà
      * mật khẩu đăng ký đã qua, nếu không thì đây là đường vòng để lách luật độ mạnh.
      */
-    password: z.string().min(6).max(72),
+    password: z.string().min(8).max(72),
   })
   .strict()
   .openapi('ResetPassword')
+
+/** `POST /auth/password/change` — cùng ràng buộc mật khẩu với đăng ký/đặt lại (audit 3.8). */
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Nhập mật khẩu hiện tại'),
+    newPassword: z.string().min(8, 'Mật khẩu tối thiểu 8 ký tự').max(72),
+  })
+  .strict()
+  .openapi('ChangePassword')
+
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>
+registry.register('ChangePassword', changePasswordSchema)

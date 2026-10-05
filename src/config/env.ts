@@ -38,6 +38,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   PORT: z.coerce.number().default(5000),
   API_PREFIX: z.string().default('/api/v1'),
+  /** Bỏ trống = `info` ở production, `debug` ở dev (audit 7.10). */
+  LOG_LEVEL: z.enum(['error', 'warn', 'info', 'debug']).optional(),
 
   MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
 
@@ -79,6 +81,8 @@ const envSchema = z.object({
    * đa 6 tiếng trên một hạn 7 ngày — không ai nhận ra, mà số lượt chạy vô ích giảm bốn lần.
    */
   UNVERIFIED_CLEANUP_EVERY: z.string().default('6 hours'),
+  /** Đối soát `wallets.balance` với sổ cái — mỗi ngày là đủ, lệch là chuyện phải có người xem. */
+  WALLET_RECONCILE_EVERY: z.string().default('24 hours'),
 
   /*
    * Nơi nhận lỗi 5xx. THIẾU = tắt hẳn, không phải lỗi cấu hình — dev và test không gửi gì đi
@@ -226,8 +230,37 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
 
-  AWS_S3_BUCKET: z.string().optional(),
-  AWS_REGION: z.string().optional(),
+  /*
+   * PUSH NOTIFICATION qua Expo Push Service (docs/architecture/push-notification.plan.md).
+   *
+   * MẶC ĐỊNH TẮT: tắt thì `pushService.enqueue` không ghi gì và job push không đăng ký — bật
+   * khi app đã có dev build với credential FCM/APNs thật, không thì mọi push đều thành receipt lỗi.
+   */
+  PUSH_ENABLED: z
+    .string()
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /**
+   * Access token của Expo, bắt buộc khi bật "Enhanced push security" trên EAS — thiếu nó thì ai
+   * cầm được một push token cũng gửi push giả tới máy đó được. Bỏ trống khi chưa bật tính năng đó.
+   */
+  EXPO_ACCESS_TOKEN: z.string().optional(),
+  /** Lưới an toàn của đường gửi nóng (`setImmediate`): vét dòng tồn do sập giữa chừng hoặc chờ retry. */
+  PUSH_DISPATCH_EVERY: z.string().default('1 minute'),
+  /** Đọc receipt + dọn thiết bị chết. Expo giữ receipt 24h và thường có sau vài phút. */
+  PUSH_RECEIPTS_EVERY: z.string().default('15 minutes'),
+
+  /**
+   * Số hop reverse proxy đứng trước server — đi thẳng vào `app.set('trust proxy')`, thứ quyết
+   * định `req.ip` đọc `X-Forwarded-For` tới đâu.
+   *
+   * `0` = không tin proxy nào, đúng cho dev chạy thẳng. Sau Render/nginx/LB mà để `0` thì
+   * `req.ip` là IP của proxy cho MỌI request: rate limit theo IP gom cả sàn vào một xô — đăng
+   * nhập 10 lượt/phút cho toàn bộ người dùng — và chống brute-force theo IP thành vô nghĩa.
+   * Ngược lại, đặt `1` khi KHÔNG có proxy là để client tự khai IP qua header. Con số phải đúng
+   * với hạ tầng, không có giá trị "an toàn cho mọi nơi".
+   */
+  TRUST_PROXY: z.coerce.number().int().min(0).default(0),
 
   CORS_ORIGINS: z
     .string()
@@ -244,6 +277,7 @@ const parsed = envSchema.safeParse(process.env)
 
 if (!parsed.success) {
   // `logger` import `env` nên chưa tồn tại ở thời điểm này — console là lối duy nhất còn lại.
+  // eslint-disable-next-line no-console
   console.error('❌ Invalid environment variables:', parsed.error.format())
   process.exit(1)
 }
@@ -252,6 +286,7 @@ if (!parsed.success) {
 // trường này nhưng tự nhận là môi trường kia (log level, stack trace trong response, và chốt
 // an toàn của seed đều đọc `NODE_ENV`). Fail sớm thay vì chạy với danh tính sai.
 if (parsed.data.NODE_ENV !== mode) {
+  // eslint-disable-next-line no-console
   console.error(
     `❌ NODE_ENV mismatch: file .env* khai "${parsed.data.NODE_ENV}" nhưng mode nạp file là ` +
       `"${mode}". Bỏ NODE_ENV khỏi file .env* — đặt nó ở lệnh chạy hoặc secret manager.`,
@@ -267,3 +302,40 @@ export const env = {
 }
 
 export type Env = typeof env
+
+/** Chuỗi mà các file `.env*.example` để sẵn — thấy nó trên production là chưa ai đặt secret thật. */
+const PLACEHOLDER_SECRET = /set_via_secret_manager|change_this|changeme|placeholder/i
+const MIN_SECRET_LENGTH = 32
+
+/**
+ * Chốt cho SERVER production, gọi ở đầu `bootstrap()`.
+ *
+ * Không nằm trong schema Zod ở trên vì `migrate:*:prod` cũng nạp `env` với NODE_ENV=production
+ * mà không cần JWT — bắt chúng mang secret thật vào file local là đẩy secret ra khỏi secret
+ * manager, đúng chiều ngược với thứ chốt này bảo vệ.
+ *
+ * Ba điều kiện, mỗi cái là một lỗ đã suýt có thật: secret còn nguyên chuỗi mẫu của file example
+ * (tức là công khai trên GitHub), quá ngắn để chống dò, và hai secret BẰNG NHAU — lúc đó refresh
+ * token (sống 14 ngày) ký được như access token, khác secret là chốt duy nhất giữa hai loại.
+ */
+export function assertRuntimeSecrets(): void {
+  if (!env.isProd) return
+
+  const problems: string[] = []
+  for (const key of ['JWT_SECRET', 'JWT_REFRESH_SECRET'] as const) {
+    if (PLACEHOLDER_SECRET.test(env[key])) problems.push(`${key} vẫn là chuỗi mẫu của file example`)
+    else if (env[key].length < MIN_SECRET_LENGTH) {
+      problems.push(`${key} ngắn hơn ${MIN_SECRET_LENGTH} ký tự`)
+    }
+  }
+  if (env.JWT_SECRET === env.JWT_REFRESH_SECRET) {
+    problems.push('JWT_SECRET và JWT_REFRESH_SECRET trùng nhau')
+  }
+
+  if (problems.length > 0) {
+    throw new Error(
+      `Secret production không đạt: ${problems.join(' · ')}. ` +
+        'Sinh hai giá trị KHÁC NHAU bằng `openssl rand -base64 48` rồi đặt ở secret manager.',
+    )
+  }
+}

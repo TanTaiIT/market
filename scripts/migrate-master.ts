@@ -88,11 +88,10 @@ export async function seedMaster(email: string, password: string): Promise<SeedM
   }
 
   /*
-   * Upsert chứ không `create`: unique index `{userId, role, scopeType, orgId, unitId,
-   * categoryId}` KHÔNG kèm `revokedAt`, nên mỗi bộ scope chỉ có đúng một dòng dù còn hiệu
-   * lực hay đã thu hồi. `create` sẽ nổ E11000 ở ca có thật: master bị khoá (grant vẫn còn)
-   * rồi chạy lại script để mở. Upsert xử trọn ba ca — chưa có thì tạo, đã thu hồi thì hồi
-   * sinh, đang sống thì không đụng.
+   * Upsert chứ không `create`: unique index của grant là PARTIAL trên `revokedAt: null` (xem
+   * `role-grant.model.ts`), nên grant đã thu hồi không giữ chỗ — nhưng ca có thật là master bị
+   * khoá với grant VẪN CÒN HIỆU LỰC rồi chạy lại script để mở: `create` nổ E11000 đúng lúc đó.
+   * Upsert xử trọn ba ca — chưa có thì tạo, đã thu hồi thì hồi sinh, đang sống thì không đụng.
    */
   await RoleGrant.updateOne(
     { userId, role: SYSTEM_ROLES.MASTER, scopeType: SCOPE_TYPES.SYSTEM },

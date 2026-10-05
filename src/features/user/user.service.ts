@@ -1,5 +1,7 @@
 import { Types } from 'mongoose'
 import { userRepository } from './user.repository'
+import type { RestoreTrustInput, SetProbationInput } from './user.schema'
+import type { IUserDocument } from './user.model'
 import {
   AdminUserQuery,
   ClearRejectionsInput,
@@ -14,16 +16,30 @@ import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { usableMastersExcluding, usableOrgAdmins } from '../role-grant/role-grant.service'
 import { organizationRepository } from '../organization/organization.repository'
 import { trustRepository } from '../trust/trust.repository'
-import { INITIAL_TRUST } from '../trust/trust.policy'
+import { INITIAL_TRUST, MAX_TRUST_LEVEL } from '../trust/trust.policy'
 import { listingService } from '../listing/listing.service'
 import { listingRepository } from '../listing/listing.repository'
 import { QUOTA } from '../listing/listing.quota'
 import { notificationService } from '../notification/notification.service'
-import { REPORT_TIMEZONE, SCOPE_TYPES, SYSTEM_ROLES, VnProvinceName } from '../../common/constants'
+import { chatRepository } from '../chat/chat.repository'
+import { joinRequestRepository } from '../join-request/join-request.repository'
+import { inviteRepository } from '../invite/invite.repository'
+import { kycService } from '../kyc/kyc.service'
+import {
+  CASCADE_HIDE_KIND,
+  CASCADE_HIDE_REASON,
+  REPORT_TIMEZONE,
+  SCOPE_TYPES,
+  SYSTEM_ROLES,
+  VnProvinceName,
+  PUSH_CATEGORY,
+} from '../../common/constants'
 import { BUCKET_FORMAT, bucketsBetween, resolveRange } from '../../common/report/timeBuckets'
-import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
+import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
 import { logger } from '../../config/logger'
+import { disconnectUser } from '../../sockets/emit'
+import { pushService } from '../push/push.service'
 
 /**
  * Tài khoản là toàn cục nên các thao tác ở đây KHÔNG còn scope theo org.
@@ -32,6 +48,14 @@ import { logger } from '../../config/logger'
  * mới là ranh giới chống rò rỉ, không phải bộ lọc org. Dữ liệu riêng của org (vai trò, nhóm con)
  * nằm ở `memberships`, không lộ qua đây.
  */
+const DAY_MS = 24 * 60 * 60 * 1000
+
+/** DTO bàn quản trị với đủ vị thế uy tín — một lượt đọc `UserTrust` cho cả bậc lẫn án quản chế. */
+async function adminDto(user: IUserDocument) {
+  const standing = await trustRepository.standingOf(user._id)
+  return toAdminUserDto(user, standing.level, standing.onProbation ? standing.probation : null)
+}
+
 export const userService = {
   async getById(id: string) {
     const user = await userRepository.findById(id)
@@ -112,10 +136,18 @@ export const userService = {
       pagination,
     )
 
-    const trustLevels = await trustRepository.levelsOf(items.map((u) => u._id))
+    const ids = items.map((u) => u._id)
+    const [trustLevels, probations] = await Promise.all([
+      trustRepository.levelsOf(ids),
+      trustRepository.probationsOf(ids),
+    ])
     return {
       items: items.map((u) =>
-        toAdminUserDto(u, trustLevels.get(u._id.toString()) ?? INITIAL_TRUST.level),
+        toAdminUserDto(
+          u,
+          trustLevels.get(u._id.toString()) ?? INITIAL_TRUST.level,
+          probations.get(u._id.toString()) ?? null,
+        ),
       ),
       meta: buildPaginationMeta({ page: pagination.page, limit: pagination.limit, total }),
     }
@@ -128,10 +160,12 @@ export const userService = {
    * và cả trục công khai, đúng loại vượt phạm vi mà tenant model đang chặn. Org muốn xử người
    * trong nhóm mình thì công cụ đúng là membership, không phải cái công tắc này.
    *
-   * Hiệu lực: đăng nhập và refresh chặn NGAY (`auth.service` đã kiểm `isActive`); access token
-   * đang sống thì chạy nốt tối đa `JWT_EXPIRES_IN` (15 phút) — cùng đánh đổi mà multi-tenant
-   * convention §5.5 đã chốt cho suspend org: token ngắn chính là cơ chế, đừng thêm một lượt
-   * đọc DB vào mọi request chỉ để rút ngắn cái đuôi này.
+   * Hiệu lực: NGAY với mọi lượt GHI. Đăng nhập/refresh chặn ở `auth.service` (`isActive` +
+   * `tokenVersion` vừa tăng), request ghi đang cầm access token còn hạn chặn ở `resolveTenant`
+   * (`isUsable`), socket bị ngắt tại chỗ. Đường ĐỌC cố ý để mở tới khi access token hết hạn:
+   * lý do khoá nằm trong hộp thư (xem `notifyUser` bên dưới), và đó là cách duy nhất họ biết vì
+   * sao. Bản trước để cả ghi chạy nốt 15 phút với lý do "đừng thêm một lượt đọc DB vào mọi
+   * request" — lý do đó hết đúng từ khi `resolveTenant` vốn đã tra membership mỗi request.
    */
   async setStatus(id: string, input: SetUserStatusInput, actorId: string) {
     if (id === actorId) {
@@ -158,13 +192,31 @@ export const userService = {
     await userRepository.updateById(id, { isActive: input.isActive })
 
     if (!input.isActive) {
+      // Cắt phiên: refresh token chết theo `tokenVersion`, socket ngắt tại chỗ. Access token còn
+      // hạn thì `resolveTenant` chặn ở request kế tiếp — xem docblock.
+      await userRepository.bumpTokenVersion(id)
+      disconnectUser(id)
+      // Máy đã bị đá ra thì thôi nhận push; mở khoá xong app đăng nhập lại là đăng ký lại.
+      await pushService.revokeDevices(id)
+
       // Khoá một spammer mà để nguyên tin của họ trên bảng thì mới xử được cái tài khoản, chưa
       // xử được cái spam. Ẩn hết — kể cả tin đang chờ duyệt, để chúng thôi chiếm hàng đợi.
       const hidden = await listingService.hideAllFromSeller(target._id, {
         reason: `Tài khoản bị khoá: ${input.reason}`,
         byUserId: actorId,
+        cascade: CASCADE_HIDE_KIND.ACCOUNT_LOCKED,
       })
       logger.info('user locked', { actorId, userId: id, hiddenListings: hidden })
+    }
+
+    if (input.isActive) {
+      // Mở khoá trả tin về đúng trạng thái trước khi khoá (audit 1.9): khoá nhầm không được để
+      // lại một người bán với mọi tin biến mất. Tin bàn duyệt ẩn vì lý do khác không hồi sinh.
+      const restored = await listingRepository.restoreCascaded(
+        { seller: target._id },
+        CASCADE_HIDE_KIND.ACCOUNT_LOCKED,
+      )
+      logger.info('user unlocked', { actorId, userId: id, restoredListings: restored })
     }
 
     // Người bị khoá vẫn đọc được hộp thư tới khi token hết hạn, và sau khi được mở lại — lý do
@@ -172,6 +224,7 @@ export const userService = {
     await notificationService.notifyUser({
       organizationId: null,
       userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
       title: input.isActive ? 'Tài khoản của bạn đã được mở lại' : 'Tài khoản của bạn đã bị khoá',
       body: input.isActive
         ? 'Bạn có thể đăng nhập và sử dụng lại bình thường.'
@@ -179,7 +232,7 @@ export const userService = {
     })
 
     const updated = await this.getById(id)
-    return toAdminUserDto(updated, await trustRepository.levelOf(id))
+    return adminDto(updated)
   },
 
   /**
@@ -211,11 +264,104 @@ export const userService = {
     await notificationService.notifyUser({
       organizationId: null,
       userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
       title: 'Án phạt đăng tin đã được gỡ',
       body: `${input.reason} — bạn đăng tin lại được bình thường.`,
     })
 
     return { cleared }
+  },
+
+  /**
+   * Phục hồi bậc uy tín về trần — quyền MASTER, đối xứng với `clearRejections`.
+   *
+   * Vì sao cần: bậc chỉ leo lại bằng 5 tin liên tiếp do NGƯỜI duyệt thông qua, mà máy duyệt (không
+   * cộng điểm) xử gần hết tin của người bậc thấp sau khi án 7 ngày trôi qua. Nghĩa là một lượt gỡ
+   * nhầm là án chung thân, và trước endpoint này cách sửa duy nhất là xoá bản ghi trong DB.
+   *
+   * CHỈ trả bậc, KHÔNG đụng cửa sổ phạt: người có án vi phạm trong 7 ngày vẫn chưa tự đăng
+   * được cho tới khi master `clearRejections` — hai lệnh là hai câu hỏi khác nhau ("người này
+   * có đáng tin không" / "án này có oan không"), gộp lại là một nút tha bổng.
+   */
+  async restoreTrust(id: string, input: RestoreTrustInput, actorId: string) {
+    const target = await userRepository.findById(id)
+    if (!target) throw new NotFoundError('User not found')
+
+    const current = await trustRepository.stateOf(target._id)
+    if (current.level >= MAX_TRUST_LEVEL) throw new ConflictError('Uy tín đang ở bậc trần')
+
+    const restored = await trustRepository.restore(target._id)
+    logger.info('trust restored by master', {
+      actorId,
+      userId: id,
+      from: current.level,
+      to: restored.level,
+      reason: input.reason,
+    })
+
+    await notificationService.notifyUser({
+      organizationId: null,
+      userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
+      title: 'Uy tín của bạn đã được phục hồi',
+      body: `${input.reason} — tin của bạn lại lên bảng ngay như trước.`,
+    })
+
+    return adminDto(target)
+  },
+
+  /**
+   * QUẢN CHẾ — quyền MASTER (quyết định 1.12). Nhẹ hơn thu hồi quyền quản trị: người này vẫn duyệt
+   * tin của người khác, chỉ tin CỦA HỌ là phải qua mắt người khác và không tự đăng. Dùng khi một
+   * quản trị nhóm tự duyệt tin của mình sai quy định — thu quyền cả nhóm vì một người là quá tay.
+   */
+  async setProbation(id: string, input: SetProbationInput, actorId: string) {
+    const target = await userRepository.findById(id)
+    if (!target) throw new NotFoundError('User not found')
+    // Master là danh tính hệ thống — không có bàn nào đứng trên để quản chế nó.
+    if (await roleGrantRepository.isMasterUser(target._id)) {
+      throw new ForbiddenError('Không quản chế được tài khoản master')
+    }
+
+    const until = input.days ? new Date(Date.now() + input.days * DAY_MS) : null
+    await trustRepository.setProbation(target._id, {
+      reason: input.reason,
+      byUserId: new Types.ObjectId(actorId),
+      at: new Date(),
+      until,
+    })
+    logger.info('probation set by master', { actorId, userId: id, reason: input.reason, until })
+
+    await notificationService.notifyUser({
+      organizationId: null,
+      userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
+      title: 'Tài khoản của bạn đang bị quản chế',
+      body: until
+        ? `${input.reason} — đến ${until.toISOString().slice(0, 10)}, tin của bạn sẽ do người khác duyệt.`
+        : `${input.reason} — cho tới khi được gỡ, tin của bạn sẽ do người khác duyệt.`,
+    })
+
+    return adminDto(target)
+  },
+
+  async liftProbation(id: string, actorId: string) {
+    const target = await userRepository.findById(id)
+    if (!target) throw new NotFoundError('User not found')
+
+    const lifted = await trustRepository.liftProbation(target._id)
+    if (!lifted) throw new ConflictError('Tài khoản không trong diện quản chế')
+    logger.info('probation lifted by master', { actorId, userId: id })
+
+    await notificationService.notifyUser({
+      organizationId: null,
+      userId: target._id,
+      push: { category: PUSH_CATEGORY.ACCOUNT, path: null },
+      title: 'Bạn đã được gỡ quản chế',
+      body: 'Tin của bạn lại lên bảng theo bậc uy tín như trước.',
+    })
+
+    return adminDto(target)
   },
 
   /**
@@ -324,7 +470,33 @@ export const userService = {
     await Promise.all([
       roleGrantRepository.revokeAllForUser(id),
       membershipRepository.archiveAllForUser(id),
+      // Phiên chết cùng tài khoản: refresh token qua `tokenVersion`, socket ngắt tại chỗ. Hỏng ở
+      // bước sau thì chỉ còn một tài khoản đã bị đăng xuất — chạy lại được.
+      userRepository.bumpTokenVersion(id),
     ])
+    disconnectUser(id)
+
+    /*
+     * Những thứ bám vào tài khoản chết theo nó (audit 3.4): tin đang sống (mang snapshot SĐT của
+     * họ), hộp thư chat phía họ, đơn xin vào nhóm và lời mời đang treo, hồ sơ KYC. Trước đây chỉ
+     * `deletedAt` đổi — tin và số điện thoại của một người "đã xoá tài khoản" vẫn nằm trên bảng.
+     */
+    const target = await userRepository.findById(id)
+    const objectId = new Types.ObjectId(id)
+    const hiddenListings = await listingService.hideAllFromSeller(objectId, {
+      reason: CASCADE_HIDE_REASON.ACCOUNT_DELETED,
+      byUserId: id,
+      byName: target?.name ?? 'Người dùng',
+      cascade: CASCADE_HIDE_KIND.ACCOUNT_DELETED,
+    })
+    await Promise.all([
+      pushService.forgetUser(objectId),
+      chatRepository.hideAllForUser(objectId),
+      joinRequestRepository.cancelAllPendingByUser(id),
+      inviteRepository.revokeAllPendingForUser(id, target?.email ?? ''),
+      kycService.purgeForUser(id),
+    ])
+    logger.info('account deleted: cascades applied', { userId: id, hiddenListings })
 
     const user = await userRepository.softDelete(id)
     if (!user) throw new NotFoundError('User not found')

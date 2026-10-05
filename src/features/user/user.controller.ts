@@ -1,4 +1,6 @@
 import { userService } from './user.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { adminUserQuerySchema } from './user.schema'
 import { toMeProfileDto, toPublicProfileDto } from './user.types'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success } from '../../common/utils/apiResponse'
@@ -9,6 +11,24 @@ export const userController = {
   clearRejections: catchAsync(async (req, res) => {
     const data = await userService.clearRejections(req.params.id, req.body, req.user!.id)
     success(res, { message: 'Rejection penalty cleared', data })
+  }),
+
+  // POST /users/:id/restore-trust
+  restoreTrust: catchAsync(async (req, res) => {
+    const data = await userService.restoreTrust(req.params.id, req.body, req.user!.id)
+    success(res, { message: 'Trust restored', data })
+  }),
+
+  // POST /users/:id/probation
+  setProbation: catchAsync(async (req, res) => {
+    const data = await userService.setProbation(req.params.id, req.body, req.user!.id)
+    success(res, { message: 'Đã đặt quản chế', data })
+  }),
+
+  // DELETE /users/:id/probation
+  liftProbation: catchAsync(async (req, res) => {
+    const data = await userService.liftProbation(req.params.id, req.user!.id)
+    success(res, { message: 'Đã gỡ quản chế', data })
   }),
 
   // GET /users/me
@@ -40,7 +60,7 @@ export const userController = {
   // GET /users/:id  (public profile người bán)
   // GET /users
   listForAdmin: catchAsync(async (req, res) => {
-    const { items, meta } = await userService.listForAdmin(req.query as never)
+    const { items, meta } = await userService.listForAdmin(queryOf(req, adminUserQuerySchema))
     success(res, { message: 'Users', data: items, meta })
   }),
 

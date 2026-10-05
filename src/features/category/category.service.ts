@@ -6,6 +6,8 @@ import { toCategoryDto } from './category.types'
 import { BadRequestError, ConflictError, NotFoundError } from '../../common/errors'
 import { slugify } from '../../common/utils/slugify'
 import { logger } from '../../config/logger'
+import { listingRepository } from '../listing/listing.repository'
+import { CASCADE_HIDE_KIND, CASCADE_HIDE_REASON, MASTER_DISPLAY_NAME } from '../../common/constants'
 
 export const categoryService = {
   async list(query: CategoryQuery) {
@@ -82,8 +84,30 @@ export const categoryService = {
    * cache. Đổi tên hiển thị dùng `name`.
    */
   async update(id: string, input: UpdateCategoryInput, actorId: string) {
+    const before = await categoryRepository.findById(id).exec()
+    if (!before) throw new NotFoundError('Category not found')
     const category = await categoryRepository.updateById(id, input)
     if (!category) throw new NotFoundError('Category not found')
+
+    /*
+     * Tắt danh mục kéo tin theo (audit 1.20): tin trong danh mục đã đóng vẫn hiện trên bảng là bày
+     * hàng ở gian đã dỡ biển. Mở lại thì trả đúng lô đó về — cùng cơ chế với khoá tài khoản.
+     */
+    if (input.isActive === false && before.isActive) {
+      const hidden = await listingRepository.hideActiveInCategory(category._id, {
+        reason: CASCADE_HIDE_REASON.CATEGORY_DISABLED,
+        byName: MASTER_DISPLAY_NAME,
+        at: new Date(),
+        cascade: CASCADE_HIDE_KIND.CATEGORY_DISABLED,
+      })
+      logger.info('category disabled: listings hidden', { categoryId: id, hidden })
+    } else if (input.isActive === true && !before.isActive) {
+      const restored = await listingRepository.restoreCascaded(
+        { category: category._id },
+        CASCADE_HIDE_KIND.CATEGORY_DISABLED,
+      )
+      logger.info('category enabled: listings restored', { categoryId: id, restored })
+    }
 
     logger.info('platform-admin category-update', {
       adminId: actorId,

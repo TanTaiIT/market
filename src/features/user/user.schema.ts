@@ -1,5 +1,7 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
+import { cloudinaryImageUrl } from '../../common/utils/imageUrl'
 import {
   GENDER,
   REPORT_GRANULARITY,
@@ -9,8 +11,6 @@ import {
   PAGINATION,
 } from '../../common/constants'
 import { userAvatarUrl } from '../../common/utils/imageUrl'
-
-export const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 /**
  * Khu vực của người dùng. Khai riêng ở đây, KHÔNG import từ `listing.schema.ts`: hai thứ trùng
@@ -204,6 +204,41 @@ export const clearRejectionsSchema = z
 
 export type ClearRejectionsInput = z.infer<typeof clearRejectionsSchema>
 
+/** `POST /users/:id/restore-trust` — cùng khuôn `clear-rejections`: lý do bắt buộc, đi vào thông báo. */
+export const restoreTrustSchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(3)
+      .max(300)
+      .openapi({ example: 'Gỡ nhầm tin: đã xác minh người bán không vi phạm' }),
+  })
+  .strict()
+  .openapi('RestoreTrust')
+
+export type RestoreTrustInput = z.infer<typeof restoreTrustSchema>
+
+/**
+ * `POST /users/:id/probation` — quản chế (quyết định 1.12): quản trị nhóm vẫn tự duyệt được tin
+ * của mình, nhưng master đặt ai vào diện này thì tin của người đó phải qua người khác và không
+ * tự đăng. `days` bỏ trống = vô thời hạn, master gỡ tay bằng `DELETE`.
+ */
+export const setProbationSchema = z
+  .object({
+    reason: z
+      .string()
+      .trim()
+      .min(3)
+      .max(300)
+      .openapi({ example: 'Tự duyệt tin sai quy định nhóm 3 lần trong tuần' }),
+    days: z.number().int().min(1).max(365).optional(),
+  })
+  .strict()
+  .openapi('SetProbation')
+
+export type SetProbationInput = z.infer<typeof setProbationSchema>
+
 /**
  * Một dòng của bảng người dùng. Có `email` — khác hẳn `PublicProfile`: đây là màn của master,
  * và khoá/mở đúng người cần đối chiếu được bằng định danh thật chứ không chỉ cái tên hiển thị.
@@ -218,6 +253,14 @@ export const adminUserSchema = z
     isEmailVerified: z.boolean(),
     /** Bậc uy tín toàn cục — cho master thấy ngay "người này đang được tự đăng hay không". */
     trustLevel: z.number(),
+    /** Án quản chế còn hiệu lực — `null` khi không có. Xem `SetProbation`. */
+    probation: z
+      .object({
+        reason: z.string(),
+        at: z.string().datetime(),
+        until: z.string().datetime().nullable(),
+      })
+      .nullable(),
     lastLoginAt: z.string().datetime().nullable(),
     createdAt: z.string().datetime(),
   })
@@ -234,4 +277,5 @@ registry.register('PublicProfile', publicProfileSchema)
 registry.register('MeProfile', meProfileSchema)
 registry.register('SetUserStatus', setUserStatusSchema)
 registry.register('AdminUser', adminUserSchema)
+registry.register('SetProbation', setProbationSchema)
 registry.register('UserReport', userReportSchema)

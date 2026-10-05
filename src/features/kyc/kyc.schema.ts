@@ -1,8 +1,7 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import { KYC_STATUSES, KYC_SUBJECTS } from './kyc.model'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 /**
  * Số định danh: 9–12 CHỮ SỐ, chấp nhận cả CMND cũ lẫn CCCD 12 số.

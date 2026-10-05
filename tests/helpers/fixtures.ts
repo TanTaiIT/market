@@ -129,6 +129,7 @@ export async function createOrg(
     ownerEmail: string
     orgType?: string
     provinceCode?: string
+    ward?: string
   },
 ) {
   const { ownerEmail, key, ...body } = input

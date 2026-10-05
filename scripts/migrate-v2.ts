@@ -1,6 +1,7 @@
 /* eslint-disable no-console */
 import mongoose, { Types } from 'mongoose'
 import { env } from '../src/config/env'
+import { runMigrationOnce } from './migrationLedger'
 // Side-effect: bơm `DNS_SERVERS` cho c-ares trước lượt tra SRV đầu — xem `applyDnsOverride`.
 import '../src/config/database'
 import { User } from '../src/features/user/user.model'
@@ -293,51 +294,54 @@ async function migrate() {
   await mongoose.connect(env.MONGO_URI)
   console.log('Connected. Migrating to v2...')
 
-  await runUnscoped('v2 migration', async () => {
-    await dropChainRemnants()
-    await backfillOrgNameTokens()
-    await backfillMemberships()
-    await migratePlatformAdmins()
-    await backfillListingAxis()
-    // Mặc định GIỮ `organizationId`: một vòng deploy còn rollback được. Đặt `true` ở lần chạy
-    // sau, khi đã chắc chắn không quay lại v1.
-    await cleanupLegacyUserFields({ dropOrganizationId: false })
+  // Sổ `_migrations` (audit 7.2): v2 chạy đúng một lần trên một DB.
+  await runMigrationOnce('v2', () =>
+    runUnscoped('v2 migration', async () => {
+      await dropChainRemnants()
+      await backfillOrgNameTokens()
+      await backfillMemberships()
+      await migratePlatformAdmins()
+      await backfillListingAxis()
+      // Mặc định GIỮ `organizationId`: một vòng deploy còn rollback được. Đặt `true` ở lần chạy
+      // sau, khi đã chắc chắn không quay lại v1.
+      await cleanupLegacyUserFields({ dropOrganizationId: false })
 
-    // Từ điển danh mục / field / template. Đưa vào migration chứ không bắt chạy `seed:templates`
-    // riêng: một DB vừa migrate mà chưa có template thì mọi lượt đăng tin đều thiếu bộ field, và
-    // "nhớ chạy thêm một script nữa" là loại bước người ta quên đúng lúc đang deploy.
-    //
-    // An toàn trên dữ liệu thật: `upsertCatalog` chỉ upsert theo khoá tự nhiên (`slug`, `key`),
-    // không xoá gì — cùng hàm mà `seed:templates` gọi. Danh mục do người vận hành tự thêm không
-    // bị đụng tới.
-    const catalog = await upsertCatalog()
-    console.log(`catalog: ${catalog.size} danh mục + field/template đã upsert`)
+      // Từ điển danh mục / field / template. Đưa vào migration chứ không bắt chạy `seed:templates`
+      // riêng: một DB vừa migrate mà chưa có template thì mọi lượt đăng tin đều thiếu bộ field, và
+      // "nhớ chạy thêm một script nữa" là loại bước người ta quên đúng lúc đang deploy.
+      //
+      // An toàn trên dữ liệu thật: `upsertCatalog` chỉ upsert theo khoá tự nhiên (`slug`, `key`),
+      // không xoá gì — cùng hàm mà `seed:templates` gọi. Danh mục do người vận hành tự thêm không
+      // bị đụng tới.
+      const catalog = await upsertCatalog()
+      console.log(`catalog: ${catalog.size} danh mục + field/template đã upsert`)
 
-    // syncIndexes vừa tạo index mới vừa DROP index không còn khai báo trong schema — đúng thứ
-    // ta cần cho `(organizationId, email)` cũ và index `ownerId` unique.
-    // ponytail: rebuild toàn bộ index, chấp nhận được ở quy mô hiện tại; trên collection
-    // production lớn thì thay bằng createIndexes/dropIndex có kiểm soát + background.
-    for (const model of [
-      User,
-      Organization,
-      OrgUnit,
-      Membership,
-      RoleGrant,
-      JoinRequest,
-      Listing,
-      UserTrust,
-      Notification,
-      // Ba model của cụm category-template. Thiếu chúng ở đây thì index mới (`attrs`, unique
-      // `slug`/`key`, unique bản template theo danh mục) không được tạo lúc migrate — và ở
-      // production `autoIndex` thường tắt, nên sẽ không có ai tạo hộ.
-      Category,
-      CategoryTemplate,
-      FieldDefinition,
-    ]) {
-      const dropped = await model.syncIndexes()
-      console.log(`${model.modelName}: dropped stale indexes ${JSON.stringify(dropped)}`)
-    }
-  })
+      // syncIndexes vừa tạo index mới vừa DROP index không còn khai báo trong schema — đúng thứ
+      // ta cần cho `(organizationId, email)` cũ và index `ownerId` unique.
+      // ponytail: rebuild toàn bộ index, chấp nhận được ở quy mô hiện tại; trên collection
+      // production lớn thì thay bằng createIndexes/dropIndex có kiểm soát + background.
+      for (const model of [
+        User,
+        Organization,
+        OrgUnit,
+        Membership,
+        RoleGrant,
+        JoinRequest,
+        Listing,
+        UserTrust,
+        Notification,
+        // Ba model của cụm category-template. Thiếu chúng ở đây thì index mới (`attrs`, unique
+        // `slug`/`key`, unique bản template theo danh mục) không được tạo lúc migrate — và ở
+        // production `autoIndex` thường tắt, nên sẽ không có ai tạo hộ.
+        Category,
+        CategoryTemplate,
+        FieldDefinition,
+      ]) {
+        const dropped = await model.syncIndexes()
+        console.log(`${model.modelName}: dropped stale indexes ${JSON.stringify(dropped)}`)
+      }
+    }),
+  )
 
   await mongoose.disconnect()
   console.log('Done.')

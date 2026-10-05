@@ -46,6 +46,15 @@ export function emitToUser(userId: string, event: string, payload: unknown): voi
 }
 
 /**
+ * Cắt mọi socket của một người — khoá/xoá tài khoản thì phiên realtime phải chết cùng phiên
+ * HTTP. Không có dòng này thì socket đã bắt tay sống vô hạn: người bị khoá vẫn nhận tin nhắn,
+ * thông báo nhóm, dòng hoạt động của bàn duyệt cho tới khi họ tự đóng app.
+ */
+export function disconnectUser(userId: string): void {
+  io?.in(userRoom(userId)).disconnectSockets(true)
+}
+
+/**
  * Phòng của THÀNH VIÊN một nhóm — cho thông báo phát chung (`userId: null`).
  *
  * Khác `adminRoom` ở đối tượng: phòng kia chỉ có quản trị và nghe dòng hoạt động của bàn duyệt,

@@ -21,6 +21,7 @@ import {
   isAutoApprove,
   ReviewedContent,
   touchesReviewedContent,
+  liveLimitFor,
 } from './listing.quota'
 import { userRepository } from '../user/user.repository'
 import { categoryRepository } from '../category/category.repository'
@@ -30,6 +31,7 @@ import {
   bannedPhraseIn,
   medianOf,
   reviewByMachine,
+  screenText,
 } from '../moderation/moderation.machine'
 import type { MachineHold } from '../moderation/moderation.machine'
 import { notificationService } from '../notification/notification.service'
@@ -41,8 +43,11 @@ import { organizationRepository } from '../organization/organization.repository'
 import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { roleGrantService } from '../role-grant/role-grant.service'
+import { reportRepository } from '../report/report.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { CLEAN_APPROVALS_PER_LEVEL, MAX_TRUST_LEVEL } from '../trust/trust.policy'
+import type { TrustProbation } from '../trust/trust.model'
+import type { CascadeHideKind } from '../../common/constants'
 import {
   Grant,
   canBumpListing,
@@ -52,10 +57,14 @@ import {
 } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from '../../common/errors'
 import {
+  REJECTION_SEVERITY,
   ACTION_BY_DECISION,
   LISTING_STATUS,
+  MASTER_DISPLAY_NAME,
   MODERATION_ACTION,
   MODERATION_QUEUE,
+  MODERATION_TRANSITIONS,
+  REPORT_AUTO_RESOLUTION,
   ModerationAction,
   ModerationDecision,
   LISTING_REACH,
@@ -67,6 +76,7 @@ import {
   TENANT_STATUS,
   isWardOfProvince,
   type RejectionSeverity,
+  PUSH_CATEGORY,
 } from '../../common/constants'
 import { slugifyWithSuffix } from '../../common/utils/slugify'
 import { currentScope, runUnscoped } from '../../common/tenant/tenantContext'
@@ -107,7 +117,7 @@ import {
  * Trước đây hai chốt đầu mỗi bên tự viết literal này; thêm chốt thứ ba là lúc ba bản sao bắt
  * đầu lệch nhau.
  */
-function targetOf(listing: IListingDocument) {
+export function targetOf(listing: IListingDocument) {
   return {
     reach: listing.reach,
     organizationId: listing.organizationId?.toString() ?? null,
@@ -200,6 +210,8 @@ export interface ListingAuthor {
   trustLevel: number
   /** Chuỗi tin sạch liên tiếp. Chỉ `postingStanding` cần — xem lý do ở đó. */
   cleanApprovals: number
+  /** Án quản chế CÒN HIỆU LỰC của tài khoản, `null` khi không có — xem `trust.model.ts`. */
+  probation: TrustProbation | null
 }
 
 function toListingDoc(
@@ -389,6 +401,12 @@ function quotaError(quota: QuotaVerdict): Error {
         'quyền đăng tạm khoá, liên hệ quản trị để mở lại',
     )
   }
+  if (quota.reason === 'live_full') {
+    return new ConflictError(
+      `Bạn đang có ${quota.live.count}/${quota.live.limit} tin đang hiện hoặc chờ duyệt — ` +
+        'đánh dấu đã bán hoặc xoá bớt tin cũ rồi đăng tiếp',
+    )
+  }
   return new ConflictError(
     `Bạn đang có ${quota.pending}/${quota.limit} tin chờ duyệt — chờ duyệt xong rồi đăng tiếp`,
   )
@@ -466,7 +484,11 @@ function postingStanding(
   // ai đang dở dang — đúng những người cần nó nhất.
   const doneInLevel = author.cleanApprovals % CLEAN_APPROVALS_PER_LEVEL
   return {
-    canSelfPublish: isAutoApprove(author.trustLevel, recentRejections),
+    canSelfPublish: isAutoApprove(author.trustLevel, recentRejections, author.probation !== null),
+    // Người bị quản chế phải biết vì sao tin mình không lên ngay — án ẩn là án không ai sửa được.
+    probation: author.probation
+      ? { reason: author.probation.reason, until: author.probation.until?.toISOString() ?? null }
+      : null,
     cleanApprovalsNeeded:
       levelsShort === 0 ? 0 : levelsShort * CLEAN_APPROVALS_PER_LEVEL - doneInLevel,
     // Án phạt hết đúng khi lượt từ chối gần nhất rơi ra khỏi cửa sổ 7 ngày.
@@ -487,35 +509,45 @@ function rejectionWindowStart(): Date {
   return new Date(Date.now() - QUOTA.REJECTION_WINDOW_DAYS * 24 * 60 * 60 * 1000)
 }
 
+/** Ba trường mà lớp FLAG soi — đủ cho cả bản đăng mới lẫn bản đã ghép patch của một tin cũ. */
+type FlaggableContent = Pick<CreateListingInput, 'title' | 'description' | 'price'>
+
 /**
  * FLAG của cổng nội dung — chỉ chạy khi fast-path uy tín SẮP MỞ, vì tin vào PENDING kiểu gì
  * máy quét cũng chấm đầy đủ vài phút sau (tiết kiệm 2 query cho đường thường).
  *
  * Dùng CHUNG bảng luật với máy quét (`reviewByMachine`) chứ không viết bộ thứ hai — hai
- * signals đã biết chắc theo ngữ cảnh (không án từ chối, danh mục không bắt duyệt tay, vì
- * khác đi thì fast-path đã đóng trước khi tới đây) truyền cứng false.
+ * signals đã biết chắc theo ngữ cảnh (không án từ chối, danh mục không bắt duyệt tay, đủ bậc,
+ * không quản chế — vì khác đi thì fast-path đã đóng trước khi tới đây) truyền cứng.
+ *
+ * Gọi ở CẢ hai cửa: đăng mới (`excludeId: null`, tin chưa được ghi) và sửa tin đang/từng hiển
+ * thị (`excludeId` = chính tin đó, kẻo tiêu đề của nó tự tố là trùng). Hai cửa cùng một lớp:
+ * cổng chỉ gác cửa đăng thì "đăng sạch rồi sửa" là đường vòng miễn phí.
  */
 async function fastPathFlagged(
-  input: CreateListingInput,
+  content: FlaggableContent,
   sellerId: Types.ObjectId,
   categoryId: Types.ObjectId,
+  excludeId: Types.ObjectId | null,
 ): Promise<MachineHold[]> {
   const dupSince = new Date(Date.now() - MACHINE_REVIEW.DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
   const [prices, hasDuplicateTitle] = await Promise.all([
     listingRepository.sampleActivePrices(categoryId, MACHINE_REVIEW.PRICE_SAMPLE_SIZE),
-    // excludeId null: tin đang xét chưa được ghi, không có gì để tự loại.
-    listingRepository.hasRecentDuplicateTitle(sellerId, input.title, null, dupSince),
+    listingRepository.hasRecentDuplicateTitle(sellerId, content.title, excludeId, dupSince),
   ])
   const screening = reviewByMachine({
-    title: input.title,
-    description: input.description,
-    // Rỗng vì cụm cấm đã xét TRƯỚC ở tầng create — hàm này chỉ còn lo phần FLAG.
+    title: content.title,
+    description: content.description,
+    // Rỗng vì cụm cấm đã xét TRƯỚC ở cả create lẫn update — hàm này chỉ còn lo phần FLAG.
     bannedPhrases: [],
-    price: input.price,
+    price: content.price,
     categoryMedianPrice: medianOf(prices),
     hasRecentRejection: false,
     hasDuplicateTitle,
     categoryRequiresReview: false,
+    // Cùng lý do với hai vế trên: fast-path chỉ mở cho người đủ bậc và không bị quản chế.
+    trustLevel: MAX_TRUST_LEVEL,
+    onProbation: false,
   })
   // Trả về ĐÚNG các hold, không phải một boolean: đây là dữ liệu duy nhất giải thích được cho
   // người đăng vì sao tin của họ dừng lại — ném nó đi rồi chỉ ghi "flagged" là câm.
@@ -531,6 +563,19 @@ async function fastPathFlagged(
  */
 function toOwnerListing(doc: IListingDocument) {
   return { ...doc.toJSON(), review: reviewOf(doc) }
+}
+
+/**
+ * DTO cho BÀN DUYỆT — bản duy nhất còn mang `moderation` (ai xử, lúc nào, lý do).
+ *
+ * `toJSON` của model xoá field đó cùng với `autoApproval`/`machineReview`: hồ sơ duyệt là chuyện
+ * giữa người đăng và người duyệt, không phải của trang tin. Để nguyên là mọi tin ACTIVE do người
+ * duyệt tay mang tên + id của họ ra bảng tin công khai, và chủ tin biết đích danh ai từ chối mình
+ * (chủ tin đọc lý do qua `review`, không cần tên người bấm). Người duyệt thì cần nó, nên ghép lại
+ * ở đúng đường của họ.
+ */
+export function toModerationListing(doc: IListingDocument) {
+  return { ...doc.toJSON(), moderation: doc.moderation ?? null }
 }
 
 /**
@@ -575,7 +620,28 @@ async function withOrgBadge<T extends { organizationId: Types.ObjectId | null; t
   }))
 }
 
+/** Chỉ tin đang CHỜ hoặc ĐANG HIỆN mới chuyển ô được — xem `rerouteListing`. */
+const REROUTABLE_STATUSES: readonly string[] = [LISTING_STATUS.PENDING, LISTING_STATUS.ACTIVE]
+
 export const listingService = {
+  /**
+   * Bối cảnh người đăng — dựng từ danh tính + membership của request, cộng vị thế uy tín (một
+   * bậc dùng chung cho mọi luồng, xem `trust.model.ts`). Ở service chứ không ở controller (audit
+   * 5.7): đọc `UserTrust` là nghiệp vụ, controller chỉ ghép `req`.
+   */
+  async authorOf(
+    base: Pick<ListingAuthor, 'id' | 'organizationId' | 'isMember' | 'unitId'>,
+  ): Promise<ListingAuthor> {
+    const trust = await trustRepository.standingOf(base.id)
+    return {
+      ...base,
+      trustLevel: trust.level,
+      cleanApprovals: trust.cleanApprovals,
+      // Chỉ mang án CÒN HIỆU LỰC — với mọi luật đăng tin, án hết hạn là không có án.
+      probation: trust.onProbation ? trust.probation : null,
+    }
+  },
+
   /**
    * Đăng tin. Bốn chốt, theo đúng thứ tự này:
    *
@@ -587,7 +653,7 @@ export const listingService = {
    * 4. Ghi, với `organizationId`/`visibility`/`provinceCode` do bước 2 quyết định, không phải
    *    do client gửi lên.
    */
-  async create(input: CreateListingInput, author: ListingAuthor) {
+  async create(input: CreateListingInput, author: ListingAuthor, idempotencyKey?: string) {
     // Zod chỉ chốt được `categoryId` đúng dạng 24 hex. Không kiểm tra ở đây thì một id hợp lệ
     // về hình thức nhưng không trỏ tới danh mục nào vẫn tạo ra tin — và tin đó rơi khỏi mọi
     // bộ lọc danh mục mà không ai biết vì sao.
@@ -612,6 +678,13 @@ export const listingService = {
     const sellerId = new Types.ObjectId(author.id)
     const categoryId = new Types.ObjectId(input.categoryId)
 
+    // Cùng khoá đã đăng rồi → trả lại tin đó, không tốn quota lần hai (audit 1.18). Client mạng
+    // chập chờn bấm "Ghim" hai lần là ca thật; khoá là tuỳ chọn nên client cũ không đổi gì.
+    if (idempotencyKey) {
+      const already = await listingRepository.findBySellerAndKey(sellerId, idempotencyKey)
+      if (already) return already
+    }
+
     const recentRejections = await listingRepository.countRecentRejections(
       sellerId,
       rejectionWindowStart(),
@@ -621,14 +694,23 @@ export const listingService = {
     // BLOCK (cụm cấm) chạy cho MỌI tin, 0 query. Tin dính không bị chặn ở HTTP mà thành
     // REJECTED ngay từ cửa: `moderation.at` cho `countRecentRejections` đếm, nên dò luật
     // 3 lần trong 7 ngày là REJECTION_BLOCK tự khoá quyền đăng — 400 suông thì dò vô hạn.
+    // Soi MỌI ô chữ tự do, không chỉ tiêu đề/mô tả (audit 1.17) — xem `screenText`.
     const banned = bannedPhraseIn(
-      input.title + '\n' + input.description,
+      screenText({
+        title: input.title,
+        description: input.description,
+        address: input.location?.address,
+        attributes: input.attributes,
+      }),
       await bannedPhraseService.phrases(),
     )
 
+    const onProbation = author.probation !== null
     const wouldAutoApprove =
-      !banned && isAutoApprove(author.trustLevel, recentRejections) && !category.requireManualReview
-    const holds = wouldAutoApprove ? await fastPathFlagged(input, sellerId, categoryId) : []
+      !banned &&
+      isAutoApprove(author.trustLevel, recentRejections, onProbation) &&
+      !category.requireManualReview
+    const holds = wouldAutoApprove ? await fastPathFlagged(input, sellerId, categoryId, null) : []
     const contentFlagged = holds.length > 0
 
     const routed = routeListing({
@@ -661,6 +743,7 @@ export const listingService = {
       isOutsider,
       recentRejections,
       pendingCount,
+      liveCount: await listingRepository.countLiveBySeller(sellerId),
     })
     if (!quota.allowed) throw quotaError(quota)
 
@@ -679,6 +762,7 @@ export const listingService = {
             categoryRequiresReview: category.requireManualReview,
             isOutsider,
             contentFlagged,
+            onProbation,
           }),
     }
 
@@ -708,7 +792,7 @@ export const listingService = {
         reason: bannedContentReason(banned),
         byName: 'Hệ thống',
         at: new Date(),
-        severity: 'violation',
+        severity: REJECTION_SEVERITY.VIOLATION,
       }
     }
 
@@ -732,17 +816,30 @@ export const listingService = {
      */
     const scopedOrgId = currentScope()?.ownOrgId?.toString() ?? null
     const crossesTenant = routed.organizationId !== null && routed.organizationId !== scopedOrgId
-    const listing = await (crossesTenant
-      ? runUnscoped('đăng tin vào nhóm đích do body chỉ ra, đã qua resolveTargetOrg', () =>
-          listingRepository.create(doc),
-        )
-      : listingRepository.create(doc))
+    if (idempotencyKey) (doc as { idempotencyKey?: string }).idempotencyKey = idempotencyKey
+    let listing: IListingDocument
+    try {
+      listing = await (crossesTenant
+        ? runUnscoped('đăng tin vào nhóm đích do body chỉ ra, đã qua resolveTargetOrg', () =>
+            listingRepository.create(doc),
+          )
+        : listingRepository.create(doc))
+    } catch (err) {
+      // Hai request cùng khoá về cùng lúc: unique index để một bên thắng, bên thua đọc lại.
+      const raced =
+        idempotencyKey && (err as { code?: number }).code === 11000
+          ? await listingRepository.findBySellerAndKey(sellerId, idempotencyKey)
+          : null
+      if (!raced) throw err
+      return raced
+    }
 
     if (banned) {
       // Cùng lời với người duyệt tay từ chối — người đăng không cần biết ai chặn, chỉ cần vì sao.
       await notificationService.notifyUser({
         organizationId: listing.organizationId,
         userId: listing.seller,
+        push: { category: PUSH_CATEGORY.LISTING_STATUS, path: '/mylistings' },
         title: 'Tin của bạn bị từ chối',
         body: `"${listing.title}" — ${bannedContentReason(banned)}`,
       })
@@ -808,6 +905,7 @@ export const listingService = {
         isOutsider: Boolean(author.organizationId) && !author.isMember,
         recentRejections,
         pendingCount,
+        liveCount: await listingRepository.countLiveBySeller(sellerId),
       }),
       needsReconcile: needsReconcile.map((l) => ({
         _id: l._id.toString(),
@@ -907,13 +1005,32 @@ export const listingService = {
       throw new BadRequestError('Chỉ gia hạn được tin đang hiển thị hoặc đã hết hạn')
     }
 
+    // Gia hạn tin ĐÃ HẾT HẠN là đưa thêm một tin lên bảng — cùng trần với đăng mới, nếu không
+    // trần theo bậc uy tín chỉ cần đăng trước rồi gia hạn dần là vượt.
+    if (existing.status === LISTING_STATUS.EXPIRED) {
+      const [trustLevel, liveCount] = await Promise.all([
+        trustRepository.levelOf(userId),
+        listingRepository.countLiveBySeller(existing.seller),
+      ])
+      const limit = liveLimitFor(trustLevel)
+      if (liveCount >= limit) {
+        throw new ConflictError(
+          `Bạn đang có ${liveCount}/${limit} tin đang hiện hoặc chờ duyệt — ` +
+            'đánh dấu đã bán hoặc xoá bớt tin cũ rồi gia hạn',
+        )
+      }
+    }
+
+    // `.exec()` NGAY trong callback — cùng lý do ở `update`: trả Query chưa chạy ra ngoài là hook
+    // của plugin chạy dưới scope của REQUEST, và với tin nội bộ của người thuộc nhiều nhóm (không
+    // header) thì predicate ghi không khớp gì: 200 mà `data: null`, trạng thái không đổi.
     const updated = await runUnscoped('gia hạn: ghi sau khi đã chốt chính chủ', () =>
-      listingRepository.updateById(id, {
-        status: LISTING_STATUS.ACTIVE,
-        expiresAt: listingExpiresAt(),
-      }),
+      listingRepository
+        .updateById(id, { status: LISTING_STATUS.ACTIVE, expiresAt: listingExpiresAt() })
+        .exec(),
     )
-    return updated!
+    if (!updated) throw new NotFoundError('Listing not found')
+    return updated
   },
 
   /**
@@ -933,10 +1050,12 @@ export const listingService = {
       throw new BadRequestError('Chỉ đánh dấu đã bán cho tin đang hiển thị hoặc đã hết hạn')
     }
 
+    // `.exec()` trong callback — xem `renew`.
     const updated = await runUnscoped('đã bán: ghi sau khi đã chốt chính chủ', () =>
-      listingRepository.updateById(id, { status: LISTING_STATUS.SOLD }),
+      listingRepository.updateById(id, { status: LISTING_STATUS.SOLD }).exec(),
     )
-    return updated!
+    if (!updated) throw new NotFoundError('Listing not found')
+    return updated
   },
 
   async nearby(query: NearbyQuery) {
@@ -1022,9 +1141,14 @@ export const listingService = {
    * Không rò rỉ gì: caller BẮT BUỘC đưa tin này qua `assertCanActOnListing` trước khi làm
    * bất cứ điều gì với nó.
    */
-  async getForModeration(id: string) {
+  async getForModeration(id: string, opts: { withDeleted?: boolean } = {}) {
+    // `withDeleted` cho báo cáo về một tin đã xoá: vẫn phải xét được trục của nó để đóng báo cáo,
+    // nếu không hàng đợi giữ mãi một dòng mà mở ra là 404.
     const listing = await runUnscoped('moderation: đọc tin để xét thẩm quyền theo trục', () =>
-      listingRepository.findById(id).exec(),
+      (opts.withDeleted
+        ? listingRepository.findByIdWithDeleted(id)
+        : listingRepository.findById(id)
+      ).exec(),
     )
     if (!listing) throw new NotFoundError('Listing not found')
     return listing
@@ -1040,7 +1164,9 @@ export const listingService = {
     if (ids.length === 0) return []
     const items = await listingRepository.findByIds(ids)
     const byId = new Map(items.map((item) => [item._id.toString(), item]))
-    return ids.map((id) => byId.get(id.toString())).filter((item) => item !== undefined)
+    const ordered = ids.map((id) => byId.get(id.toString())).filter((item) => item !== undefined)
+    // Cùng DTO với bảng tin (kèm danh thiếp nhóm) — "Tin đã lưu" không phải một hình dạng riêng.
+    return withOrgBadge(ordered)
   },
 
   /**
@@ -1054,19 +1180,62 @@ export const listingService = {
   /**
    * Ẩn mọi tin còn sống của một người (tài khoản bị khoá). Trả về số tin đã ẩn.
    *
-   * MỞ KHOÁ không có chiều ngược: tin đã ẩn ở lại ẩn, người dùng tự mở lại từng tin nếu còn
-   * muốn bán — chúng đã rời bảng một thời gian, tự bật hàng loạt là hồi sinh cả tin đã hết thời.
+   * MỞ KHOÁ có chiều ngược (audit 1.9): `cascade` + `restoreTo` ghi trên từng tin cho
+   * `restoreCascaded` trả đúng lô này về đúng trạng thái cũ — khoá nhầm không được để lại một
+   * người bán với mọi tin biến mất. Tin đã hết thời trong lúc ẩn thì `listing-expiry` hạ lại.
    */
   async hideAllFromSeller(
     sellerId: Types.ObjectId,
-    input: { reason: string; byUserId: string },
+    input: { reason: string; byUserId: string; byName?: string; cascade: CascadeHideKind },
   ): Promise<number> {
-    const actor = await userRepository.findById(input.byUserId)
+    // Khoá là việc của master (danh tính hệ thống → `MASTER_DISPLAY_NAME`); xoá tài khoản là việc
+    // của chính chủ, caller đưa tên vào. Cùng luật snapshot với `audit_logs.actorName`.
+    const byUserId = new Types.ObjectId(input.byUserId)
+    const byName = input.byName ?? MASTER_DISPLAY_NAME
+    // Liệt kê TRƯỚC khi ẩn: sau `updateMany` không còn biết tin nào vừa rời bảng để đóng báo cáo.
+    const liveIds = await listingRepository.liveIdsBySeller(sellerId)
     const result = await listingRepository.hideAllBySeller(sellerId, {
       reason: input.reason,
-      byUserId: new Types.ObjectId(input.byUserId),
-      byName: actor?.name ?? 'Quản trị hệ thống',
+      byUserId,
+      byName,
       at: new Date(),
+      cascade: input.cascade,
+    })
+    await reportRepository.resolveAllOpenForListings(liveIds, {
+      action: REPORT_AUTO_RESOLUTION.TARGET_REMOVED,
+      byUserId,
+      byName,
+    })
+    return result.modifiedCount
+  },
+
+  /**
+   * Người rời (hoặc bị gỡ khỏi) nhóm: tin TRONG NHÓM của họ ẩn đi, báo cáo về chúng đóng lại.
+   *
+   * Hai bậc trong nhóm (`members`/`group_open`) là nội dung nhóm đứng tên — người không còn trong
+   * nhóm thì không còn gì để đứng tên. Tin sàn mang badge nhóm giữ nguyên: nó nằm trục công khai
+   * và do bàn danh mục duyệt; badge là ghi nhận lúc đăng (nợ đã ghi ở audit 1.14).
+   */
+  async detachFromOrg(
+    sellerId: Types.ObjectId,
+    organizationId: Types.ObjectId,
+    input: { reason: string; byUserId: string; byName: string; cascade: CascadeHideKind },
+  ): Promise<number> {
+    const byUserId = new Types.ObjectId(input.byUserId)
+    // Liệt kê TRƯỚC khi ẩn — cùng lý do `hideAllFromSeller`.
+    const ids = await listingRepository.liveInternalIdsBySellerInOrg(sellerId, organizationId)
+    if (ids.length === 0) return 0
+    const result = await listingRepository.hideAllBySellerInOrg(sellerId, organizationId, {
+      reason: input.reason,
+      byUserId,
+      byName: input.byName,
+      at: new Date(),
+      cascade: input.cascade,
+    })
+    await reportRepository.resolveAllOpenForListings(ids, {
+      action: REPORT_AUTO_RESOLUTION.TARGET_REMOVED,
+      byUserId,
+      byName: input.byName,
     })
     return result.modifiedCount
   },
@@ -1079,7 +1248,12 @@ export const listingService = {
     // chỉ phần gửi lên: tin cũ lọt lưới từ trước ngày có cổng thì không được sửa vặt cho tới
     // khi dọn sạch phần cấm — gửi kèm bản chữ sạch trong cùng patch là qua.
     const banned = bannedPhraseIn(
-      (input.title ?? existing.title) + '\n' + (input.description ?? existing.description),
+      screenText({
+        title: input.title ?? existing.title,
+        description: input.description ?? existing.description,
+        address: input.location?.address ?? existing.location?.address,
+        attributes: input.attributes ?? existing.attributes,
+      }),
       await bannedPhraseService.phrases(),
     )
     if (banned) throw new BadRequestError(bannedContentReason(banned))
@@ -1088,6 +1262,26 @@ export const listingService = {
 
     const { categoryId, location, attributes, ...rest } = input
     const update: Partial<IListing> = { ...rest }
+
+    /*
+     * Tin bị TỪ CHỐI: sửa là ĐĂNG LẠI (audit 1.20). Từ chối vì sai sót (`quality`) thì bản sửa về
+     * hàng chờ để người duyệt xem lại — trước đây không có đường nào, tin nằm `rejected` mãi dù
+     * đã sửa. Từ chối vì VI PHẠM (hoặc dữ liệu cũ chưa phân mức, xử như vi phạm ở mọi nơi khác)
+     * thì không có cửa sửa-để-lên-lại: đó là án, đường đúng là đăng tin mới và ăn lại quota.
+     */
+    if (existing.status === LISTING_STATUS.REJECTED) {
+      if (existing.moderation?.severity !== REJECTION_SEVERITY.QUALITY) {
+        throw new BadRequestError(
+          'Tin bị từ chối vì vi phạm — không sửa để đăng lại được, hãy đăng tin mới',
+        )
+      }
+      update.status = LISTING_STATUS.PENDING
+      update.machineReview = null
+      update.autoApproval = {
+        trustLevel: await trustRepository.levelOf(userId),
+        reason: 'resubmitted',
+      }
+    }
     if (categoryId) update.category = new Types.ObjectId(categoryId)
     /*
      * Ghi ĐÚNG `location.address`, không gán lại cả `location`.
@@ -1121,6 +1315,7 @@ export const listingService = {
         // Giữ nguyên danh mục → ghim template của chính tin này, để form sửa và server xét
         // cùng một bộ field. Đổi danh mục → template cũ vô nghĩa, lấy bản mới nhất.
         categoryId ? undefined : existing.templateRef?.version,
+        categoryId ? undefined : existing.templateRef?.isFallback,
       )
 
       update.attributes = new Map(Object.entries(validated.attributes))
@@ -1129,14 +1324,22 @@ export const listingService = {
     }
 
     /*
-     * Tin ĐANG HIỂN THỊ mà đổi nội dung người duyệt từng nhìn thì phải xếp hàng lại.
+     * Tin ĐANG/TỪNG HIỂN THỊ (`active`, `expired`) mà đổi nội dung người duyệt từng nhìn thì
+     * phải xếp hàng lại.
      *
      * Không có chốt này thì cả cơ chế duyệt chỉ tốn đúng một lần lách: đăng một tin sạch, đợi
      * nó lên bảng, rồi sửa thành bất cứ thứ gì — `update` không hề chạm `status` nên tin ở lại
      * `ACTIVE` vĩnh viễn mà không ai xem lại.
      *
+     * `expired` tính như `active`, và đó là chỗ từng hở: tin hết hạn vẫn xem được ở trang chi
+     * tiết, và chỉ cần một cú `renew` là quay lại bảng. Bỏ nó ra khỏi khối này thì "chờ hết
+     * hạn → sửa → gia hạn" là đường vòng qua MỌI lớp duyệt, kể cả danh mục bắt duyệt tay.
+     *
      * Ngoại lệ là người bán ĐỦ ĐIỀU KIỆN TỰ ĐĂNG ngay lúc này: xoá tin rồi đăng lại họ vẫn ra
      * `ACTIVE`, nên giữ tin của họ lại chỉ đẻ thêm việc cho người duyệt chứ không chặn được gì.
+     * Nhưng "đăng lại" của họ vẫn đi qua lớp FLAG (`fastPathFlagged`), nên sửa cũng phải qua:
+     * bản trước chỉ xét uy tín ở đây, còn máy quét thì chỉ nhìn hàng PENDING — đăng sạch rồi sửa
+     * giá thành 500 triệu, đổi mô tả thành chuỗi gõ bừa, tin vẫn ở nguyên trên bảng.
      */
     const reviewedBefore: ReviewedContent = {
       title: existing.title,
@@ -1153,15 +1356,22 @@ export const listingService = {
     // đá về chờ ở khối dưới.
     if (touches) update.machineReview = null
 
-    if (existing.status === LISTING_STATUS.ACTIVE && touches) {
-      const [category, trustLevel, recentRejections] = await Promise.all([
+    const wasVisible =
+      existing.status === LISTING_STATUS.ACTIVE || existing.status === LISTING_STATUS.EXPIRED
+
+    if (wasVisible && touches) {
+      const [category, standing, recentRejections] = await Promise.all([
         categoryRepository.findById(targetCategory).exec(),
-        trustRepository.levelOf(userId),
+        trustRepository.standingOf(userId),
         listingRepository.countRecentRejections(existing.seller, rejectionWindowStart()),
       ])
+      const trustLevel = standing.level
       const categoryRequiresReview = category?.requireManualReview ?? false
 
-      if (!isAutoApprove(trustLevel, recentRejections) || categoryRequiresReview) {
+      if (
+        !isAutoApprove(trustLevel, recentRejections, standing.onProbation) ||
+        categoryRequiresReview
+      ) {
         // Về `PENDING` chứ không `PENDING_UNVERIFIED`: hàng đợi người-ngoài dành cho tin CHƯA
         // ai duyệt. Tin này đã qua tay người duyệt một lượt — thứ cần xem lại là nội dung mới,
         // không phải tư cách người đăng.
@@ -1174,23 +1384,53 @@ export const listingService = {
             recentRejections,
             categoryRequiresReview,
             isOutsider: false,
+            onProbation: standing.onProbation,
           }),
+        }
+      } else {
+        // Fast-path uy tín mở → soi bản ĐÃ GHÉP bằng đúng lớp FLAG của cửa đăng. Có hold thì
+        // xuống hàng đợi kèm lý do, để `review` nói được cho người bán vì sao tin dừng lại.
+        const holds = await fastPathFlagged(
+          {
+            title: input.title ?? existing.title,
+            description: input.description ?? existing.description,
+            price: input.price ?? existing.price,
+          },
+          existing.seller,
+          new Types.ObjectId(targetCategory),
+          existing._id,
+        )
+        if (holds.length > 0) {
+          update.status = LISTING_STATUS.PENDING
+          update.autoApproval = { trustLevel, holds, reason: 'content_flagged' }
         }
       }
     }
 
     // `.exec()` NGAY trong callback: trả về Query chưa chạy là pre hook của plugin nổ sau khi
     // AsyncLocalStorage đã thoát ngữ cảnh → 'Missing tenant context'. Cùng lối `bump` ở dưới.
-    return runUnscoped('sửa tin: ghi sau khi đã chốt chính chủ', () =>
-      listingRepository.updateById(id, update).exec(),
+    // Ghi CÓ CHỐT trạng thái đã đọc (audit 1.18): người duyệt vừa đổi trạng thái giữa lúc chủ tin
+    // sửa thì bản sửa không được đè lên phán quyết đó — 409, tải lại rồi sửa tiếp.
+    const updated = await runUnscoped('sửa tin: ghi sau khi đã chốt chính chủ', () =>
+      listingRepository.updateByIdIfStatus(id, existing.status, update).exec(),
     )
+    if (!updated) throw new ConflictError('Tin vừa được duyệt hoặc xử lý — tải lại rồi sửa tiếp')
+    return updated
   },
 
   async remove(id: string, userId: string) {
-    await assertOwnerUnscoped(id, userId)
-    return runUnscoped('xoá tin: ghi sau khi đã chốt chính chủ', () =>
+    const listing = await assertOwnerUnscoped(id, userId)
+    const removed = await runUnscoped('xoá tin: ghi sau khi đã chốt chính chủ', () =>
       listingRepository.softDelete(id).exec(),
     )
+    // Tin không còn thì báo cáo về nó không còn gì để xử — để mở là kẹt vĩnh viễn trong hàng
+    // đợi và `openReports` đếm mãi. Tên người đóng là chính chủ: họ vừa gỡ đối tượng bị tố.
+    await reportRepository.resolveAllOpenForListings([listing._id], {
+      action: REPORT_AUTO_RESOLUTION.TARGET_REMOVED,
+      byUserId: listing.seller,
+      byName: listing.posterName,
+    })
+    return removed
   },
 
   /**
@@ -1266,10 +1506,48 @@ export const listingService = {
     // khe nào để hai lớp phán khác nhau.
     assertCanActOnListing(listing, grants, ACTION_BY_DECISION[next.status])
 
+    /*
+     * QUẢN CHẾ (quyết định 1.12, 2026-09-26): quản trị nhóm VẪN tự duyệt được tin của mình — đó
+     * là cách nhóm nhỏ vận hành. Nhưng master đặt ai vào diện quản chế thì tin của người đó phải
+     * qua mắt NGƯỜI KHÁC. Chốt ở đây, dưới mọi cửa duyệt tay, để không caller nào đi vòng được.
+     */
+    if (
+      next.status === LISTING_STATUS.ACTIVE &&
+      listing.seller.toString() === next.byUserId &&
+      (await trustRepository.isOnProbation(listing.seller))
+    ) {
+      throw new ForbiddenError('Tài khoản đang bị quản chế — tin của bạn phải do người khác duyệt')
+    }
+
+    // Cùng trạng thái = không ghi gì. Lớp ngoài (`moderationService.setListingStatus`) cũng bỏ
+    // qua uy tín/báo/nhật ký ở ca này — không có gì để "ghi lại" cả.
+    if (listing.status === next.status) return listing
+
+    /*
+     * MÁY TRẠNG THÁI, tra `MODERATION_TRANSITIONS`. Bản trước ghi vô điều kiện: `sold → active`
+     * hồi sinh tin đã bán, `expired → active` là gia hạn hộ mà chủ tin không biết, và bấm
+     * "duyệt" lần thứ hai lên tin đang active cộng thêm một bài sạch mỗi lần bấm.
+     */
+    if (!MODERATION_TRANSITIONS[next.status].includes(listing.status)) {
+      throw new BadRequestError(
+        `Không chuyển được tin từ "${listing.status}" sang "${next.status}"`,
+      )
+    }
+
+    // Ghi CÓ CHỐT trạng thái đã đọc: hai moderator cùng mở một tin, người bấm sau thấy 409 thay vì
+    // đè phán quyết vừa ghi (và cộng/trừ uy tín lần nữa).
     const updated = await runUnscoped('moderation: ghi phán quyết đã qua chốt thẩm quyền', () =>
       listingRepository
-        .updateById(id, {
+        .updateByIdIfStatus(id, listing.status, {
           status: next.status,
+          /*
+           * Lên bảng là bắt đầu lại 30 ngày, tính từ LÚC DUYỆT — không phải lúc đăng. `expiresAt`
+           * vốn chỉ được tính ở `create`; tin nằm chờ hơn 30 ngày (ô chưa ai phụ trách, rơi về
+           * master) vừa được duyệt xong là `listing-expiry:sweep` hạ xuống `expired` trong vòng
+           * một giờ, người bán chưa kịp thấy nó trên bảng. Ẩn rồi mở lại cũng nhận mốc mới —
+           * quãng bị ẩn không phải lỗi của họ.
+           */
+          ...(next.status === LISTING_STATUS.ACTIVE && { expiresAt: listingExpiresAt() }),
           moderation: {
             reason: next.reason,
             byUserId: new Types.ObjectId(next.byUserId),
@@ -1280,42 +1558,88 @@ export const listingService = {
         })
         .exec(),
     )
-    return updated!
+    if (!updated) throw new ConflictError('Tin vừa được người khác xử lý — tải lại rồi xem')
+    await listingRepository.appendModerationHistory(id, {
+      status: next.status,
+      reason: next.reason,
+      byUserId: new Types.ObjectId(next.byUserId),
+      byName: next.byName,
+      at: new Date(),
+      ...(next.status === LISTING_STATUS.REJECTED && next.severity
+        ? { severity: next.severity }
+        : {}),
+    })
+    return updated
   },
 
   /**
    * Đổi ô (danh mục/tỉnh) của một tin. Tin quay về ĐẦU hàng đợi mới: nó chưa từng được ai ở
    * ô mới nhìn qua, giữ nguyên thứ tự cũ là chen ngang hàng đợi của họ (§11.3).
    */
+  /**
+   * Chuyển ô duyệt (danh mục × tỉnh) của MỘT tin trên sàn — quyền master trục công khai
+   * (`requireMasterPublicAxis`), nên đọc/ghi unscoped (audit 1.6): master không đứng trong org
+   * nào mà tin sàn mang badge nhóm lại có `organizationId`, nhánh ghi có scope khớp 0 dòng.
+   *
+   * Chỉ tin đang CHỜ hoặc ĐANG HIỆN: chuyển ô một tin đã từ chối/ẩn/bán là hồi sinh nó qua cửa
+   * sau. Đổi danh mục → về hàng chờ của ô mới (bản duyệt cũ là của ô cũ) và máy chấm lại; chỉ đổi
+   * tỉnh → giữ trạng thái, nội dung không đổi, chỉ đổi người chịu trách nhiệm.
+   */
   async rerouteListing(id: string, input: { categoryId?: string; provinceCode?: string }) {
-    const listing = await listingRepository.findById(id)
+    const listing = await runUnscoped(
+      'reroute: đọc tin trên sàn, quyền là master trục công khai',
+      () => listingRepository.findById(id).exec(),
+    )
     if (!listing) throw new NotFoundError('Listing not found')
-    if (input.categoryId) await categoryService.assertUsable(input.categoryId)
+    if (listing.reach !== LISTING_REACH.MARKETPLACE) {
+      throw new BadRequestError('Chỉ chuyển ô được tin trên sàn — tin trong nhóm do nhóm duyệt')
+    }
+    if (!REROUTABLE_STATUSES.includes(listing.status)) {
+      throw new BadRequestError(`Không chuyển ô được tin đang "${listing.status}"`)
+    }
 
-    const update: Partial<IListing> = { status: LISTING_STATUS.PENDING }
-    if (input.categoryId) update.category = new Types.ObjectId(input.categoryId)
+    const update: Partial<IListing> = {}
+    let clearTemplate = false
+
+    if (input.categoryId && input.categoryId !== listing.category.toString()) {
+      await categoryService.assertUsable(input.categoryId)
+      /*
+       * Thuộc tính động là của danh mục CŨ: lọc lại qua template mới, cùng cách `update` làm khi
+       * đổi danh mục. Không khớp (thiếu field bắt buộc, sai kiểu) thì XOÁ bộ thuộc tính chứ không
+       * chặn: master đang chuyển ô, không sửa hộ người bán — và bộ cũ mà giữ lại là lọt vào bộ lọc
+       * của danh mục mới với những khoá không thuộc về nó. Người bán điền lại khi sửa tin.
+       */
+      let validated: ValidatedForCategory | null = null
+      try {
+        validated = await categoryTemplateService.validateForCategory(
+          input.categoryId,
+          Object.fromEntries(listing.attributes),
+        )
+      } catch (err) {
+        if (!(err instanceof BadRequestError)) throw err
+      }
+      update.category = new Types.ObjectId(input.categoryId)
+      update.attributes = new Map(Object.entries(validated?.attributes ?? {}))
+      update.attrs = validated?.attrs ?? []
+      if (validated?.templateId) update.templateRef = toTemplateRef(validated)
+      else clearTemplate = true
+      update.status = LISTING_STATUS.PENDING
+      update.machineReview = null
+    }
 
     /*
-     * Đổi tỉnh phải kéo theo PHƯỜNG, không thì để lại một ô không tồn tại.
-     *
-     * `rerouteListingSchema` không nhận phường, nên phường cũ ở lại. Cặp (tỉnh mới, phường cũ)
-     * không có thật: `canModerateCategory` ở tầng `category_ward` đòi `wardCodes.includes(ward)`,
-     * mà không manager phường nào của tỉnh mới giữ phường của tỉnh cũ — tin lặng lẽ leo lên
-     * manager cấp tỉnh, hoặc lên master nếu tỉnh đó chưa có ai.
-     *
-     * `null` chứ không đoán một phường: master đang chuyển tin sang tỉnh khác thì họ biết danh
-     * mục và tỉnh, không biết tin nằm ở phường nào bên đó. Ô cấp tỉnh là ô ĐÚNG cho một tin
-     * chưa rõ phường — grant cấp tỉnh phủ trọn mọi phường, nên vẫn luôn có người nhận.
-     *
-     * Giữ nguyên `location`: đó là địa chỉ người bán khai, không phải khoá định tuyến. Master
-     * sửa bàn duyệt, không sửa lời khai của người ta.
+     * Đổi tỉnh phải kéo theo PHƯỜNG, không thì để lại một ô không tồn tại: cặp (tỉnh mới, phường
+     * cũ) không manager phường nào giữ, tin lặng lẽ leo lên cấp tỉnh. `null` chứ không đoán một
+     * phường — ô cấp tỉnh là ô ĐÚNG cho tin chưa rõ phường. Giữ nguyên `location`: đó là lời khai
+     * của người bán, không phải khoá định tuyến.
      */
     if (input.provinceCode && input.provinceCode !== listing.provinceCode) {
       update.provinceCode = input.provinceCode
       update.wardCode = null
     }
 
-    const updated = await listingRepository.updateById(id, update)
+    if (Object.keys(update).length === 0) return listing
+    const updated = await listingRepository.reroute(id, update, clearTemplate)
     return updated!
   },
 

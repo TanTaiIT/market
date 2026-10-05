@@ -360,3 +360,21 @@ describe('Danh thiếp nhóm đi kèm tin', () => {
     expect(res.body.data.organizationId).toBe(orgIdOf(ORG_B))
   }, 60_000)
 })
+
+describe('Chính chủ thuộc nhiều nhóm thao tác tin nội bộ mà KHÔNG gửi header', () => {
+  // Không header → `ownOrgId: null` → predicate ghi của tenantPlugin không khớp tin nội bộ.
+  // Đường ghi đã chốt chính chủ nên phải chạy unscoped THẬT (`.exec()` trong callback), nếu
+  // không server trả 200 mà `data: null` và trạng thái không đổi.
+  it('gia hạn ghi thật, không trả 200 rỗng', async () => {
+    const id = await postInternal(duo, ORG_A, 'Tin nội bộ của người hai nhóm')
+    const res = await request(app).post(`/api/v1/listings/${id}/renew`).set(bearer(duo)).expect(200)
+    expect(res.body.data).not.toBeNull()
+    expect(res.body.data.status).toBe('active')
+  })
+
+  it('đánh dấu đã bán cũng vậy', async () => {
+    const id = await postInternal(duo, ORG_A, 'Tin đã bán của người hai nhóm')
+    const res = await request(app).post(`/api/v1/listings/${id}/sold`).set(bearer(duo)).expect(200)
+    expect(res.body.data.status).toBe('sold')
+  })
+})

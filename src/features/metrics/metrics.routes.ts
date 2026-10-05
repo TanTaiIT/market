@@ -1,10 +1,13 @@
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { metricsController } from './metrics.controller'
 import { systemMetricsSchema } from './metrics.schema'
 import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 /**
  * Master-only TOÀN BỘ, và đây là chốt duy nhất — không có phiên bản hẹp hơn cho ai khác.

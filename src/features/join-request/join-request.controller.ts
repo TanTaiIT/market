@@ -1,4 +1,6 @@
 import { joinRequestService } from './join-request.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { joinRequestQuerySchema } from './join-request.schema'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
@@ -25,7 +27,10 @@ export const joinRequestController = {
   // GET /join-requests
   list: catchAsync(async (req, res) => {
     const orgId = requireOwnOrgId('joinRequest.list')
-    const { items, meta } = await joinRequestService.listForOrganization(orgId, req.query as never)
+    const { items, meta } = await joinRequestService.listForOrganization(
+      orgId,
+      queryOf(req, joinRequestQuerySchema),
+    )
     success(res, { message: 'Hàng đợi đơn tham gia', data: items, meta })
   }),
 

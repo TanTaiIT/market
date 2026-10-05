@@ -1,7 +1,7 @@
 import { ClientSession, FilterQuery, Types } from 'mongoose'
+import { REFRESH_SESSIONS_MAX } from '../../common/constants'
 import { User, IUserDocument, IUser } from './user.model'
 import { REPORT_TIMEZONE } from '../../common/constants'
-import { runUnscoped } from '../../common/tenant/tenantContext'
 
 /**
  * Tài khoản là toàn cục nên repository này KHÔNG còn nhận `organizationId`. Ranh giới tenant
@@ -105,26 +105,24 @@ export const userRepository = {
   /**
    * Số tài khoản MỚI theo từng cột thời gian, gộp trong múi giờ thị trường.
    *
-   * `runUnscoped` + `deletedAt: null` khai tay: `aggregate` không đi qua hook
-   * `pre(/^find/)` của soft-delete, và `User` mang `tenantPlugin` nên thiếu scope là ném.
+   * `deletedAt: null` khai tay: `aggregate` không đi qua hook `pre(/^find/)` của soft-delete.
+   * `User` KHÔNG mang `tenantPlugin` nên không cần `runUnscoped` (audit 5.9).
    * Chỉ master gọi được (`requireMaster` ở route) và kết quả là con số gộp, không lộ tài khoản nào.
    *
    * Tài khoản đã xoá KHÔNG được đếm: báo cáo này trả lời "sàn lớn thêm bao nhiêu người", mà
    * một người đã rời đi thì không còn là tăng trưởng — đếm họ là tự khen mình bằng số cũ.
    */
   reportSeries(from: Date, to: Date, format: string) {
-    return runUnscoped('report: người dùng mới theo thời gian', () =>
-      User.aggregate<{ _id: string; users: number }>([
-        { $match: { deletedAt: null, createdAt: { $gte: from, $lte: to } } },
-        {
-          $group: {
-            _id: { $dateToString: { format, date: '$createdAt', timezone: REPORT_TIMEZONE } },
-            users: { $sum: 1 },
-          },
+    return User.aggregate<{ _id: string; users: number }>([
+      { $match: { deletedAt: null, createdAt: { $gte: from, $lte: to } } },
+      {
+        $group: {
+          _id: { $dateToString: { format, date: '$createdAt', timezone: REPORT_TIMEZONE } },
+          users: { $sum: 1 },
         },
-        { $sort: { _id: 1 } },
-      ]).exec(),
-    )
+      },
+      { $sort: { _id: 1 } },
+    ]).exec()
   },
 
   /**
@@ -134,9 +132,7 @@ export const userRepository = {
    * từ đầu cửa sổ báo cáo.
    */
   countCreatedBefore(before: Date): Promise<number> {
-    return runUnscoped('report: số người dùng trước mốc bắt đầu', () =>
-      User.countDocuments({ deletedAt: null, createdAt: { $lt: before } }).exec(),
-    )
+    return User.countDocuments({ deletedAt: null, createdAt: { $lt: before } }).exec()
   },
 
   updateById(id: string | Types.ObjectId, update: Partial<IUser>) {
@@ -152,8 +148,52 @@ export const userRepository = {
    * dùng để từ chối đăng nhập. Xem `roleGrantService` §5.4 cho lý do phép đếm này tồn tại.
    */
   /** Giết mọi refresh token đã phát cho tài khoản này — xem `authService.logout`. */
+  /** Cắt MỌI phiên: version lệch là mọi refresh token chết, và danh sách phiên trống theo. */
   bumpTokenVersion(id: string | Types.ObjectId) {
-    return User.updateOne({ _id: id }, { $inc: { tokenVersion: 1 } }).exec()
+    return User.updateOne({ _id: id }, { $inc: { tokenVersion: 1 }, $set: { sessions: [] } }).exec()
+  },
+
+  /** Mở một phiên refresh; quá `REFRESH_SESSIONS_MAX` thì phiên cũ nhất rơi ra (`$slice` âm giữ đuôi). */
+  addSession(id: string | Types.ObjectId, jti: string) {
+    const now = new Date()
+    return User.updateOne(
+      { _id: id },
+      {
+        $push: {
+          sessions: {
+            $each: [{ jti, createdAt: now, lastUsedAt: now }],
+            $slice: -REFRESH_SESSIONS_MAX,
+          },
+        },
+      },
+    ).exec()
+  },
+
+  /**
+   * Xoay jti của ĐÚNG phiên đang refresh — compare-and-set trên jti cũ. `false` = jti cũ không
+   * còn: token đã được xoay trước đó (tái dùng) hoặc phiên đã bị cắt.
+   */
+  async rotateSession(
+    id: string | Types.ObjectId,
+    oldJti: string,
+    newJti: string,
+  ): Promise<boolean> {
+    const res = await User.updateOne(
+      { _id: id, 'sessions.jti': oldJti },
+      { $set: { 'sessions.$.jti': newJti, 'sessions.$.lastUsedAt': new Date() } },
+    ).exec()
+    return res.matchedCount > 0
+  },
+
+  /**
+   * Tài khoản còn dùng được không — `false` khi bị khoá hoặc đã xoá mềm. Chạy trên MỌI request
+   * có token (`resolveTenant`) và ở handshake socket, nên phải là truy vấn rẻ nhất có thể: một
+   * `exists` theo `_id`.
+   */
+  isUsable(id: string | Types.ObjectId): Promise<boolean> {
+    return User.exists({ _id: id, isActive: true, deletedAt: null })
+      .exec()
+      .then((hit) => hit !== null)
   },
 
   countUsable(ids: Types.ObjectId[]): Promise<number> {
@@ -167,6 +207,42 @@ export const userRepository = {
       { deletedAt: new Date(), isActive: false },
       { new: true },
     ).exec()
+  },
+
+  /** Trạng thái + công tắc push của một lô người nhận — một truy vấn cho cả lô của dispatcher. */
+  pushAudience(ids: Types.ObjectId[]) {
+    return User.find({ _id: { $in: ids } })
+      .select('isActive pushPrefs')
+      .lean()
+      .exec()
+  },
+
+  /** Người trong danh sách ĐÃ BẬT một nhóm push tắt-theo-mặc-định (`group_activity`). */
+  async optedIntoPush(ids: Types.ObjectId[], category: string): Promise<Types.ObjectId[]> {
+    if (ids.length === 0) return []
+    const rows = await User.find({
+      _id: { $in: ids },
+      isActive: true,
+      'pushPrefs.enabled': { $ne: false },
+      [`pushPrefs.categories.${category}`]: true,
+    })
+      .select('_id')
+      .lean()
+      .exec()
+    return rows.map((r) => r._id)
+  },
+
+  /** Ghi đè từng công tắc được gửi lên, giữ nguyên phần còn lại. */
+  setPushPrefs(
+    id: string | Types.ObjectId,
+    patch: { enabled?: boolean; categories?: Record<string, boolean> },
+  ) {
+    const $set: Record<string, boolean> = {}
+    if (patch.enabled !== undefined) $set['pushPrefs.enabled'] = patch.enabled
+    for (const [key, value] of Object.entries(patch.categories ?? {})) {
+      $set[`pushPrefs.categories.${key}`] = value
+    }
+    return User.findOneAndUpdate({ _id: id }, { $set }, { new: true }).select('pushPrefs').exec()
   },
 
   /** Avatar của mọi tài khoản — cho job dọn ảnh mồ côi (`upload.cleanup.service.ts`). */

@@ -1,11 +1,19 @@
-import { MACHINE_REVIEW, MachineVerdict, medianOf, reviewByMachine } from './moderation.machine'
+import {
+  MACHINE_REVIEW,
+  MachineVerdict,
+  medianOf,
+  reviewByMachine,
+  screenText,
+} from './moderation.machine'
 import { notifyPoster } from './moderation.service'
 import { bannedPhraseService } from '../banned-phrase/banned-phrase.service'
 import { listingRepository } from '../listing/listing.repository'
+import { listingExpiresAt } from '../listing/listing.expiry.service'
 import { QUOTA } from '../listing/listing.quota'
 import { IListingDocument } from '../listing/listing.model'
 import { categoryRepository } from '../category/category.repository'
-import { LISTING_STATUS } from '../../common/constants'
+import { trustRepository } from '../trust/trust.repository'
+import { LISTING_STATUS, REJECTION_SEVERITY } from '../../common/constants'
 import { logger } from '../../config/logger'
 
 interface SweepResult {
@@ -21,9 +29,10 @@ interface SweepResult {
  * Đứng sau hàng đợi chứ không thay fast-path: tin của người bậc 2 đã ACTIVE ngay trong request
  * đăng, không bao giờ tới đây. Máy chỉ dọn phần `PENDING` đang chờ người duyệt.
  *
- * KHÔNG đi qua `setListingStatus` của người duyệt tay — cố tình: đường đó cộng/trừ uy tín
- * (`applyTrustEffect`) và ghi audit theo actor thật. Máy không được đụng uy tín (xem
- * `moderation.machine.ts` cho lập luận), nên nó có đường ghi riêng với chốt race ở repository.
+ * KHÔNG đi qua `setListingStatus` của người duyệt tay — cố tình: đường đó ghi audit theo actor
+ * thật và trừ bậc khi từ chối, mà máy thì không được trừ bậc (xem `moderation.machine.ts`). Nó có
+ * đường ghi riêng với chốt race ở repository; phần cộng uy tín khi duyệt sạch gọi thẳng
+ * `trustRepository.record` ở `apply`.
  */
 export const machineReviewService = {
   async sweep(): Promise<SweepResult> {
@@ -72,13 +81,14 @@ async function judge(
   const since = new Date(Date.now() - QUOTA.REJECTION_WINDOW_DAYS * 24 * 60 * 60 * 1000)
   const dupSince = new Date(Date.now() - MACHINE_REVIEW.DUPLICATE_WINDOW_DAYS * 24 * 60 * 60 * 1000)
 
-  const [category, prices, recentRejections, hasDuplicateTitle] = await Promise.all([
+  const [category, prices, recentRejections, hasDuplicateTitle, standing] = await Promise.all([
     categoryRepository.findById(listing.category.toString()).exec(),
     listingRepository.sampleActivePrices(listing.category, MACHINE_REVIEW.PRICE_SAMPLE_SIZE),
     // Không bọc `runUnscoped` ở đây nữa: `countRecentRejections` tự bọc từ trong repository,
     // vì phép đếm đó sai với MỌI caller có scope hẹp, không riêng job này.
     listingRepository.countRecentRejections(listing.seller, since),
     listingRepository.hasRecentDuplicateTitle(listing.seller, listing.title, listing._id, dupSince),
+    trustRepository.standingOf(listing.seller),
   ])
 
   return reviewByMachine({
@@ -90,6 +100,14 @@ async function judge(
     hasRecentRejection: recentRejections > 0,
     hasDuplicateTitle,
     categoryRequiresReview: category?.requireManualReview ?? false,
+    trustLevel: standing.level,
+    onProbation: standing.onProbation,
+    extraText: screenText({
+      title: '',
+      description: '',
+      address: listing.location?.address,
+      attributes: listing.attributes,
+    }),
   })
 }
 
@@ -100,9 +118,22 @@ async function apply(listing: IListingDocument, verdict: MachineVerdict): Promis
   if (verdict.verdict === 'approve') {
     const updated = await listingRepository.applyMachineVerdict(listing._id, {
       status: LISTING_STATUS.ACTIVE,
+      // 30 ngày tính từ lúc LÊN BẢNG — cùng lý do với `setModerationStatus`.
+      expiresAt: listingExpiresAt(),
       machineReview: { at, verdict: 'approved' },
     })
-    if (updated) await notifyPoster(updated, LISTING_STATUS.ACTIVE)
+    if (updated) {
+      await notifyPoster(updated, LISTING_STATUS.ACTIVE)
+      // Duyệt sạch bằng máy CÓ tính là một bài sạch — xem đầu `moderation.machine.ts` cho cái giá
+      // đã cân. Chỉ khi ghi THẬT: thua race với người duyệt tay thì lượt cộng là của người đó.
+      await trustRepository.record(listing.seller, true)
+      await listingRepository.appendModerationHistory(listing._id, {
+        status: LISTING_STATUS.ACTIVE,
+        byName: 'Hệ thống',
+        at,
+        machine: true,
+      })
+    }
     return updated !== null
   }
 
@@ -112,9 +143,24 @@ async function apply(listing: IListingDocument, verdict: MachineVerdict): Promis
       machineReview: { at, verdict: 'rejected' },
       // `moderation.at` là thứ `countRecentRejections` đếm — nhờ nó lượt từ chối máy tự động
       // khoá cửa tự-đăng và bóp quota của người này 7 ngày, không cần đụng tới bậc uy tín.
-      moderation: { reason: verdict.reason, byName: 'Hệ thống', at, severity: 'violation' },
+      moderation: {
+        reason: verdict.reason,
+        byName: 'Hệ thống',
+        at,
+        severity: REJECTION_SEVERITY.VIOLATION,
+      },
     })
-    if (updated) await notifyPoster(updated, LISTING_STATUS.REJECTED, verdict.reason)
+    if (updated) {
+      await notifyPoster(updated, LISTING_STATUS.REJECTED, verdict.reason)
+      await listingRepository.appendModerationHistory(listing._id, {
+        status: LISTING_STATUS.REJECTED,
+        reason: verdict.reason,
+        byName: 'Hệ thống',
+        at,
+        severity: REJECTION_SEVERITY.VIOLATION,
+        machine: true,
+      })
+    }
     return updated !== null
   }
 
@@ -123,5 +169,14 @@ async function apply(listing: IListingDocument, verdict: MachineVerdict): Promis
   const held = await listingRepository.applyMachineVerdict(listing._id, {
     machineReview: { at, verdict: 'held', holds: verdict.holds },
   })
+  if (held) {
+    await listingRepository.appendModerationHistory(listing._id, {
+      status: LISTING_STATUS.PENDING,
+      reason: `Máy giữ lại: ${verdict.holds.join(', ')}`,
+      byName: 'Hệ thống',
+      at,
+      machine: true,
+    })
+  }
   return held !== null
 }

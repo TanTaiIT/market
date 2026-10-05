@@ -4,6 +4,8 @@ import { env } from '../src/config/env'
 // Side-effect: bơm `DNS_SERVERS` cho c-ares trước lượt tra SRV đầu — xem `applyDnsOverride`.
 import '../src/config/database'
 import { isWardOfProvince } from '../src/common/constants'
+import { runUnscoped } from '../src/common/tenant/tenantContext'
+import { DRY_RUN, assertWriteConfirmed } from './confirmWrite'
 
 /**
  * Hạ trục danh mục xuống cấp PHƯỜNG.
@@ -23,38 +25,38 @@ import { isWardOfProvince } from '../src/common/constants'
  *
  * Đi thẳng qua driver (`connection.db`), không qua model: `tenantPlugin` sẽ đòi scope cho mọi
  * query trên `listings`, mà migration thì không có request nào để lấy scope; và validator
- * `wardCode` required-với-tin-công-khai sẽ chặn đúng những bản ghi ta đang định sửa.
+ * `wardCode` required-với-tin-công-khai sẽ chặn đúng những bản ghi ta đang định sửa. Lượt ghi
+ * vào `listings` vẫn bọc `runUnscoped` để `grep runUnscoped` liệt kê đủ mọi lối đi xuyên tenant.
  *
  * Chạy MỘT LẦN, idempotent: lượt hai không còn grant nào để thu hồi và không còn tin nào thiếu
  * `wardCode` suy được.
+ *
+ * Chạy thử: npm run migrate:ward-axis -- --dry-run
+ * Chạy:     npm run migrate:ward-axis                (prod: CONFIRM_DB=<tên db> …)
  */
 const MAX_LISTED = 30
 
 async function migrate() {
   await mongoose.connect(env.MONGO_URI)
-  console.log('→ đã kết nối', env.MONGO_URI.replace(/\/\/.*@/, '//***@'))
+  console.log(`▶ db "${mongoose.connection.name}" · NODE_ENV=${env.NODE_ENV}`)
 
   const db = mongoose.connection.db!
+  const listings = db.collection('listings')
 
-  // ── 1. Thu hồi grant cấp tỉnh ─────────────────────────────────────────────
-  const revoked = await db
+  // ── 0. Đếm trước ──────────────────────────────────────────────────────────
+  const grantsToRevoke = await db
     .collection('rolegrants')
-    .updateMany(
-      { scopeType: 'category_province', revokedAt: null },
-      { $set: { revokedAt: new Date() } },
-    )
-  console.log(`→ thu hồi ${revoked.modifiedCount} grant category_province — master cấp lại`)
+    .countDocuments({ scopeType: 'category_province', revokedAt: null })
 
-  // ── 2. Lấp wardCode cho tin công khai ─────────────────────────────────────
-  const rows = await db
-    .collection('listings')
+  const rows = await listings
     .find(
       { visibility: 'public', $or: [{ wardCode: null }, { wardCode: { $exists: false } }] },
       { projection: { provinceCode: 1, 'location.ward': 1 } },
     )
     .toArray()
 
-  const ops = []
+  // Suy kiểu từ chính driver mà mongoose đóng gói — import từ 'mongodb' gốc là bộ type khác.
+  const ops: Parameters<typeof listings.bulkWrite>[0][number][] = []
   const needsReview: string[] = []
   for (const row of rows) {
     const province = row.provinceCode as string | null
@@ -66,9 +68,8 @@ async function migrate() {
     }
   }
 
-  if (ops.length > 0) await db.collection('listings').bulkWrite(ops)
-
-  console.log(`→ ${rows.length} tin công khai thiếu phường: lấp được ${ops.length}`)
+  console.log(`sẽ thu hồi ${grantsToRevoke} grant category_province`)
+  console.log(`${rows.length} tin công khai thiếu phường: lấp được ${ops.length}`)
   if (needsReview.length > 0) {
     console.log(`⚠️  ${needsReview.length} tin KHÔNG suy được phường — tầng tỉnh vẫn duyệt được:`)
     console.log('   ' + needsReview.slice(0, MAX_LISTED).join(', '))
@@ -76,6 +77,26 @@ async function migrate() {
       console.log(`   … và ${needsReview.length - MAX_LISTED} tin nữa`)
     }
   }
+
+  assertWriteConfirmed('migrate:ward-axis')
+  if (DRY_RUN) return
+
+  // ── 1. Thu hồi grant cấp tỉnh ─────────────────────────────────────────────
+  const revoked = await db
+    .collection('rolegrants')
+    .updateMany(
+      { scopeType: 'category_province', revokedAt: null },
+      { $set: { revokedAt: new Date() } },
+    )
+  console.log(`→ thu hồi ${revoked.modifiedCount} grant category_province — master cấp lại`)
+
+  // ── 2. Lấp wardCode cho tin công khai ─────────────────────────────────────
+  if (ops.length > 0) {
+    await runUnscoped('migration: lấp `wardCode` cho tin công khai cũ', () =>
+      listings.bulkWrite(ops),
+    )
+  }
+  console.log(`→ đã lấp phường cho ${ops.length} tin`)
 
   console.log('✅ xong')
 }

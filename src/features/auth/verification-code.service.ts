@@ -126,7 +126,12 @@ export async function consumeCode(
   const row = await EmailVerification.findOne({ userId, purpose }).exec()
   // `expiresAt` so tay chứ không dựa TTL index: Mongo quét mỗi ~60 giây nên bản ghi hết hạn vẫn
   // đọc được một lúc — xem ghi chú ở chỗ khai index.
-  if (!row || row.expiresAt.getTime() <= Date.now() || row.attempts >= MAX_ATTEMPTS) throw wrong()
+  if (!row || row.expiresAt.getTime() <= Date.now() || row.attempts >= MAX_ATTEMPTS) {
+    // Vẫn tốn một lượt bcrypt như nhánh có mã (audit 3.12): trả lời nhanh hơn hẳn khi KHÔNG có
+    // mã là nói với máy dò rằng tài khoản này chưa từng xin mã.
+    await verify(code, await dummyHash())
+    throw wrong()
+  }
 
   if (!(await verify(code, row.codeHash))) {
     const after = await EmailVerification.findOneAndUpdate(
@@ -143,4 +148,10 @@ export async function consumeCode(
   }
 
   await EmailVerification.deleteOne({ _id: row._id }).exec()
+}
+
+let dummy: string | null = null
+/** Hash mồi cho nhánh "không có mã" — băm một lần, dùng lại; chỉ để thời gian trả lời đều nhau. */
+async function dummyHash(): Promise<string> {
+  return (dummy ??= await hash('000000', CODE_ROUNDS))
 }

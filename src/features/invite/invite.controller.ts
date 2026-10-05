@@ -1,4 +1,6 @@
 import { inviteService } from './invite.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { inviteQuerySchema } from './invite.schema'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { created, success } from '../../common/utils/apiResponse'
 
@@ -11,7 +13,7 @@ export const inviteController = {
 
   // GET /invites
   list: catchAsync(async (req, res) => {
-    const { items, meta } = await inviteService.list(req.query as never)
+    const { items, meta } = await inviteService.list(queryOf(req, inviteQuerySchema))
     success(res, { message: 'Invites', data: items, meta })
   }),
 

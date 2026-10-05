@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { kycService } from './kyc.service'
 import {
   kycDetailSchema,
@@ -10,7 +11,7 @@ import {
 } from './kyc.schema'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
-import { validate } from '../../middlewares/validate.middleware'
+import { validate, queryOf } from '../../middlewares/validate.middleware'
 import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
@@ -29,7 +30,7 @@ export const kycController = {
 
   // GET /kyc
   list: catchAsync(async (req, res) => {
-    const { items, ...meta } = await kycService.list(req.query as never)
+    const { items, ...meta } = await kycService.list(queryOf(req, kycListQuerySchema))
     success(res, { message: 'Hồ sơ định danh', data: items, meta })
   }),
 
@@ -53,6 +54,8 @@ export const kycController = {
 }
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 /*
  * `/kyc/me` phải khai TRƯỚC `/:id` — Express khớp theo thứ tự, đăng sau thì "me" bị nuốt thành

@@ -1,8 +1,7 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { PAGINATION } from '../../common/constants'
-import { XU_TX_TYPES } from './wallet.model'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
+import { XU_TX_TYPES, XU_ADJUST_MAX } from './wallet.model'
 
 export const walletHistoryQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
@@ -14,7 +13,7 @@ export const walletUserParamsSchema = z.object({ userId: objectId })
 export const adjustWalletSchema = z
   .object({
     /** Âm để thu hồi. `0` bị chặn ở service — một dòng sổ không đổi gì là rác. */
-    amount: z.number().int().openapi({ example: 100 }),
+    amount: z.number().int().min(-XU_ADJUST_MAX).max(XU_ADJUST_MAX).openapi({ example: 100 }),
     note: z.string().trim().min(3).max(300).openapi({ example: 'Tặng Xu khai trương' }),
     /**
      * Client sinh một khoá cho MỖI lần mở form (uuid là đủ). Bấm nhầm hai lần với cùng khoá
@@ -37,6 +36,7 @@ export const walletSchema = z
 export const xuTransactionSchema = z
   .object({
     _id: z.string(),
+    userId: z.string(),
     amount: z.number(),
     type: z.enum(XU_TX_TYPES),
     balanceAfter: z.number(),

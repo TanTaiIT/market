@@ -18,6 +18,16 @@
  */
 export const TRUST_PENDING_LIMITS = [3, 5, 10] as const
 
+/**
+ * Trần tin ĐANG SỐNG (đang hiện + đang chờ) theo bậc uy tín. Chỉ số = `trustLevel`.
+ *
+ * Khác `TRUST_PENDING_LIMITS` (backpressure cho NGƯỜI DUYỆT): đây là trần cho BẢNG TIN. Không có
+ * nó thì một tài khoản bậc trần tự đăng vô hạn — spam sàn không cần qua ai, và lượt hạ bậc chỉ
+ * bóp được số tin CHỜ, không đụng tới số tin đã lên. Đếm cả tin chờ vì tin chờ là tin sắp lên:
+ * đếm riêng ACTIVE là để người ở trần xếp hàng chờ rồi vượt trần khi được duyệt.
+ */
+export const TRUST_LIVE_LIMITS = [10, 30, 100] as const
+
 export const QUOTA = {
   /** Người ngoài org: cứng, không theo uy tín — họ chưa có quan hệ nào với tổ chức đó. */
   OUTSIDER_LIMIT: 2,
@@ -44,7 +54,7 @@ export const QUOTA = {
   AUTO_APPROVE_TRUST_LEVEL: 2,
 } as const
 
-export type QuotaReason = 'blocked_by_rejections' | 'quota_full'
+export type QuotaReason = 'blocked_by_rejections' | 'quota_full' | 'live_full'
 
 /**
  * Vì sao một tin được tự đăng, hoặc bị giữ lại chờ người duyệt.
@@ -59,6 +69,10 @@ export const AUTO_APPROVAL_REASONS = [
   'recent_rejection',
   'category_manual_review',
   'trust_too_low',
+  // Án quản chế của master (`UserTrust.probation`) — người có quyền vẫn phải qua người khác.
+  'probation',
+  // Chủ tin sửa lại sau khi bị từ chối vì sai sót — về hàng chờ để người duyệt xem bản mới.
+  'resubmitted',
   // Hai lý do của CỔNG NỘI DUNG — lớp chạy trước uy tín (moderation.machine.ts):
   // banned = tin thành REJECTED ngay từ cửa; flagged = đủ bậc nhưng bị tước fast-path.
   'content_banned',
@@ -79,10 +93,13 @@ export function autoApprovalReason(input: {
   categoryRequiresReview: boolean
   isOutsider: boolean
   contentFlagged?: boolean
+  onProbation?: boolean
 }): AutoApprovalReason {
   if (input.autoApproved) return 'approved'
   // Người ngoài không bao giờ tự đăng, bất kể uy tín — `routeListing` ép PENDING_UNVERIFIED.
   if (input.isOutsider) return 'outsider_post'
+  // Án của master đứng trên mọi phép tính uy tín: có án là không tự đăng, bất kể bậc.
+  if (input.onProbation) return 'probation'
   if (input.recentRejections > 0) return 'recent_rejection'
   if (input.categoryRequiresReview) return 'category_manual_review'
   // Đứng SAU các chốt uy tín: flag chỉ được tính khi mọi chốt khác đã cho qua —
@@ -98,6 +115,8 @@ export interface QuotaInput {
   recentRejections: number
   /** Số tin đang chờ duyệt trong đúng bucket đang xét. */
   pendingCount: number
+  /** Tin đang sống (hiện + chờ) trên MỌI trục — trần theo bậc, xem `TRUST_LIVE_LIMITS`. */
+  liveCount: number
 }
 
 export interface QuotaVerdict {
@@ -105,6 +124,8 @@ export interface QuotaVerdict {
   limit: number
   pending: number
   remaining: number
+  /** Tin đang sống so với trần theo bậc — client vẽ "N/M tin đang hiện". */
+  live: { count: number; limit: number }
   reason?: QuotaReason
 }
 
@@ -118,14 +139,27 @@ export function pendingLimitFor(
   return TRUST_PENDING_LIMITS[level]
 }
 
+/** Trần tin đang sống theo bậc — vượt bảng lấy bậc cuối, cùng cách `pendingLimitFor`. */
+export function liveLimitFor(trustLevel: number): number {
+  const level = Math.min(Math.max(trustLevel, 0), TRUST_LIVE_LIMITS.length - 1)
+  return TRUST_LIVE_LIMITS[level]
+}
+
 /** Một bậc uy tín dùng chung cho mọi luồng đăng — xem `trust.model.ts`. */
-export function isAutoApprove(trustLevel: number, recentRejections: number): boolean {
+export function isAutoApprove(
+  trustLevel: number,
+  recentRejections: number,
+  onProbation = false,
+): boolean {
+  // Án quản chế của master thắng mọi bậc — xem `UserTrust.probation`.
+  if (onProbation) return false
   if (recentRejections > 0) return false
   return trustLevel >= QUOTA.AUTO_APPROVE_TRUST_LEVEL
 }
 
 export function checkQuota(input: QuotaInput): QuotaVerdict {
   const limit = pendingLimitFor(input)
+  const live = { count: input.liveCount, limit: liveLimitFor(input.trustLevel) }
 
   if (input.recentRejections >= QUOTA.REJECTION_BLOCK) {
     return {
@@ -133,7 +167,20 @@ export function checkQuota(input: QuotaInput): QuotaVerdict {
       limit,
       pending: input.pendingCount,
       remaining: 0,
+      live,
       reason: 'blocked_by_rejections',
+    }
+  }
+
+  // Trần tin đang sống đứng TRƯỚC quota chờ: bảng đã đầy thì "còn slot chờ" không có nghĩa gì.
+  if (live.count >= live.limit) {
+    return {
+      allowed: false,
+      limit,
+      pending: input.pendingCount,
+      remaining: 0,
+      live,
+      reason: 'live_full',
     }
   }
 
@@ -143,6 +190,7 @@ export function checkQuota(input: QuotaInput): QuotaVerdict {
     limit,
     pending: input.pendingCount,
     remaining,
+    live,
     ...(remaining > 0 ? {} : { reason: 'quota_full' as const }),
   }
 }

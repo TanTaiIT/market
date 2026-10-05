@@ -3,7 +3,7 @@
   "info": {
     "title": "Chợ Tốt Clone API",
     "version": "1.0.0",
-    "description": "Marketplace/Classifieds REST API (code-first OpenAPI từ Zod).\n\n**Chưa triển khai — mọi method trả HTTP 501:**\n- `/uploads — upload ảnh lên S3`\n- `/search — full-text search`\n- `/reviews — đánh giá người bán`"
+    "description": "Marketplace/Classifieds REST API (code-first OpenAPI từ Zod).\n\n**Chưa triển khai — mọi method trả HTTP 501:**\n- `/search — full-text search (bảng tin đã lọc ?q= bằng regex; Atlas Search để sau)`\n- `/reviews — đánh giá người bán`"
   },
   "servers": [
     {
@@ -77,7 +77,7 @@
           },
           "password": {
             "type": "string",
-            "minLength": 6,
+            "minLength": 8,
             "maxLength": 72
           }
         },
@@ -186,6 +186,25 @@
           "user",
           "tokens"
         ]
+      },
+      "ChangePassword": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "minLength": 1
+          },
+          "newPassword": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 72
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "additionalProperties": false
       },
       "UpdateProfile": {
         "type": "object",
@@ -521,6 +540,29 @@
           "trustLevel": {
             "type": "number"
           },
+          "probation": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "until": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "reason",
+              "at",
+              "until"
+            ]
+          },
           "lastLoginAt": {
             "type": "string",
             "nullable": true,
@@ -539,9 +581,30 @@
           "isActive",
           "isEmailVerified",
           "trustLevel",
+          "probation",
           "lastLoginAt",
           "createdAt"
         ]
+      },
+      "SetProbation": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "example": "Tự duyệt tin sai quy định nhóm 3 lần trong tuần"
+          },
+          "days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 365
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
       },
       "UserReport": {
         "type": "object",
@@ -635,8 +698,9 @@
             "maxLength": 5000
           },
           "price": {
-            "type": "number",
-            "minimum": 0
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999999999999
           },
           "isNegotiable": {
             "type": "boolean"
@@ -848,12 +912,31 @@
               "rejections",
               "until"
             ]
+          },
+          "probation": {
+            "type": "object",
+            "nullable": true,
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "until": {
+                "type": "string",
+                "nullable": true,
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "reason",
+              "until"
+            ]
           }
         },
         "required": [
           "canSelfPublish",
           "cleanApprovalsNeeded",
-          "penalty"
+          "penalty",
+          "probation"
         ]
       },
       "StaleListing": {
@@ -911,11 +994,28 @@
           "remaining": {
             "type": "number"
           },
+          "live": {
+            "type": "object",
+            "properties": {
+              "count": {
+                "type": "number"
+              },
+              "limit": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "count",
+              "limit"
+            ],
+            "description": "Tin đang hiện + chờ duyệt trên mọi trục, so với trần theo bậc uy tín"
+          },
           "reason": {
             "type": "string",
             "enum": [
               "blocked_by_rejections",
-              "quota_full"
+              "quota_full",
+              "live_full"
             ]
           },
           "fee": {
@@ -937,6 +1037,7 @@
           "limit",
           "pending",
           "remaining",
+          "live",
           "fee",
           "standing",
           "needsReconcile"
@@ -1120,8 +1221,9 @@
             "maxLength": 5000
           },
           "price": {
-            "type": "number",
-            "minimum": 0
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 999999999999
           },
           "isNegotiable": {
             "type": "boolean"
@@ -1574,6 +1676,10 @@
             "type": "string",
             "nullable": true
           },
+          "ward": {
+            "type": "string",
+            "nullable": true
+          },
           "provinceCode": {
             "type": "string",
             "nullable": true
@@ -1593,6 +1699,7 @@
           "coverUrl",
           "memberCount",
           "district",
+          "ward",
           "provinceCode",
           "allowJoinRequests",
           "allowOutsiderPosts"
@@ -1626,6 +1733,10 @@
             "nullable": true
           },
           "district": {
+            "type": "string",
+            "nullable": true
+          },
+          "ward": {
             "type": "string",
             "nullable": true
           },
@@ -1670,6 +1781,7 @@
           "description",
           "provinceCode",
           "district",
+          "ward",
           "memberCount",
           "postsThisWeek",
           "rules",
@@ -1783,6 +1895,12 @@
               "feed",
               "grid"
             ]
+          },
+          "ward": {
+            "type": "string",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 100
           }
         },
         "additionalProperties": false
@@ -1808,6 +1926,10 @@
             "type": "string",
             "nullable": true
           },
+          "ward": {
+            "type": "string",
+            "nullable": true
+          },
           "memberCount": {
             "type": "number"
           },
@@ -1821,6 +1943,7 @@
           "description",
           "provinceCode",
           "district",
+          "ward",
           "memberCount",
           "allowJoinRequests"
         ]
@@ -1848,6 +1971,10 @@
             "maxLength": 60
           },
           "district": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "ward": {
             "type": "string",
             "maxLength": 100
           }
@@ -4249,17 +4376,12 @@
                 "at": {
                   "type": "string",
                   "format": "date-time"
-                },
-                "byUserId": {
-                  "type": "string",
-                  "pattern": "^[0-9a-fA-F]{24}$"
                 }
               },
               "required": [
                 "from",
                 "body",
-                "at",
-                "byUserId"
+                "at"
               ]
             }
           },
@@ -4311,17 +4433,12 @@
                 "at": {
                   "type": "string",
                   "format": "date-time"
-                },
-                "byUserId": {
-                  "type": "string",
-                  "pattern": "^[0-9a-fA-F]{24}$"
                 }
               },
               "required": [
                 "from",
                 "body",
-                "at",
-                "byUserId"
+                "at"
               ]
             }
           }
@@ -4368,6 +4485,194 @@
           "lastUserAt",
           "lastMasterAt",
           "waiting"
+        ]
+      },
+      "RegisterPushDevice": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "example": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "ios",
+              "android"
+            ]
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "deviceName": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "token",
+          "platform"
+        ],
+        "additionalProperties": false
+      },
+      "UnregisterPushDevice": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "example": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "additionalProperties": false
+      },
+      "UpdatePushPreferences": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "categories": {
+            "type": "object",
+            "properties": {
+              "chat": {
+                "type": "boolean"
+              },
+              "listing_status": {
+                "type": "boolean"
+              },
+              "membership": {
+                "type": "boolean"
+              },
+              "report": {
+                "type": "boolean"
+              },
+              "wallet": {
+                "type": "boolean"
+              },
+              "group_notice": {
+                "type": "boolean"
+              },
+              "group_activity": {
+                "type": "boolean"
+              },
+              "support": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "PushPreferences": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "categories": {
+            "type": "object",
+            "properties": {
+              "chat": {
+                "type": "boolean"
+              },
+              "listing_status": {
+                "type": "boolean"
+              },
+              "membership": {
+                "type": "boolean"
+              },
+              "report": {
+                "type": "boolean"
+              },
+              "account": {
+                "type": "boolean"
+              },
+              "wallet": {
+                "type": "boolean"
+              },
+              "group_notice": {
+                "type": "boolean"
+              },
+              "group_activity": {
+                "type": "boolean"
+              },
+              "support": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "chat",
+              "listing_status",
+              "membership",
+              "report",
+              "account",
+              "wallet",
+              "group_notice",
+              "group_activity",
+              "support"
+            ]
+          },
+          "locked": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "account"
+              ]
+            }
+          }
+        },
+        "required": [
+          "enabled",
+          "categories",
+          "locked"
+        ]
+      },
+      "PushDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "ios",
+              "android"
+            ]
+          },
+          "appVersion": {
+            "type": "string"
+          },
+          "deviceName": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "platform",
+          "appVersion",
+          "deviceName",
+          "lastSeenAt"
+        ]
+      },
+      "PushTestResult": {
+        "type": "object",
+        "properties": {
+          "devices": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "devices"
         ]
       },
       "SendVerificationCode": {
@@ -4426,7 +4731,7 @@
           },
           "password": {
             "type": "string",
-            "minLength": 6,
+            "minLength": 8,
             "maxLength": 72
           }
         },
@@ -4476,6 +4781,21 @@
             "minLength": 3,
             "maxLength": 300,
             "example": "Đã xác minh: ba lượt từ chối do lỗi người duyệt"
+          }
+        },
+        "required": [
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "RestoreTrust": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 300,
+            "example": "Gỡ nhầm tin: đã xác minh người bán không vi phạm"
           }
         },
         "required": [
@@ -4613,6 +4933,17 @@
           "folder",
           "uploadPreset"
         ]
+      },
+      "RemoveListing": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          }
+        },
+        "additionalProperties": false
       },
       "BannedPhrase": {
         "type": "object",
@@ -4804,6 +5135,9 @@
           "_id": {
             "type": "string"
           },
+          "userId": {
+            "type": "string"
+          },
           "amount": {
             "type": "number"
           },
@@ -4845,6 +5179,7 @@
         },
         "required": [
           "_id",
+          "userId",
           "amount",
           "type",
           "balanceAfter",
@@ -4857,6 +5192,8 @@
         "properties": {
           "amount": {
             "type": "integer",
+            "minimum": -1000000,
+            "maximum": 1000000,
             "example": 100
           },
           "note": {
@@ -5627,6 +5964,102 @@
         }
       }
     },
+    "/auth/password/change": {
+      "post": {
+        "operationId": "authChangePassword",
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Đổi mật khẩu khi đang đăng nhập",
+        "description": "Đòi mật khẩu hiện tại. Thành công: mật khẩu mới, CẮT mọi phiên khác (`tokenVersion`), và trả cặp token mới cho chính thiết bị này — client phải lưu lại. Tài khoản chỉ có Google (chưa từng đặt mật khẩu) thì 400: đặt mật khẩu lần đầu qua \"Quên mật khẩu\".",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 220
+            },
+            "required": false,
+            "name": "x-push-token",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePassword"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã đổi mật khẩu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AuthResponse"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Mật khẩu mới trùng mật khẩu cũ, hoặc tài khoản chưa có mật khẩu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Mật khẩu hiện tại không đúng, hoặc thiếu token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/password/verify-code": {
       "post": {
         "operationId": "authVerifyResetCode",
@@ -6276,6 +6709,302 @@
         }
       }
     },
+    "/users/{id}/restore-trust": {
+      "post": {
+        "operationId": "userRestoreTrust",
+        "tags": [
+          "User"
+        ],
+        "summary": "Phục hồi bậc uy tín về trần (master)",
+        "description": "Bậc uy tín chỉ leo lại bằng 5 tin liên tiếp do người duyệt thông qua, mà máy duyệt xử gần hết tin của người bậc thấp nên một lượt gỡ nhầm là mất bậc vĩnh viễn. Endpoint này trả bậc về trần. KHÔNG đụng cửa sổ phạt 7 ngày — đó là việc của `clear-rejections`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreTrust"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã phục hồi",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminUser"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Uy tín đang ở bậc trần",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{id}/probation": {
+      "post": {
+        "operationId": "userSetProbation",
+        "tags": [
+          "User"
+        ],
+        "summary": "Đặt quản chế (master)",
+        "description": "Quản trị nhóm vẫn tự duyệt được tin của mình; đặt quản chế thì tin CỦA người này phải do người khác duyệt, không tự đăng, máy không duyệt. Bậc uy tín và quyền duyệt tin người khác giữ nguyên. Bỏ trống `days` = vô thời hạn, gỡ bằng `DELETE`.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetProbation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã đặt quản chế",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminUser"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master, hoặc mục tiêu là master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "userLiftProbation",
+        "tags": [
+          "User"
+        ],
+        "summary": "Gỡ quản chế (master)",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã gỡ quản chế",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/AdminUser"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Cần quyền master",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Không tìm thấy người dùng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Tài khoản không trong diện quản chế",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/users/{id}/status": {
       "patch": {
         "operationId": "userSetStatus",
@@ -6815,7 +7544,8 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 100
             },
             "required": false,
             "name": "q",
@@ -7046,9 +7776,21 @@
           "Listing"
         ],
         "summary": "Đăng tin mới (vào trạng thái pending chờ duyệt)",
+        "description": "Gửi kèm header `Idempotency-Key` (≤80 ký tự, do client sinh cho mỗi lần soạn tin): bấm lại với cùng khoá trả về đúng tin đã tạo thay vì đăng đôi.",
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 80
+            },
+            "required": false,
+            "name": "idempotency-key",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -7249,7 +7991,8 @@
           },
           {
             "schema": {
-              "type": "string"
+              "type": "string",
+              "maxLength": 100
             },
             "required": false,
             "name": "q",
@@ -7889,6 +8632,17 @@
         "security": [
           {
             "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "categoryId",
+            "in": "query"
           }
         ],
         "responses": {
@@ -9330,6 +10084,61 @@
             "required": false,
             "name": "q",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "Hà Nội",
+                "Cao Bằng",
+                "Tuyên Quang",
+                "Lào Cai",
+                "Điện Biên",
+                "Lai Châu",
+                "Sơn La",
+                "Thái Nguyên",
+                "Lạng Sơn",
+                "Quảng Ninh",
+                "Bắc Ninh",
+                "Phú Thọ",
+                "Hải Phòng",
+                "Hưng Yên",
+                "Ninh Bình",
+                "Thanh Hóa",
+                "Nghệ An",
+                "Hà Tĩnh",
+                "Quảng Trị",
+                "Huế",
+                "Đà Nẵng",
+                "Quảng Ngãi",
+                "Gia Lai",
+                "Đắk Lắk",
+                "Khánh Hòa",
+                "Lâm Đồng",
+                "Đồng Nai",
+                "Tây Ninh",
+                "Hồ Chí Minh",
+                "Đồng Tháp",
+                "Vĩnh Long",
+                "An Giang",
+                "Cần Thơ",
+                "Cà Mau"
+              ],
+              "example": "Hồ Chí Minh"
+            },
+            "required": false,
+            "name": "province",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 100,
+              "example": "Phường Bến Thành"
+            },
+            "required": false,
+            "name": "ward",
+            "in": "query"
           }
         ],
         "responses": {
@@ -10173,6 +10982,82 @@
           },
           "409": {
             "description": "Đây là quản trị duy nhất của tổ chức",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memberships/leave": {
+      "post": {
+        "operationId": "membershipLeave",
+        "tags": [
+          "Membership"
+        ],
+        "summary": "Rời tổ chức đang hoạt động",
+        "description": "Lưu trữ tư cách thành viên của chính mình, thu hồi mọi quyền trong tổ chức đó, và ẩn tin trong nhóm mình đã đăng (tin lên sàn giữ nguyên). Quản trị DUY NHẤT của tổ chức không rời được — trao quyền cho người khác trước.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã rời nhóm",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Không phải thành viên của tổ chức này",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Là quản trị duy nhất của tổ chức",
             "content": {
               "application/json": {
                 "schema": {
@@ -11134,6 +12019,18 @@
             "required": false,
             "name": "version",
             "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "fallback",
+            "in": "query"
           }
         ],
         "responses": {
@@ -11975,6 +12872,18 @@
             },
             "required": false,
             "name": "version",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "required": false,
+            "name": "fallback",
             "in": "query"
           }
         ],
@@ -13704,6 +14613,15 @@
           },
           {
             "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "seller",
+            "in": "query"
+          },
+          {
+            "schema": {
               "type": "integer",
               "minimum": 0,
               "exclusiveMinimum": true
@@ -14008,6 +14926,7 @@
           "Moderation"
         ],
         "summary": "Gỡ tin khỏi bảng (soft delete)",
+        "description": "`reason` tuỳ chọn, đi thẳng vào thông báo cho người bán. Chỉ trừ uy tín khi tin đã từng lên bảng và người gỡ có quyền duyệt trên trục của tin — quản trị nhóm gỡ tin sàn mang tên nhóm thì tin rời sàn nhưng không ghi án.",
         "security": [
           {
             "bearerAuth": []
@@ -14024,6 +14943,15 @@
             "in": "path"
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveListing"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "Đã gỡ",
@@ -14133,6 +15061,15 @@
             },
             "required": false,
             "name": "q",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-fA-F]{24}$"
+            },
+            "required": false,
+            "name": "seller",
             "in": "query"
           },
           {
@@ -16492,7 +17429,7 @@
             "schema": {
               "type": "integer",
               "minimum": 1,
-              "maximum": 100
+              "maximum": 10
             },
             "required": false,
             "name": "limit",
@@ -17179,6 +18116,364 @@
           },
           "404": {
             "description": "Không tìm thấy ý kiến",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/devices": {
+      "post": {
+        "operationId": "pushRegisterDevice",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Đăng ký máy này nhận push (gọi mỗi lần mở app)",
+        "description": "Upsert theo token: máy đang thuộc tài khoản khác thì chuyển sang tài khoản đang gọi. Mỗi tài khoản giữ tối đa 10 máy dùng gần nhất.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPushDevice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã đăng ký",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PushDevice"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Token hoặc dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/devices/unregister": {
+      "post": {
+        "operationId": "pushUnregisterDevice",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Gỡ máy này khỏi danh sách nhận push (không cần đăng nhập)",
+        "description": "Gọi trước khi đăng xuất. Token không tồn tại vẫn trả 200.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnregisterPushDevice"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã gỡ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "nullable": true
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Token không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/preferences": {
+      "get": {
+        "operationId": "pushGetPreferences",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Công tắc push của tôi",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Công tắc",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PushPreferences"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "operationId": "pushUpdatePreferences",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Bật / tắt push theo nhóm",
+        "description": "Chỉ gửi công tắc muốn đổi. Nhóm `account` không tắt được — gửi lên là 400.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePushPreferences"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Đã lưu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PushPreferences"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dữ liệu không hợp lệ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/push/test": {
+      "post": {
+        "operationId": "pushSendTest",
+        "tags": [
+          "Push"
+        ],
+        "summary": "Gửi một push thử tới mọi máy của tôi",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Đã xếp hàng",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "enum": [
+                        true
+                      ]
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "data": {
+                      "$ref": "#/components/schemas/PushTestResult"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "data"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Thiếu hoặc sai access token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Quá nhiều request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Push chưa bật trên server",
             "content": {
               "application/json": {
                 "schema": {

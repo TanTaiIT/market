@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
-import { ZodTypeAny, ZodError } from 'zod'
+import { z, ZodTypeAny, ZodError } from 'zod'
 import { BadRequestError } from '../common/errors'
 
 export interface RequestSchemas {
@@ -29,3 +29,11 @@ export const validate =
       return next(err)
     }
   }
+
+/**
+ * Đọc `req.query` ĐÃ QUA `validate({ query })` với đúng kiểu của schema đó (audit 5.5). Không parse
+ * lại — middleware đã ép kiểu và gán ngược vào `req.query`; hàm này chỉ buộc KIỂU vào schema, thay
+ * cho `as never` rải ở 23 controller. Truyền schema lệch với route là lỗi review, không phải runtime.
+ */
+export const queryOf = <S extends ZodTypeAny>(req: Request, _schema: S): z.infer<S> =>
+  req.query as unknown as z.infer<S>

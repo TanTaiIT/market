@@ -15,12 +15,28 @@ import mongoose, { Schema, Document, Model, Types } from 'mongoose'
  * KHÔNG gắn `tenantPlugin`: uy tín thuộc tài khoản, mà tài khoản ở v2 là toàn cục. Gắn plugin
  * thì cùng một người đổi org lại thấy một bậc khác — đúng thứ vừa quyết định là bỏ.
  */
+/** Án quản chế của master — xem `IUserTrust.probation`. */
+export interface TrustProbation {
+  reason: string
+  byUserId: Types.ObjectId
+  at: Date
+  /** `null` = vô thời hạn, chỉ master gỡ. */
+  until: Date | null
+}
+
 export interface IUserTrust {
   userId: Types.ObjectId
   /** Bậc uy tín hiện tại. Xem `trust.policy.ts` cho luật thăng/giáng. */
   level: number
   /** Số bài được duyệt sạch liên tiếp — nguồn để thăng bậc, reset khi bị từ chối. */
   cleanApprovals: number
+  /**
+   * Án QUẢN CHẾ của master (quyết định 1.12, 2026-09-26). Còn hiệu lực khi `until` là `null`
+   * hoặc chưa tới — xem `probationActive`. Trong thời gian đó: không tự đăng, máy không duyệt,
+   * và KHÔNG tự duyệt tin của chính mình dù có quyền quản trị nhóm. Bậc uy tín giữ nguyên: quản
+   * chế là án về CÁCH người này dùng quyền, không phải về tin họ đăng.
+   */
+  probation: TrustProbation | null
   createdAt: Date
   updatedAt: Date
 }
@@ -34,6 +50,18 @@ const userTrustSchema = new Schema<IUserTrustDocument>(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
     level: { type: Number, default: 0, min: 0 },
     cleanApprovals: { type: Number, default: 0, min: 0 },
+    probation: {
+      type: new Schema<TrustProbation>(
+        {
+          reason: { type: String, required: true, trim: true, maxlength: 300 },
+          byUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+          at: { type: Date, required: true },
+          until: { type: Date, default: null },
+        },
+        { _id: false },
+      ),
+      default: null,
+    },
   },
   { timestamps: true },
 )

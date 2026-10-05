@@ -1,4 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose'
+import { softDeletePlugin } from '../../common/db/softDelete.plugin'
 import { tenantPlugin } from '../../common/tenant/tenantPlugin'
 
 /**
@@ -55,15 +56,7 @@ orgUnitSchema.index(
 )
 orgUnitSchema.index({ organizationId: 1, parentUnitId: 1 })
 
-function excludeDeleted(this: mongoose.Query<unknown, unknown>, next: () => void) {
-  if (!this.getOptions().withDeleted) {
-    this.where({ deletedAt: null })
-  }
-  next()
-}
-
-orgUnitSchema.pre(/^find/, excludeDeleted)
-orgUnitSchema.pre('countDocuments', excludeDeleted)
+orgUnitSchema.plugin(softDeletePlugin)
 
 export const OrgUnit: Model<IOrgUnitDocument> = mongoose.model<IOrgUnitDocument>(
   'OrgUnit',

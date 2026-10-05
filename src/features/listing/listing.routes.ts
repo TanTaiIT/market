@@ -3,6 +3,7 @@ import { Router } from 'express'
 import { listingController } from './listing.controller'
 import {
   createListingSchema,
+  quotaQuerySchema,
   quotaStatusSchema,
   updateListingSchema,
   listingQuerySchema,
@@ -64,7 +65,7 @@ router.get(
 )
 
 // Trạng thái quota — client hiện "còn N slot" thay vì để người dùng đoán vì sao bị chặn (§8.4).
-router.get('/quota', authenticate, listingController.quota)
+router.get('/quota', authenticate, validate({ query: quotaQuerySchema }), listingController.quota)
 
 // Catalog gói tin CÔNG KHAI — chỉ gói đang mở bán (master quản catalog ở /listing-products).
 router.get('/products', listingController.products)
@@ -365,8 +366,13 @@ registry.registerPath({
   operationId: 'listingCreate',
   tags: ['Listing'],
   summary: 'Đăng tin mới (vào trạng thái pending chờ duyệt)',
+  description:
+    'Gửi kèm header `Idempotency-Key` (≤80 ký tự, do client sinh cho mỗi lần soạn tin): bấm lại với cùng khoá trả về đúng tin đã tạo thay vì đăng đôi.',
   ...protectedRoute,
-  request: { body: { content: { 'application/json': { schema: createListingSchema } } } },
+  request: {
+    headers: z.object({ 'idempotency-key': z.string().max(80).optional() }),
+    body: { content: { 'application/json': { schema: createListingSchema } } },
+  },
   responses: {
     201: jsonResponse('Đã tạo tin', listingCreatedResponse),
     400: errorResponse('Dữ liệu không hợp lệ'),
@@ -422,6 +428,7 @@ registry.registerPath({
     'Hiện trạng quota để client nói rõ "bạn có N/M tin chờ duyệt" — thiếu nó thì khi người ' +
     'duyệt bận cả tuần, người dùng chỉ thấy mình bị chặn mà không hiểu vì sao.',
   ...protectedRoute,
+  request: { query: quotaQuerySchema },
   responses: { 200: jsonResponse('Trạng thái quota', envelope(quotaStatusSchema)) },
 })
 

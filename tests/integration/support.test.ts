@@ -201,3 +201,48 @@ describe('Hỗ trợ — cổng master', () => {
     await request(app).get('/api/v1/support/me').expect(401)
   }, 60_000)
 })
+
+/** Audit 2.6: không lộ `byUserId`, trần tin nhắn, và không trả lời vào tài khoản đã khoá. */
+describe('Support — riêng tư và trần', () => {
+  it('tin nhắn ra DTO không mang `byUserId`, ở cả phía người dùng lẫn phía master', async () => {
+    const carol = await registerUser(app, 'carol@support.local', 'Carol')
+    const sent = await send(carol, 'Mình cần hỗ trợ về ví Xu').expect(200)
+    const threadId = sent.body.data.id as string
+    await reply(threadId, 'Chào Carol, mình xem ngay').expect(200)
+
+    const mine = await myThread(carol).expect(200)
+    for (const m of mine.body.data.messages) expect(m).not.toHaveProperty('byUserId')
+
+    const theirs = await request(app)
+      .get(`/api/v1/support/threads/${threadId}`)
+      .set(bearer(master))
+      .expect(200)
+    for (const m of theirs.body.data.messages) expect(m).not.toHaveProperty('byUserId')
+  }, 60_000)
+
+  it('master không trả lời được vào luồng của tài khoản đã khoá → 409', async () => {
+    const dave = await registerUser(app, 'dave@support.local', 'Dave')
+    const sent = await send(dave, 'Câu hỏi trước khi bị khoá').expect(200)
+    const { User } = await import('../../src/features/user/user.model')
+    await User.updateOne({ _id: dave.id }, { isActive: false }).exec()
+
+    await reply(sent.body.data.id, 'Trả lời vào hư không').expect(409)
+  }, 60_000)
+
+  it('luồng chạm trần thì cả hai phía đều 409', async () => {
+    const erin = await registerUser(app, 'erin@support.local', 'Erin')
+    const sent = await send(erin, 'Tin đầu tiên').expect(200)
+    const { SupportThread, SUPPORT_THREAD_MAX_MESSAGES } =
+      await import('../../src/features/support/support.model')
+    const filler = Array.from({ length: SUPPORT_THREAD_MAX_MESSAGES }, (_, i) => ({
+      from: 'user',
+      body: `tin ${i}`,
+      at: new Date(),
+      byUserId: new mongoose.Types.ObjectId(erin.id),
+    }))
+    await SupportThread.updateOne({ _id: sent.body.data.id }, { $set: { messages: filler } }).exec()
+
+    await send(erin, 'Thêm một tin nữa').expect(409)
+    await reply(sent.body.data.id, 'Master cũng không chen được').expect(409)
+  }, 60_000)
+})

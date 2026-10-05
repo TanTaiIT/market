@@ -145,8 +145,15 @@ export const requireOrgReadOrMaster = catchAsync(async (req, _res, next) => {
   const readableOrgIds = await organizationRepository.allActiveIds()
   // `memberOrgIds` rỗng: master đọc theo quyền hệ thống, không theo tư cách thành viên — và
   // `readableOrgIds` ở đây đã là toàn bộ org đang hoạt động nên cộng thêm cũng không đổi gì.
+  // `moderator` không ô nào: master đọc trọn trục công khai (kể cả sổ audit của trục đó — audit
+  // 1.13) như `requireReportReader` đã cho. Master là thẩm quyền cao nhất, không có gì để giấu.
   runWithTenant(
-    { ownOrgId: null, readableOrgIds, memberOrgIds: [], publicAxis: { mode: 'approved' } },
+    {
+      ownOrgId: null,
+      readableOrgIds,
+      memberOrgIds: [],
+      publicAxis: { mode: 'moderator', categoryIds: [], cells: null },
+    },
     next,
   )
 })

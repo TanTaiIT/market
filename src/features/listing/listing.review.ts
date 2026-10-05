@@ -1,4 +1,4 @@
-import { LISTING_STATUS } from '../../common/constants'
+import { LISTING_STATUS, REJECTION_SEVERITY } from '../../common/constants'
 import { MACHINE_REVIEW, MachineHold } from '../moderation/moderation.machine'
 import type { AutoApprovalReason } from './listing.quota'
 import type { IListingDocument } from './listing.model'
@@ -52,6 +52,13 @@ const HOLD_TEXT: Record<MachineHold, { message: string; hint?: string }> = {
   category_manual_review: {
     message: 'Danh mục này luôn qua người duyệt, không phụ thuộc uy tín.',
   },
+  trust_too_low: {
+    message: 'Tài khoản đang ở bậc uy tín thấp, nên máy không tự duyệt — người duyệt sẽ xem.',
+    hint: 'Mỗi tin được duyệt sạch nâng dần bậc; đủ bậc thì máy duyệt lại được, rồi tự đăng.',
+  },
+  probation: {
+    message: 'Tài khoản đang trong diện quản chế, mọi tin phải qua người duyệt.',
+  },
   gibberish: {
     message: 'Tiêu đề hoặc mô tả trông như gõ ngẫu nhiên, nên tin cần người duyệt xem qua.',
     hint: 'Viết rõ tên món đồ và vài dòng mô tả thật — tin sẽ lên bảng nhanh hơn nhiều.',
@@ -66,6 +73,10 @@ const REASON_TEXT: Partial<Record<AutoApprovalReason, { message: string; hint?: 
   },
   recent_rejection: HOLD_TEXT.recent_rejection,
   category_manual_review: HOLD_TEXT.category_manual_review,
+  probation: HOLD_TEXT.probation,
+  resubmitted: {
+    message: 'Bạn đã sửa tin sau khi bị từ chối — người duyệt sẽ xem lại bản mới.',
+  },
   outsider_post: {
     message: 'Bạn chưa là thành viên của nhóm này, nên quản trị nhóm sẽ xem tin trước.',
     hint: 'Xin vào nhóm để những tin sau lên bảng theo bậc uy tín của bạn.',
@@ -91,7 +102,7 @@ export function reviewOf(
         // `violation` là vi phạm quy định sàn, khác "tin sai sót" — người đăng cần biết vì
         // lặp lại là bị khoá quyền đăng (REJECTION_BLOCK), không chỉ mất một tin.
         hint:
-          m?.severity === 'violation'
+          m?.severity === REJECTION_SEVERITY.VIOLATION
             ? 'Đây là vi phạm quy định sàn. Lặp lại nhiều lần sẽ tạm khoá quyền đăng tin.'
             : 'Bạn có thể sửa nội dung rồi đăng lại.',
       }

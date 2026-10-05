@@ -1,20 +1,30 @@
+import { randomUUID } from 'node:crypto'
 import { userRepository } from '../user/user.repository'
 import { IUserDocument } from '../user/user.model'
-import { RegisterInput, LoginInput } from './auth.schema'
+import { ChangePasswordInput, RegisterInput, LoginInput } from './auth.schema'
 import { AuthResult } from './auth.types'
-import { ConflictError, UnauthorizedError } from '../../common/errors'
+import { BadRequestError, ConflictError, UnauthorizedError } from '../../common/errors'
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../common/utils/jwt'
 import { logger } from '../../config/logger'
 import { env } from '../../config/env'
 import { verifyGoogleIdToken } from './google.verify'
+import { disconnectUser } from '../../sockets/emit'
+import { pushService } from '../push/push.service'
 
-function issueTokens(user: IUserDocument) {
+function issueTokens(user: IUserDocument, jti: string) {
   const sub = user._id.toString()
   return {
     accessToken: signAccessToken({ sub }),
-    // Chỉ refresh token mang `ver` — xem `JwtPayload.ver` về việc vì sao access thì không.
-    refreshToken: signRefreshToken({ sub, ver: user.tokenVersion }),
+    // Chỉ refresh token mang `ver` và `jti` — xem `JwtPayload` về việc vì sao access thì không.
+    refreshToken: signRefreshToken({ sub, ver: user.tokenVersion, jti }),
   }
+}
+
+/** Mở PHIÊN mới (đăng ký, đăng nhập): một `jti` cho refresh token, ghi vào `user.sessions`. */
+async function startSession(user: IUserDocument) {
+  const jti = randomUUID()
+  await userRepository.addSession(user._id, jti)
+  return issueTokens(user, jti)
 }
 
 export const authService = {
@@ -30,20 +40,29 @@ export const authService = {
       throw new ConflictError('Email đã được đăng ký')
     }
 
-    const user = await userRepository.create({
-      name: input.name,
-      email: input.email,
-      phone: input.phone,
-      password: input.password,
-      /*
-       * Cờ TẠM THỜI cho vòng kiểm duyệt — xem `SKIP_EMAIL_VERIFICATION` ở `config/env`.
-       *
-       * `undefined` khi tắt, không phải `null`: để `default` của model quyết định, y như trước
-       * khi có dòng này. Gỡ về sau = xoá đúng dòng này và cờ kia.
-       */
-      ...(env.SKIP_EMAIL_VERIFICATION ? { emailVerifiedAt: new Date() } : {}),
-    })
-    return { user, ...issueTokens(user) }
+    let user: IUserDocument
+    try {
+      user = await userRepository.create({
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        password: input.password,
+        /*
+         * Cờ TẠM THỜI cho vòng kiểm duyệt — xem `SKIP_EMAIL_VERIFICATION` ở `config/env`.
+         *
+         * `undefined` khi tắt, không phải `null`: để `default` của model quyết định, y như trước
+         * khi có dòng này. Gỡ về sau = xoá đúng dòng này và cờ kia.
+         */
+        ...(env.SKIP_EMAIL_VERIFICATION ? { emailVerifiedAt: new Date() } : {}),
+      })
+    } catch (err) {
+      // Hai lượt đăng ký cùng email cùng lúc: `existsByEmail` ở trên cho cả hai qua, unique index
+      // chặn lượt sau — trả 409 như lượt kiểm trước, không phải 500 (audit 3.12).
+      if ((err as { code?: number }).code === 11000)
+        throw new ConflictError('Email đã được đăng ký')
+      throw err
+    }
+    return { user, ...(await startSession(user)) }
   },
 
   /**
@@ -79,7 +98,7 @@ export const authService = {
     if (linked) {
       if (!linked.isActive) throw new UnauthorizedError('Account is disabled')
       await userRepository.updateById(linked._id, { lastLoginAt: new Date() })
-      return { user: linked, ...issueTokens(linked) }
+      return { user: linked, ...(await startSession(linked)) }
     }
 
     const sameEmail = await userRepository.findByEmail(identity.email)
@@ -96,7 +115,7 @@ export const authService = {
 
       logger.info('google account linked, password retired', { userId: user._id.toString() })
       await userRepository.updateById(user._id, { lastLoginAt: new Date() })
-      return { user, ...issueTokens(user) }
+      return { user, ...(await startSession(user)) }
     }
 
     /*
@@ -112,7 +131,7 @@ export const authService = {
       emailVerifiedAt: new Date(),
     })
     logger.info('google account created', { userId: created._id.toString() })
-    return { user: created, ...issueTokens(created) }
+    return { user: created, ...(await startSession(created)) }
   },
 
   /** Đăng nhập toàn cục: email unique toàn hệ thống nên không cần biết org. */
@@ -125,7 +144,7 @@ export const authService = {
     if (!matched) throw new UnauthorizedError('Invalid email or password')
 
     await userRepository.updateById(user._id, { lastLoginAt: new Date() })
-    return { user, ...issueTokens(user) }
+    return { user, ...(await startSession(user)) }
   },
 
   async refresh(refreshToken: string): Promise<AuthResult> {
@@ -149,7 +168,68 @@ export const authService = {
       throw new UnauthorizedError('Phiên đã kết thúc — đăng nhập lại')
     }
 
-    return { user, ...issueTokens(user) }
+    /*
+     * XOAY refresh token (audit 3.7): mỗi lượt refresh phát cặp mới và vô hiệu token vừa dùng.
+     * `jti` là khoá của phiên; CAS trên jti cũ nên đúng một lượt thắng. Thua = token này đã được
+     * xoay trước đó, tức ai đó đang cầm bản sao — cắt MỌI phiên của tài khoản: không biết bên nào
+     * là kẻ trộm, và cái giá của đoán sai là để kẻ trộm ở lại. Người thật chỉ phải đăng nhập lại.
+     */
+    if (payload.jti) {
+      const newJti = randomUUID()
+      const rotated = await userRepository.rotateSession(user._id, payload.jti, newJti)
+      if (!rotated) {
+        await userRepository.bumpTokenVersion(user._id)
+        disconnectUser(user._id.toString())
+        await pushService.revokeDevices(user._id)
+        logger.warn('auth: refresh token reuse detected — every session revoked', {
+          userId: user._id.toString(),
+        })
+        throw new UnauthorizedError('Phiên không hợp lệ — đăng nhập lại trên mọi thiết bị')
+      }
+      return { user, ...issueTokens(user, newJti) }
+    }
+
+    // Token phát trước bản này không mang `jti`: nhận một lần và đưa vào phiên có jti — từ lượt
+    // sau nó xoay như mọi token khác. Không đá ai ra lúc deploy.
+    return { user, ...(await startSession(user)) }
+  },
+
+  /**
+   * Đổi mật khẩu khi ĐANG đăng nhập (audit 3.8). Đòi mật khẩu hiện tại: access token bị lộ chỉ
+   * sống 15 phút và không đủ để đổi khoá nhà. Thành công thì cắt mọi phiên khác — người đổi mật
+   * khẩu thường đang nghi ngờ gì đó — và phát cặp token mới cho chính máy này để họ không bị đá.
+   */
+  async changePassword(
+    userId: string,
+    input: ChangePasswordInput,
+    /** Push token của CHÍNH máy đang đổi (header `X-Push-Token`) — máy này vẫn đăng nhập, giữ lại. */
+    keepPushToken?: string,
+  ): Promise<AuthResult> {
+    const user = await userRepository.findById(userId, { withPassword: true })
+    if (!user) throw new UnauthorizedError('User no longer valid')
+    // Tài khoản Google chưa từng đặt mật khẩu: không có gì để "hiện tại". Đường đúng là quên mật
+    // khẩu — mã về hộp thư chứng minh đúng thứ mật khẩu cũ định chứng minh.
+    if (!user.password) {
+      throw new BadRequestError('Tài khoản chưa có mật khẩu — dùng "Quên mật khẩu" để đặt lần đầu')
+    }
+    if (!(await user.comparePassword(input.currentPassword))) {
+      throw new UnauthorizedError('Mật khẩu hiện tại không đúng')
+    }
+    if (input.currentPassword === input.newPassword) {
+      throw new BadRequestError('Mật khẩu mới phải khác mật khẩu hiện tại')
+    }
+
+    user.password = input.newPassword
+    // `pre('save')` băm — cùng đường với đăng ký và đặt lại.
+    await user.save()
+    await userRepository.bumpTokenVersion(user._id)
+    disconnectUser(user._id.toString())
+    // Máy khác vừa bị đá khỏi tài khoản thì cũng thôi nhận push của nó.
+    await pushService.revokeDevices(user._id, { exceptToken: keepPushToken })
+    logger.info('auth: password changed, other sessions revoked', { userId })
+
+    const fresh = await userRepository.findById(user._id)
+    return { user: fresh!, ...(await startSession(fresh!)) }
   },
 
   /**
@@ -157,15 +237,16 @@ export const authService = {
    *
    * Với refresh token stateless thì chỉ có đúng hai hành vi khả dĩ: không cắt được gì, hoặc
    * cắt sạch. Cắt sạch là lựa chọn đúng cho ca người ta thật sự cần tới nút này — nghi bị lộ
-   * tài khoản, hoặc vừa mất điện thoại. Muốn đăng xuất TỪNG THIẾT BỊ thì phải có bảng
-   * `refresh_tokens` với `jti` (và khi đó mới phát hiện được tái dùng token) — một việc
-   * khác, lớn hơn hẳn, chưa cần tới ở quy mô này.
+   * tài khoản, hoặc vừa mất điện thoại. `user.sessions` (jti từng thiết bị) đã có từ audit 3.7,
+   * nên đăng xuất TỪNG THIẾT BỊ giờ chỉ còn là một endpoint nhận jti — để dành khi sản phẩm cần.
    *
    * Access token đang cầm vẫn sống tối đa 15 phút nữa: đó là cái giá đã biết của việc không
    * đọc DB ở mọi request. Cửa sổ đó chấp nhận được; 30 ngày thì không.
    */
   async logout(userId: string): Promise<void> {
     await userRepository.bumpTokenVersion(userId)
+    // Đăng xuất là đá MỌI máy — máy bị đá không được tiếp tục nhận push của tài khoản này.
+    await pushService.revokeDevices(userId)
     logger.info('auth: đăng xuất mọi thiết bị', { userId })
   },
 }

@@ -1,8 +1,7 @@
 import { z } from 'zod'
+import { objectId } from '../../common/schemas/objectId'
 import { registry } from '../../config/openapi'
 import { JOINED_VIA, MEMBERSHIP_ROLES, PAGINATION } from '../../common/constants'
-
-const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
 export const memberParamsSchema = z.object({ userId: objectId })
 

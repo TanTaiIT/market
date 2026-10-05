@@ -1,14 +1,26 @@
 import { membershipRepository } from './membership.repository'
+import { disconnectUser } from '../../sockets/emit'
 import { MembershipQuery } from './membership.schema'
 import { toMemberDto } from './membership.types'
 import { userRepository } from '../user/user.repository'
 import { trustRepository } from '../trust/trust.repository'
 import { INITIAL_TRUST } from '../trust/trust.policy'
+import { Types } from 'mongoose'
+import { roleGrantRepository } from '../role-grant/role-grant.repository'
 import { roleGrantService, usableOrgAdmins } from '../role-grant/role-grant.service'
-import { canAdminOrg, isMaster, type Grant } from '../../common/authz/policy'
+import { canAdminOrg, canModerateAnyInOrg, isMaster, type Grant } from '../../common/authz/policy'
 import { BadRequestError, ConflictError, ForbiddenError, NotFoundError } from '../../common/errors'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
+import { listingService } from '../listing/listing.service'
+import { CASCADE_HIDE_KIND, CASCADE_HIDE_REASON, MASTER_DISPLAY_NAME } from '../../common/constants'
 import { buildPaginationMeta, parsePagination } from '../../common/utils/pagination'
+
+/** Tên đi vào snapshot `moderation.byName` — master là danh tính hệ thống, không lộ tên thật. */
+async function displayNameOf(actor: { id: string; grants: Grant[] }): Promise<string> {
+  if (isMaster(actor.grants)) return MASTER_DISPLAY_NAME
+  const user = await userRepository.findById(actor.id)
+  return user?.name ?? 'Quản trị'
+}
 
 export const membershipService = {
   /**
@@ -21,8 +33,13 @@ export const membershipService = {
    * Một lượt đọc `users` cho cả trang thay vì `populate`: populate sang collection không có
    * plugin là lách cách ly (mt§2.3), còn đọc theo đúng danh sách id của org mình thì không.
    */
-  async list(query: MembershipQuery, detailed: boolean) {
+  async list(query: MembershipQuery, viewer: { id: string; grants?: Grant[] }) {
     const organizationId = requireOwnOrgId('membership.list')
+    // Quản trị nhận thêm hồ sơ vận hành (uy tín…). Cổng route `requireMembershipOrOrgModerator`
+    // thoát sớm khi có membership nên `req.grants` có thể chưa nạp — nạp ở ĐÂY, một chỗ, thay vì
+    // để controller quyết (audit 5.7).
+    const grants = viewer.grants ?? (await roleGrantService.grantsOf(viewer.id))
+    const detailed = canModerateAnyInOrg(grants, organizationId.toString())
     const pagination = parsePagination(query)
     const { items, total } = await membershipRepository.paginateByOrganization(
       organizationId,
@@ -77,16 +94,10 @@ export const membershipService = {
     }
 
     /*
-     * Người đang GIỮ QUYỀN quản trị không bị gỡ khỏi danh bạ — kể cả bởi master.
-     *
-     * `grantAdmin` ghi hai thứ cùng nhau và nói rõ chúng không tách rời được: `Membership` là
-     * thân phận, `RoleGrant` là quyền. Gỡ thân phận mà để quyền còn hiệu lực tạo ra một
-     * "admin rỗng ruột" — `canAdminOrg` vẫn cho họ mở bàn duyệt và duyệt tin của một nhóm mà
-     * họ không còn là thành viên, còn danh bạ thì không còn ai để master nhìn ra chuyện đó.
+     * Quản trị DUY NHẤT của nhóm không bị gỡ — kể cả bởi master: gỡ xong org không còn ai duyệt.
      *
      * Chốt này KHÔNG trùng chốt 403 ở trên: chốt kia hỏi "ai được phép gỡ", chốt này hỏi "gỡ
-     * xong org còn đứng vững không". Bắt thu hồi quyền trước cũng đi qua chốt admin-cuối-cùng
-     * ở `roleGrantService.revoke`, nên không có đường nào lách được cả hai.
+     * xong org còn đứng vững không". Cùng chốt admin-cuối-cùng với `roleGrantService.revoke`.
      */
     const targetOrgAdmins = await usableOrgAdmins(organizationId, { userId: targetUserId })
     const targetIsAdmin = await roleGrantService
@@ -100,6 +111,65 @@ export const membershipService = {
 
     const removed = await membershipRepository.archiveOne(targetUserId, organizationId)
     if (!removed) throw new NotFoundError('Người này không còn trong nhóm')
+
+    /*
+     * Gỡ thân phận là thu hồi luôn quyền trong nhóm đó (`org` lẫn `org_unit`).
+     *
+     * `Membership` là thân phận, `RoleGrant` là quyền, và `grantAdmin` ghi chúng thành một cặp.
+     * Bản trước chỉ đổi thân phận: người bị gỡ (hoặc staff nhóm con) vẫn giữ grant `revokedAt:
+     * null`, `canModerateAnyInOrg` vẫn mở bàn duyệt cho họ, và danh bạ không còn tên để master
+     * nhìn ra một "admin rỗng ruột" đang duyệt tin của nhóm mình không còn đứng trong.
+     */
+    await roleGrantRepository.revokeAllForUserInOrg(
+      targetUserId,
+      organizationId,
+      new Types.ObjectId(actor.id),
+    )
+    // Socket đang mở vẫn nằm trong phòng thành viên của nhóm — ngắt để nối lại theo membership mới (audit 3.14).
+    disconnectUser(targetUserId)
+    // Người không còn trong nhóm thì không còn tin trong nhóm — cùng luật với `leave` (audit 1.14).
+    await listingService.detachFromOrg(new Types.ObjectId(targetUserId), organizationId, {
+      reason: CASCADE_HIDE_REASON.REMOVED_FROM_ORG,
+      cascade: CASCADE_HIDE_KIND.REMOVED_FROM_ORG,
+      byUserId: actor.id,
+      byName: await displayNameOf(actor),
+    })
     return removed
+  },
+
+  /**
+   * RỜI NHÓM — đường riêng cho chính mình (audit 3.13), tách khỏi `remove` vì hậu quả khác hẳn:
+   * mất ngay mọi quyền trong nhóm, và tin trong nhóm của mình ẩn đi.
+   *
+   * Cùng chốt admin-cuối-cùng với `remove`/`revoke`: nhóm không được rơi vào không người phụ
+   * trách chỉ vì một người bấm "rời".
+   */
+  async leave(actorId: string) {
+    const organizationId = requireOwnOrgId('membership.leave')
+
+    const grants = await roleGrantService.grantsOf(actorId)
+    if (canAdminOrg(grants, organizationId.toString())) {
+      const others = await usableOrgAdmins(organizationId, { userId: actorId })
+      if (others === 0) {
+        throw new ConflictError(
+          'Bạn là quản trị duy nhất của nhóm — trao quyền cho người khác trước khi rời',
+        )
+      }
+    }
+
+    const left = await membershipRepository.archiveOne(actorId, organizationId)
+    if (!left) throw new NotFoundError('Bạn không ở trong nhóm này')
+
+    const self = new Types.ObjectId(actorId)
+    await roleGrantRepository.revokeAllForUserInOrg(actorId, organizationId, self)
+    disconnectUser(actorId)
+    const user = await userRepository.findById(actorId)
+    await listingService.detachFromOrg(self, organizationId, {
+      reason: CASCADE_HIDE_REASON.LEFT_ORG,
+      cascade: CASCADE_HIDE_KIND.LEFT_ORG,
+      byUserId: actorId,
+      byName: user?.name ?? 'Thành viên',
+    })
+    return left
   },
 }

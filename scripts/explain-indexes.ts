@@ -294,6 +294,7 @@ interface Case {
   label: string
   /** Mục tương ứng trong bản review index — đọc kết quả là biết nó chứng minh cho điều gì. */
   ref: string
+  // eslint-disable-next-line typescript/no-explicit-any -- model của mọi collection, chỉ dùng để gọi `.find().explain()`
   model: mongoose.Model<any>
   needs: (keyof Ctx)[]
   scope(ctx: Ctx): CaseScope

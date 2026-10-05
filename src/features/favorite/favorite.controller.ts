@@ -1,11 +1,16 @@
 import { favoriteService } from './favorite.service'
+import { queryOf } from '../../middlewares/validate.middleware'
+import { favoriteQuerySchema } from './favorite.schema'
 import { catchAsync } from '../../common/utils/catchAsync'
 import { success, created } from '../../common/utils/apiResponse'
 
 export const favoriteController = {
   // GET /favorites
   list: catchAsync(async (req, res) => {
-    const { items, meta } = await favoriteService.list(req.user!.id, req.query as never)
+    const { items, meta } = await favoriteService.list(
+      req.user!.id,
+      queryOf(req, favoriteQuerySchema),
+    )
     success(res, { message: 'Saved listings', data: items, meta })
   }),
 

@@ -17,18 +17,23 @@ import { membershipRepository } from '../membership/membership.repository'
 import { roleGrantRepository } from '../role-grant/role-grant.repository'
 // Chốt một-người-một-trục. Nhập từ service chứ không chép lại luật: hai bản sao của một luật
 // phân quyền là hai bản sẽ lệch nhau ở lần sửa kế tiếp.
-import { assertSingleAxis } from '../role-grant/role-grant.service'
+import { assertSingleAxis, roleGrantService } from '../role-grant/role-grant.service'
+import { canGrant } from '../../common/authz/policy'
 import {
-  JOINED_VIA,
-  MEMBERSHIP_ROLES,
+  CASCADE_HIDE_KIND,
+  CASCADE_HIDE_REASON,
+  IN_ORG_REACHES,
+  MASTER_DISPLAY_NAME,
   ORG_CAPABILITY_PRESETS,
   ORG_TYPES,
   SCOPE_TYPES,
   SYSTEM_ROLES,
   TENANT_STATUS,
   TenantStatus,
+  PUSH_CATEGORY,
+  isWardOfProvince,
 } from '../../common/constants'
-import { ConflictError, NotFoundError } from '../../common/errors'
+import { ConflictError, ForbiddenError, NotFoundError, BadRequestError } from '../../common/errors'
 import { orgNameTokens } from '../../common/utils/orgName'
 import { generateJoinCode, normalizeJoinCode } from '../../common/utils/joinCode'
 import { requireOwnOrgId } from '../../common/tenant/tenantContext'
@@ -94,6 +99,7 @@ export const organizationService = {
         capabilities: ORG_CAPABILITY_PRESETS[orgType],
         provinceCode: input.provinceCode ?? null,
         district: input.district ?? null,
+        ward: input.ward ?? null,
         createdBy: new Types.ObjectId(actorId),
         // Sinh ra không có người phụ trách. `findActiveById` chỉ thấy org `active`, nên tới khi
         // master trao quyền thì org này chưa tồn tại với phần còn lại của hệ thống.
@@ -160,6 +166,11 @@ export const organizationService = {
         `Chưa có tài khoản nào dùng email ${email} — người phụ trách phải đăng ký trước`,
       )
     }
+    // Tài khoản đang khoá không nhận quyền (audit 3.15): trao xong họ vẫn không đăng nhập được,
+    // mà nhóm thì đã có "một quản trị" trên giấy — chốt admin-cuối-cùng đếm nhầm ngay lượt sau.
+    if (!user.isActive) {
+      throw new BadRequestError('Tài khoản này đang bị khoá — mở khoá trước khi trao quyền')
+    }
 
     /*
      * Chặn TRƯỚC khi đụng vào membership, không phải trước khi tạo grant.
@@ -168,20 +179,26 @@ export const organizationService = {
      * một lượt bị từ chối vẫn kịp đổi vai thành viên rồi mới ném — để lại đúng trạng thái nửa
      * vời mà không ai dọn: admin trong danh bạ nhóm nhưng không có quyền duyệt nào.
      */
+    /*
+     * Cùng luật với `POST /role-grants` (`canGrant`): không ai tự cấp cho mình, kể cả master —
+     * vết cấp quyền luôn có hai người. Route đã `requireMaster`, nên chốt này thực tế chỉ còn
+     * chặn đúng ca tự cấp; bản trước bỏ qua nó và đây là đường duy nhất master tự trao được.
+     */
+    const actorGrants = await roleGrantService.grantsOf(actorId)
+    const target = {
+      userId: user._id.toString(),
+      grant: { role: SYSTEM_ROLES.MANAGER, scopeType: SCOPE_TYPES.ORG, orgId: org._id.toString() },
+    }
+    if (!canGrant({ userId: actorId, grants: actorGrants }, target)) {
+      throw new ForbiddenError(
+        'Không đủ thẩm quyền để trao quyền quản trị — và không ai tự trao cho mình',
+      )
+    }
+
     await assertSingleAxis(user._id, SCOPE_TYPES.ORG)
 
-    const existing = await membershipRepository.findActive(user._id, org._id)
-    if (existing) {
-      existing.role = MEMBERSHIP_ROLES.ADMIN
-      await existing.save()
-    } else {
-      await membershipRepository.create({
-        userId: user._id,
-        organizationId: org._id,
-        role: MEMBERSHIP_ROLES.ADMIN,
-        joinedVia: JOINED_VIA.ROSTER,
-      })
-    }
+    // Một đường cho thân phận admin, dùng chung với `POST /role-grants` scope org.
+    await membershipRepository.ensureAdmin(user._id, org._id)
 
     try {
       await roleGrantRepository.create({
@@ -208,6 +225,7 @@ export const organizationService = {
     await notificationService.notifyUser({
       organizationId: org._id,
       userId: user._id,
+      push: { category: PUSH_CATEGORY.MEMBERSHIP, path: `/org/${org._id}` },
       title: 'Bạn được giao phụ trách một tổ chức',
       body: `Bạn giờ là quản trị của "${org.name}".`,
     })
@@ -245,6 +263,17 @@ export const organizationService = {
     if (input.allowOutsiderPosts !== undefined) org.allowOutsiderPosts = input.allowOutsiderPosts
     if (input.rules !== undefined) org.rules = input.rules
     if (input.feedLayout !== undefined) org.feedLayout = input.feedLayout
+    if (input.ward !== undefined) {
+      if (input.ward !== null && !org.provinceCode) {
+        throw new BadRequestError(
+          'Nhóm chưa gắn tỉnh — liên hệ master để gắn tỉnh trước khi chọn phường/xã',
+        )
+      }
+      if (input.ward !== null && !isWardOfProvince(org.provinceCode!, input.ward)) {
+        throw new BadRequestError(`"${input.ward}" không thuộc ${org.provinceCode}`)
+      }
+      org.ward = input.ward
+    }
 
     await org.save()
     return org
@@ -336,7 +365,11 @@ export const organizationService = {
    * Đếm thành viên theo LÔ chứ không từng nhóm một — mười dòng kết quả mà đếm lẻ là mười lượt
    * truy vấn nữa trên đúng đường người dùng đang gõ.
    */
-  async discover(query: string, limit = LOOKUP_LIMIT) {
+  async discover(
+    query: string,
+    where: { province?: string; ward?: string } = {},
+    limit = LOOKUP_LIMIT,
+  ) {
     /*
      * Gõ đúng MỘT MÃ thì trả đúng nhóm đó — kể cả nhóm RIÊNG TƯ.
      *
@@ -354,7 +387,9 @@ export const organizationService = {
       return [toOrganizationLookupDto(byCode, count)]
     }
 
-    const orgs = await organizationRepository.searchPublic(query, limit)
+    // Bộ lọc tỉnh/phường KHÔNG áp cho nhánh mã ở trên: người dán mã muốn đúng nhóm đó, dù bộ lọc
+    // đang để tỉnh khác — trả rỗng là nói với họ rằng mã sai.
+    const orgs = await organizationRepository.searchPublic(query, limit, where)
     const counts = await membershipRepository.countActiveByOrganizations(orgs.map((o) => o._id))
     return orgs.map((org) => toOrganizationLookupDto(org, counts.get(org._id.toString()) ?? 0))
   },
@@ -433,9 +468,35 @@ export const organizationService = {
     return org
   },
 
+  /**
+   * Đổi trạng thái nhóm, KÈM cascade tin (audit 1.14): tạm ngưng thì tin trong nhóm đang hiện ẩn
+   * hết — `group_open` là bậc NGƯỜI LẠ đọc được và feed của thành viên vẫn đọc `members`, nên
+   * chặn cửa vào org (`findActiveById`) thôi là chưa đủ. Mở lại thì trả đúng lô đó về bảng.
+   */
   async setStatus(organizationId: string, status: TenantStatus) {
+    const before = await organizationRepository.findById(organizationId)
+    if (!before) throw new NotFoundError('Organization not found')
+    const orgObjectId = new Types.ObjectId(organizationId)
+
+    // Ẩn TRƯỚC khi đổi trạng thái: hỏng giữa chừng thì nhóm vẫn đang hoạt động, bấm lại là làm nốt.
+    if (status === TENANT_STATUS.SUSPENDED && before.status !== TENANT_STATUS.SUSPENDED) {
+      await listingRepository.hideActiveInOrg(orgObjectId, {
+        reason: CASCADE_HIDE_REASON.ORG_SUSPENDED,
+        byName: MASTER_DISPLAY_NAME,
+        at: new Date(),
+        cascade: CASCADE_HIDE_KIND.ORG_SUSPENDED,
+      })
+    }
+
     const org = await organizationRepository.updateById(organizationId, { status })
     if (!org) throw new NotFoundError('Organization not found')
+
+    if (status === TENANT_STATUS.ACTIVE && before.status === TENANT_STATUS.SUSPENDED) {
+      await listingRepository.restoreCascaded(
+        { organizationId: orgObjectId, reach: { $in: IN_ORG_REACHES } },
+        CASCADE_HIDE_KIND.ORG_SUSPENDED,
+      )
+    }
     return org
   },
 }

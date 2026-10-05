@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { Router } from 'express'
+import { apiLimiter } from '../../middlewares/rateLimiter.middleware'
 import { walletController } from './wallet.controller'
 import {
   adjustWalletSchema,
@@ -13,6 +14,8 @@ import { authenticate, requireMaster } from '../../middlewares/auth.middleware'
 import { registry, bearerAuth, envelope, jsonResponse, errorResponse } from '../../config/openapi'
 
 const router = Router()
+// Trần chung theo IP/người dùng (audit 7.4) — mọi file routes phải có limiter, `routesLimiter.test` canh.
+router.use(apiLimiter)
 
 // Ví là của CHÍNH CHỦ — không có đường cho ai xem ví người khác, kể cả admin org. Master
 // cộng/trừ được nhưng cũng không có endpoint đọc ví người khác: cần điều tra thì đọc sổ cái.
