@@ -151,7 +151,27 @@ const envSchema = z.object({
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
-  CLOUDINARY_UPLOAD_FOLDER: z.string().default('ghim'),
+  /**
+   * Thư mục đích của mọi lượt upload, và cũng là thư mục job dọn ảnh quét. MỘT biến cho cả hai
+   * là có chủ ý — xem `upload.service.ts`.
+   *
+   * Ràng tập ký tự vì giá trị này được NỐI THẲNG vào biểu thức tìm kiếm của Cloudinary
+   * (`folder=${...} AND uploaded_at<...`). Một dấu cách hay dấu phẩy trong tên thư mục làm biểu
+   * thức gãy, và kiểu gãy đó không ồn ào: Cloudinary trả 0 kết quả, job báo "không có gì để
+   * dọn", rác chất đống mà mọi dòng log đều xanh. Chặn ở đây để nó chết lúc khởi động, nơi
+   * thông báo chỉ thẳng vào biến sai.
+   *
+   * Cho phép thư mục lồng (`ghim/prod`) vì cấu hình đó hợp lệ — nhưng BIẾT rằng `folder=` của
+   * Cloudinary chỉ khớp ĐÚNG một mức: asset nằm trong thư mục con của nó nằm ngoài tầm quét của
+   * job. `npm run check:cloudinary` mục [3] đếm ra chênh lệch đó.
+   */
+  CLOUDINARY_UPLOAD_FOLDER: z
+    .string()
+    .regex(
+      /^[A-Za-z0-9_-]+(\/[A-Za-z0-9_-]+)*$/,
+      'Chỉ gồm chữ, số, `_`, `-`, phân cách bằng `/` — ký tự khác làm gãy biểu thức tìm kiếm',
+    )
+    .default('ghim'),
   /**
    * Preset mà app gửi kèm mỗi lượt upload. Từ khi preset chuyển sang **Signed**, tên nó là một
    * tham số ĐƯỢC KÝ — app không được tự chọn nữa, nếu không chữ ký và request lệch nhau.
@@ -160,7 +180,21 @@ const envSchema = z.object({
    * cả biến này. (Tên giờ sai nghĩa, nhưng đổi tên preset là một lượt downtime upload.)
    */
   CLOUDINARY_UPLOAD_PRESET: z.string().default('ghim_unsigned'),
+  /**
+   * Nhịp quét LỨA — chỉ những ảnh vừa chạm tuổi tối thiểu.
+   *
+   * Phải NGẮN HƠN khoảng `[MIN_AGE, COHORT_MAX_AGE]` của `upload.cleanup.service.ts` (hiện là
+   * 2–4 ngày). Giãn nhịp này ra quá cửa sổ đó là có những lứa không lượt nào quét tới.
+   */
   IMAGE_CLEANUP_EVERY: z.string().default('24 hours'),
+  /**
+   * Nhịp quét TOÀN KHO. Thưa vì nó đắt — tỉ lệ với kích thước kho ảnh, không với lượng thay đổi.
+   *
+   * Không bỏ được: ảnh bị gỡ khi sửa tin, tin xoá mềm, avatar hay ảnh bìa bị thay đều biến một
+   * tấm ĐANG CÓ CHỦ thành rác nhiều tuần sau khi nó đã qua một lượt quét lứa sạch sẽ. Chỉ chạy
+   * nhịp lứa thì bốn loại rác đó không bao giờ được dọn.
+   */
+  IMAGE_CLEANUP_FULL_EVERY: z.string().default('7 days'),
 
   /*
    * BỎ QUA XÁC THỰC EMAIL — tạm thời, đi cùng lớp phủ KYC cho vòng kiểm duyệt Bộ Công Thương.

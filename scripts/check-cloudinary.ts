@@ -206,6 +206,18 @@ async function dryRun(cfg: CleanupConfig): Promise<void> {
   console.log(`   · asset đủ tuổi bị xét: ${res.scanned}`)
   console.log(`   · sẽ bị xoá:            ${res.orphans}`)
 
+  /*
+   * Báo TRƯỚC mọi kết luận khác: một lượt quét dở dang làm lệch mọi con số bên dưới, kể cả tỉ
+   * lệ mồ côi. Đây cũng là tín hiệu duy nhất cho thấy kho ảnh đã lớn hơn thứ một lượt quét đi
+   * hết — thứ mà nếu chỉ nằm trong log thì không ai thấy cho tới lúc ảnh rác chất đống.
+   */
+  if (!res.scanComplete) {
+    warn(
+      `hết ngân sách quét (${CLEANUP.SCAN_BUDGET_MS / 1000}s) — mới duyệt được một phần thư mục. ` +
+        'Nâng CLEANUP.SCAN_BUDGET_MS (kèm lockLifetime của job), hoặc chuyển sang lưu con trỏ giữa các lượt.',
+    )
+  }
+
   if (res.scanned === 0) {
     warn('không có asset nào đủ tuổi — chưa diễn tập được, chạy lại sau vài ngày')
     return

@@ -25,7 +25,10 @@ import {
  */
 const JOBS = {
   MACHINE_REVIEW: 'machine-review:sweep',
+  /** Nhịp thường: chỉ lứa ảnh vừa chạm tuổi tối thiểu. Xem `SweepMode`. */
   IMAGE_CLEANUP: 'image-cleanup:sweep',
+  /** Nhịp thưa: quét cả thư mục, vét rác phát sinh muộn mà nhịp trên không thể thấy. */
+  IMAGE_CLEANUP_FULL: 'image-cleanup:full',
   LISTING_EXPIRY: 'listing-expiry:sweep',
   UNVERIFIED_CLEANUP: 'unverified-cleanup:sweep',
 } as const
@@ -43,8 +46,20 @@ export async function startAgenda(): Promise<void> {
     // dù runtime là cùng một class.
     backend: new MongoBackend({ mongo: db as unknown as Db, collection: 'agendaJobs' }),
     processEvery: '30 seconds',
-    // Một sweep tại một thời điểm — hai sweep song song chấm trùng batch rồi thi nhau ghi.
-    maxConcurrency: 1,
+    /*
+     * Trần TOÀN CỤC, không phải chốt chống trùng lặp. Chốt đó là `concurrency: 1` của TỪNG job
+     * bên dưới.
+     *
+     * Trước đây chỗ này để `1` với lý do "một sweep tại một thời điểm". Lý do đúng nhưng công cụ
+     * sai: `maxConcurrency` đếm MỌI job của instance, nên nó serialize cả những job chẳng liên
+     * quan gì nhau. Chừng nào mỗi lượt quét còn vài giây thì không ai thấy; từ khi job dọn ảnh
+     * có thể chạy nhiều phút (đọc trọn URL ảnh trong DB, cộng ngân sách quét 5 phút), nó chặn
+     * luôn `machine-review` — job ĐƯA TIN LÊN BẢNG, chạy mỗi 2 phút. Người dùng chịu độ trễ đó.
+     *
+     * `5` = số job hiện có, tức trần này không còn xếp hàng ai nữa, chỉ còn là chặn trên phòng
+     * khi danh sách job phình ra mà không ai để ý.
+     */
+    maxConcurrency: 5,
   })
 
   // lockLifetime dài hơn hẳn một lượt quét (batch 50, toàn query có index): process chết giữa
@@ -54,7 +69,7 @@ export async function startAgenda(): Promise<void> {
     async () => {
       await machineReviewService.sweep()
     },
-    { lockLifetime: 5 * 60 * 1000 },
+    { lockLifetime: 5 * 60 * 1000, concurrency: 1 },
   )
 
   // Thay cho TTL index đã bỏ trên `Listing.expiresAt` — xem ghi chú ở `listing.model.ts`.
@@ -64,7 +79,7 @@ export async function startAgenda(): Promise<void> {
     async () => {
       await listingExpiryService.sweep()
     },
-    { lockLifetime: 2 * 60 * 1000 },
+    { lockLifetime: 2 * 60 * 1000, concurrency: 1 },
   )
 
   /*
@@ -79,18 +94,36 @@ export async function startAgenda(): Promise<void> {
     async () => {
       await unverifiedCleanupService.sweep()
     },
-    { lockLifetime: 15 * 60 * 1000 },
+    { lockLifetime: 15 * 60 * 1000, concurrency: 1 },
   )
 
   // Chỉ đăng ký khi có đủ CLOUDINARY_* — thiếu là tính năng chưa bật, đừng chạy một job mà
   // lượt nào cũng bỏ qua rồi ghi log "thiếu env" mỗi ngày.
   if (cleanupConfigFromEnv()) {
+    /*
+     * `lockLifetime` phải TRÙM được cả ba pha, không chỉ pha quét.
+     *
+     * `CLEANUP.SCAN_BUDGET_MS` (5 phút) mới chỉ chặn pha quét; sau nó còn một lượt đọc toàn bộ
+     * URL ảnh trong DB và một loạt lệnh xoá theo lô 100. Lock hết hạn giữa chừng là Agenda coi
+     * lượt chạy đã chết và giao đúng việc đó cho một tiến trình thứ hai — hai lượt quét song
+     * song trên cùng một kho ảnh, tốn gấp đôi hạn mức Admin API vốn đã là thứ phải tiết kiệm.
+     *
+     * 20 phút = 5 phút ngân sách quét + chỗ rộng cho hai pha sau. Nâng `SCAN_BUDGET_MS` thì
+     * nâng con số này theo.
+     */
     agenda.define(
       JOBS.IMAGE_CLEANUP,
       async () => {
-        await uploadCleanupService.sweep()
+        await uploadCleanupService.sweep(undefined, { mode: 'cohort' })
       },
-      { lockLifetime: 10 * 60 * 1000 },
+      { lockLifetime: 20 * 60 * 1000, concurrency: 1 },
+    )
+    agenda.define(
+      JOBS.IMAGE_CLEANUP_FULL,
+      async () => {
+        await uploadCleanupService.sweep(undefined, { mode: 'full' })
+      },
+      { lockLifetime: 20 * 60 * 1000, concurrency: 1 },
     )
   }
 
@@ -100,12 +133,15 @@ export async function startAgenda(): Promise<void> {
   await agenda.every(env.UNVERIFIED_CLEANUP_EVERY, JOBS.UNVERIFIED_CLEANUP)
   if (cleanupConfigFromEnv()) {
     await agenda.every(env.IMAGE_CLEANUP_EVERY, JOBS.IMAGE_CLEANUP)
+    await agenda.every(env.IMAGE_CLEANUP_FULL_EVERY, JOBS.IMAGE_CLEANUP_FULL)
   }
   logger.info(
     `⏱️  Agenda started — machine review every ${env.MACHINE_REVIEW_EVERY}` +
       `, listing expiry every ${env.LISTING_EXPIRY_EVERY}` +
       `, unverified cleanup every ${env.UNVERIFIED_CLEANUP_EVERY} (TTL ${env.UNVERIFIED_TTL_DAYS}d)` +
-      (cleanupConfigFromEnv() ? `, image cleanup every ${env.IMAGE_CLEANUP_EVERY}` : ''),
+      (cleanupConfigFromEnv()
+        ? `, image cleanup every ${env.IMAGE_CLEANUP_EVERY} (lứa) + ${env.IMAGE_CLEANUP_FULL_EVERY} (toàn kho)`
+        : ''),
   )
 }
 

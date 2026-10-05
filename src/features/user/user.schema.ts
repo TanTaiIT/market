@@ -8,6 +8,7 @@ import {
   isWardOfProvince,
   PAGINATION,
 } from '../../common/constants'
+import { userAvatarUrl } from '../../common/utils/imageUrl'
 
 export const objectId = z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id')
 
@@ -57,7 +58,8 @@ export const updateProfileSchema = z
      * được BẤT KỲ field nào khác — form gửi `phone: ''` và cả lượt lưu ăn 400.
      */
     phone: z.string().min(8).max(15).or(z.literal('')).optional(),
-    avatar: z.string().url().or(z.literal('')).optional(),
+    /** `''` = xoá avatar, cùng lý do với `phone` ngay trên. Host hợp lệ: xem `userAvatarUrl`. */
+    avatar: userAvatarUrl.or(z.literal('')).optional(),
     gender: z.nativeEnum(GENDER).optional(),
     /** `{}` = xoá khu vực đã lưu. Không ai lọc theo `User.location` nên subdoc rỗng vô hại. */
     location: userLocationInputSchema.optional(),
