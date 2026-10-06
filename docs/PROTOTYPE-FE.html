@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prototype FE — Sàn rao vặt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ──────────────────────────────────────────────────────────────────────────
+   Token lấy NGUYÊN từ src/theme/index.ts của app RN — đổi ở đây là lệch app.
+   ────────────────────────────────────────────────────────────────────────── */
+:root{
+  --ink:#17181C; --ink-2:#6B7280; --ink-3:#A1A6AF;
+  --paper:#F1F2F4; --paper-warm:#FFFFFF; --cork-dark:#E4E6EA; --sand:#F5F6F7;
+  --brand:#3ECD7F; --brand-dark:#2FB56D; --brand-deep:#137A52;
+  --brand-lt:#E9F9F0; --brand-tx:#16A05B; --brand-wash:#F4FCF7;
+  --orange:#FF7A3D; --orange-lt:#FFF1E9; --amber-ink:#7A4526;
+  --star:#F5B921; --tape-ink:#6B4E00;
+  --danger:#FF4D4D; --danger-lt:#FFECEC;
+  --sky:#5B8DEF; --line:#EDEEF0; --line-input:#E4E6EA;
+  --moss:#16A05B; --moss-lt:#E9F9F0;
+  --desk:#11170F; --desk-panel:#171F13; --desk-raise:#1F2A19; --desk-hi:#27331F;
+  --desk-line:rgba(243,239,225,.10); --desk-line-2:rgba(243,239,225,.18);
+  --desk-txt:#EDE9DA; --desk-soft:#A3AC96; --desk-dim:#6C7862;
+  --ok-text:#7FBE8C; --bad-text:#F2705E;
+  /* thang S */
+  --s-xs:4px; --s-sm:8px; --s-md:12px; --s-lg:16px; --s-xl:24px; --s-xxl:32px;
+  /* thang R */
+  --r-lg:16px; --r-md:12px; --r-sm:8px; --r-pill:999px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  font-family:Manrope,-apple-system,"Segoe UI",sans-serif;
+  background:#0E1410;
+  color:var(--ink);
+  min-height:100vh;
+  display:flex;flex-direction:column;align-items:center;
+  padding:28px 16px 48px;
+}
+
+/* ── khung ngoài ──────────────────────────────────────────────────────── */
+.stage{width:100%;max-width:1180px}
+.stage-head{color:#D9E2DB;margin-bottom:18px}
+.stage-head h1{font-size:19px;font-weight:800;margin:0 0 4px;letter-spacing:-.01em}
+.stage-head p{font-size:12.5px;margin:0;color:#8EA093;line-height:1.5}
+.stage-head code{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-size:11.5px;font-family:Manrope}
+
+.toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:16px 0 20px}
+.tab{
+  font:inherit;font-size:12.5px;font-weight:600;color:#9FB0A3;cursor:pointer;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);
+  padding:7px 13px;border-radius:var(--r-pill);
+}
+.tab[aria-selected="true"]{background:var(--brand);border-color:var(--brand);color:#06240F}
+.spacer{flex:1}
+.switch{display:flex;align-items:center;gap:7px;font-size:12px;color:#9FB0A3;cursor:pointer;user-select:none}
+.switch input{appearance:none;width:34px;height:19px;border-radius:999px;background:rgba(255,255,255,.14);position:relative;cursor:pointer;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:#fff;transition:transform .15s}
+.switch input:checked{background:var(--brand)}
+.switch input:checked::after{transform:translateX(15px)}
+
+/* ── điện thoại ───────────────────────────────────────────────────────── */
+.devices{display:flex;gap:26px;flex-wrap:wrap;justify-content:center;align-items:flex-start}
+.device{width:390px;flex:0 0 auto}
+.device-label{font-size:11.5px;font-weight:700;color:#8EA093;margin-bottom:8px;letter-spacing:.04em;text-transform:uppercase}
+.phone{
+  width:390px;height:780px;background:var(--paper);border-radius:34px;overflow:hidden;
+  border:9px solid #050806;box-shadow:0 22px 50px rgba(0,0,0,.5);
+  display:flex;flex-direction:column;position:relative;
+}
+.phone.dark{background:var(--desk)}
+.statusbar{height:26px;flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+  padding:0 18px;font-size:11px;font-weight:700;color:var(--ink);background:var(--paper-warm)}
+.phone.dark .statusbar{background:var(--desk);color:var(--desk-txt)}
+.screen{flex:1;overflow-y:auto;overflow-x:hidden}
+.screen::-webkit-scrollbar{width:0}
+
+/* ── thành phần chung ─────────────────────────────────────────────────── */
+.appbar{
+  background:var(--paper-warm);padding:var(--s-md) var(--s-lg);
+  display:flex;align-items:center;gap:var(--s-md);
+  border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5;
+}
+.brandmark{font-size:17px;font-weight:800;color:var(--brand-tx);letter-spacing:-.02em}
+.searchbox{
+  flex:1;background:var(--sand);border:1px solid var(--line-input);border-radius:var(--r-pill);
+  padding:8px 14px;font-size:12.5px;color:var(--ink-3);display:flex;align-items:center;gap:7px;
+}
+.iconbtn{width:34px;height:34px;border-radius:var(--r-pill);background:var(--sand);
+  display:flex;align-items:center;justify-content:center;font-size:15px;flex:0 0 auto}
+
+.pad{padding:var(--s-lg)}
+.row{display:flex;gap:var(--s-sm);align-items:center}
+.sectionhead{display:flex;align-items:baseline;justify-content:space-between;margin:var(--s-lg) 0 var(--s-sm)}
+.sectionhead h3{font-size:14.5px;font-weight:800;margin:0;letter-spacing:-.01em}
+.sectionhead a{font-size:12px;color:var(--brand-tx);font-weight:700;text-decoration:none}
+
+.cats{display:flex;gap:var(--s-sm);overflow-x:auto;padding:var(--s-md) var(--s-lg);background:var(--paper-warm)}
+.cats::-webkit-scrollbar{height:0}
+.cat{flex:0 0 auto;text-align:center;width:60px}
+.cat .ic{width:48px;height:48px;border-radius:var(--r-md);display:flex;align-items:center;
+  justify-content:center;font-size:21px;margin:0 auto 5px}
+.cat span{font-size:10.5px;font-weight:600;color:var(--ink-2);line-height:1.3;display:block}
+
+.card{background:var(--paper-warm);border-radius:var(--r-lg);overflow:hidden;margin-bottom:var(--s-md);
+  box-shadow:0 1px 3px rgba(23,24,28,.06);cursor:pointer}
+.card .ph{height:150px;position:relative;display:flex;align-items:flex-end;padding:var(--s-sm)}
+.card .body{padding:var(--s-md)}
+.card h4{font-size:13.5px;font-weight:700;margin:0 0 5px;line-height:1.4;letter-spacing:-.01em}
+.price{font-size:15px;font-weight:800;color:var(--brand-tx);letter-spacing:-.01em}
+.meta{font-size:11px;color:var(--ink-3);margin-top:5px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+
+.badge{font-size:9.5px;font-weight:800;padding:3px 7px;border-radius:var(--r-sm);
+  letter-spacing:.03em;text-transform:uppercase;white-space:nowrap}
+.b-market{background:var(--brand);color:#06240F}
+.b-group{background:var(--sky);color:#fff}
+.b-members{background:var(--cork-dark);color:var(--ink-2)}
+.b-org{background:rgba(255,255,255,.92);color:var(--ink);backdrop-filter:blur(4px)}
+
+.chip{font-size:11px;font-weight:700;padding:5px 10px;border-radius:var(--r-pill);
+  background:var(--sand);color:var(--ink-2);white-space:nowrap}
+.chip.on{background:var(--brand-lt);color:var(--brand-tx)}
+
+.status{font-size:10.5px;font-weight:800;padding:4px 9px;border-radius:var(--r-sm);letter-spacing:.02em}
+.st-live{background:var(--brand-lt);color:var(--brand-tx)}
+.st-wait{background:var(--orange-lt);color:var(--amber-ink)}
+.st-no{background:var(--danger-lt);color:var(--danger)}
+.st-old{background:var(--sand);color:var(--ink-2)}
+
+.note{border-radius:var(--r-md);padding:var(--s-md);font-size:11.5px;line-height:1.55;margin-top:var(--s-sm)}
+.note b{display:block;margin-bottom:3px;font-size:12px}
+.n-wait{background:var(--orange-lt);color:var(--amber-ink)}
+.n-no{background:var(--danger-lt);color:#8B2626}
+.n-ok{background:var(--brand-lt);color:var(--brand-deep)}
+
+.btn{display:block;width:100%;text-align:center;font:inherit;font-size:14px;font-weight:800;
+  padding:14px;border-radius:var(--r-md);border:0;cursor:pointer;letter-spacing:-.01em}
+.btn-primary{background:var(--brand);color:#06240F}
+.btn-ghost{background:var(--sand);color:var(--ink)}
+
+.field{margin-bottom:var(--s-lg)}
+.label{font-size:12px;font-weight:700;color:var(--ink-2);margin-bottom:6px;display:block}
+.input{width:100%;background:var(--paper-warm);border:1px solid var(--line-input);
+  border-radius:var(--r-md);padding:12px 13px;font:inherit;font-size:13px;color:var(--ink)}
+.input.placeholder{color:var(--ink-3)}
+.pick{display:flex;flex-direction:column;gap:var(--s-sm)}
+.pickopt{border:1.5px solid var(--line-input);background:var(--paper-warm);border-radius:var(--r-md);
+  padding:11px 13px;cursor:pointer}
+.pickopt.on{border-color:var(--brand);background:var(--brand-wash)}
+.pickopt b{display:block;font-size:13px;font-weight:700;margin-bottom:2px}
+.pickopt span{font-size:11px;color:var(--ink-2);line-height:1.45;display:block}
+
+.bar{height:7px;border-radius:999px;background:var(--cork-dark);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--brand);border-radius:999px}
+
+/* Dính đáy khung máy, không cuộn theo nội dung — `.screen` là vùng cuộn. */
+.tabbar{position:sticky;bottom:0;background:var(--paper-warm);border-top:1px solid var(--line);
+  display:flex;padding:7px 0 11px;margin-top:var(--s-lg)}
+.tabitem{flex:1;text-align:center;font-size:10px;font-weight:700;color:var(--ink-3)}
+.tabitem .ic{font-size:19px;display:block;margin-bottom:2px}
+.tabitem.on{color:var(--brand-tx)}
+
+/* ── bàn quản trị (nền tối) ───────────────────────────────────────────── */
+.dk{color:var(--desk-txt)}
+.dk .appbar{background:var(--desk-panel);border-bottom:1px solid var(--desk-line)}
+.dk .brandmark{color:var(--ok-text)}
+.dk .card{background:var(--desk-panel);box-shadow:none;border:1px solid var(--desk-line)}
+.dk h4{color:var(--desk-txt)}
+.dk .meta{color:var(--desk-dim)}
+.dk .chip{background:var(--desk-raise);color:var(--desk-soft)}
+.dk .chip.on{background:var(--desk-hi);color:var(--ok-text)}
+.dk .label{color:var(--desk-soft)}
+.dk .sectionhead h3{color:var(--desk-txt)}
+.dkbtn{flex:1;font:inherit;font-size:12.5px;font-weight:800;padding:10px;border-radius:var(--r-sm);
+  border:0;cursor:pointer}
+.dk-ok{background:var(--moss);color:#fff}
+.dk-no{background:rgba(242,112,94,.14);color:var(--bad-text);border:1px solid rgba(242,112,94,.3)}
+
+/* ── ghi chú đặc tả ───────────────────────────────────────────────────── */
+.spec{display:none;margin:var(--s-sm) 0;border-left:3px solid var(--sky);background:#EEF3FE;
+  padding:9px 11px;border-radius:0 var(--r-sm) var(--r-sm) 0;font-size:10.5px;line-height:1.5;color:#1F3C73}
+.spec b{display:block;font-weight:800;margin-bottom:2px;font-size:10.5px;letter-spacing:.02em}
+.dk .spec{background:rgba(91,141,239,.12);color:#A8C4F5;border-left-color:#5B8DEF}
+body.showspec .spec{display:block}
+
+.hide{display:none}
+.foot{color:#6E7F72;font-size:11.5px;margin-top:26px;text-align:center;line-height:1.6;max-width:720px}
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="stage-head">
+    <h1>Prototype giao diện — Sàn rao vặt hai trục</h1>
+    <p>Màu, cỡ chữ, bo góc và thang khoảng cách lấy nguyên từ <code>src/theme/index.ts</code> của app.
+       Nội dung lấy từ luật nghiệp vụ thật — kể cả câu chữ giải thích cho người đăng.</p>
+  </div>
+
+  <div class="toolbar">
+    <button class="tab" aria-selected="true" data-go="feed">Bảng tin</button>
+    <button class="tab" data-go="detail">Chi tiết tin</button>
+    <button class="tab" data-go="post">Đăng tin</button>
+    <button class="tab" data-go="mine">Tin của tôi</button>
+    <button class="tab" data-go="standing">Uy tín &amp; hạn mức</button>
+    <button class="tab" data-go="desk">Bàn duyệt</button>
+    <span class="spacer"></span>
+    <label class="switch"><input type="checkbox" id="specToggle"> Ghi chú đặc tả</label>
+  </div>
+
+  <div class="devices">
+    <div class="device">
+      <div class="device-label" id="devLabel">Bảng tin</div>
+      <div class="phone" id="phone">
+        <div class="statusbar"><span>9:41</span><span>▮▮▮ ▲ ◼</span></div>
+
+        <!-- ══ BẢNG TIN ══ -->
+        <div class="screen" data-screen="feed">
+          <div class="appbar">
+            <span class="brandmark">Ghim</span>
+            <div class="searchbox">🔍 Tìm trong Quận 1…</div>
+            <div class="iconbtn">🔔</div>
+          </div>
+
+          <div class="cats">
+            <div class="cat"><div class="ic" style="background:#E9F9F0;color:#16A05B">📱</div><span>Điện tử</span></div>
+            <div class="cat"><div class="ic" style="background:#FFF1E9;color:#FF7A3D">🪑</div><span>Nội thất</span></div>
+            <div class="cat"><div class="ic" style="background:#EEF3FE;color:#5B8DEF">👕</div><span>Thời trang</span></div>
+            <div class="cat"><div class="ic" style="background:#FDF6E3;color:#B8860B">📚</div><span>Sách</span></div>
+            <div class="cat"><div class="ic" style="background:#FFECEC;color:#FF4D4D">🐾</div><span>Thú cưng</span></div>
+          </div>
+
+          <div class="pad" style="padding-top:var(--s-md)">
+            <div class="spec"><b>§2.2 · Thang phủ sóng</b>
+              Huy hiệu trên ảnh cho biết tin đi tới đâu. “Sàn chung” do người phụ trách danh mục duyệt;
+              hai bậc còn lại do chính nhóm duyệt.</div>
+
+            <div class="card" data-go="detail">
+              <div class="ph" style="background:linear-gradient(135deg,#C9E7D5,#9FD4B4)">
+                <span class="badge b-market">Sàn chung</span>
+              </div>
+              <div class="body">
+                <h4>iPhone 13 128GB — pin 92%, máy đẹp</h4>
+                <div class="price">8.900.000 đ</div>
+                <div class="meta">📍 Phường Bến Thành · 2 giờ trước</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="ph" style="background:linear-gradient(135deg,#FFE0CC,#FFC2A0)">
+                <span class="badge b-group">Nhóm công khai</span>
+                <span class="badge b-org" style="margin-left:6px">THPT Lê Quý Đôn</span>
+              </div>
+              <div class="body">
+                <h4>Bàn học gỗ tự nhiên, còn mới 90%</h4>
+                <div class="price">1.200.000 đ</div>
+                <div class="meta">📍 Phường Đa Kao · 5 giờ trước</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="ph" style="background:linear-gradient(135deg,#D9E2F5,#B6C7EA)">
+                <span class="badge b-members">Chỉ thành viên</span>
+                <span class="badge b-org" style="margin-left:6px">Công ty ABC</span>
+              </div>
+              <div class="body">
+                <h4>Màn hình Dell 24&quot; — thanh lý nội bộ</h4>
+                <div class="price">1.800.000 đ</div>
+                <div class="meta">📍 Phường Tân Định · hôm qua</div>
+              </div>
+            </div>
+            <div class="spec"><b>§2.2</b> Tin “Chỉ thành viên” chỉ hiện với người trong nhóm. Người lạ
+              không thấy thẻ này trên bảng tin chung.</div>
+          </div>
+
+          <div class="tabbar">
+            <div class="tabitem on"><span class="ic">🏠</span>Bảng tin</div>
+            <div class="tabitem"><span class="ic">💬</span>Tin nhắn</div>
+            <div class="tabitem"><span class="ic">➕</span>Đăng tin</div>
+            <div class="tabitem"><span class="ic">🔔</span>Thông báo</div>
+            <div class="tabitem"><span class="ic">👤</span>Cá nhân</div>
+          </div>
+        </div>
+
+        <!-- ══ CHI TIẾT ══ -->
+        <div class="screen hide" data-screen="detail">
+          <div class="appbar">
+            <div class="iconbtn" data-go="feed">←</div>
+            <div style="flex:1"></div>
+            <div class="iconbtn">♡</div>
+            <div class="iconbtn">⋯</div>
+          </div>
+
+          <div style="height:260px;background:linear-gradient(135deg,#C9E7D5,#9FD4B4);position:relative">
+            <span class="badge b-market" style="position:absolute;left:16px;bottom:16px">Sàn chung</span>
+          </div>
+
+          <div class="pad">
+            <div class="price" style="font-size:24px">8.900.000 đ</div>
+            <h4 style="font-size:17px;margin:6px 0 10px;line-height:1.35">iPhone 13 128GB — pin 92%, máy đẹp</h4>
+            <div class="row" style="flex-wrap:wrap">
+              <span class="chip">Đã dùng</span><span class="chip">Điện tử</span><span class="chip">Có thương lượng</span>
+            </div>
+
+            <div class="spec"><b>§15.2 · Ba tầng dữ liệu</b>
+              Công khai chỉ tới <b>phường và tỉnh</b>. Địa chỉ chi tiết thuộc tầng “chỉ chủ tin” —
+              hệ hiện tại đang trả nó ra công khai, và đó là một lỗ hổng phải đóng.</div>
+
+            <div class="sectionhead"><h3>Khu vực</h3></div>
+            <div style="background:var(--paper-warm);border-radius:var(--r-md);padding:var(--s-md);font-size:13px">
+              📍 Phường Bến Thành, TP. Hồ Chí Minh
+            </div>
+
+            <div class="sectionhead"><h3>Người bán</h3></div>
+            <div style="background:var(--paper-warm);border-radius:var(--r-md);padding:var(--s-md);display:flex;gap:12px;align-items:center">
+              <div style="width:44px;height:44px;border-radius:50%;background:var(--brand-lt);display:flex;align-items:center;justify-content:center;font-size:19px">🙂</div>
+              <div style="flex:1">
+                <div style="font-size:13.5px;font-weight:700">Nguyễn Minh Anh</div>
+                <div style="font-size:11px;color:var(--ink-3);margin-top:2px">Chưa có đánh giá · tham gia 2025</div>
+              </div>
+              <span class="chip">Xem trang</span>
+            </div>
+
+            <div class="spec"><b>§3.1 · Cần đăng nhập</b>
+              Nút nhắn tin chỉ mở cho người đã đăng nhập và đã xác thực email.</div>
+
+            <div class="sectionhead"><h3>Mô tả</h3></div>
+            <p style="font-size:13px;line-height:1.6;color:var(--ink-2);margin:0">
+              Máy chính chủ, dùng cẩn thận, không rơi vỡ. Pin còn 92%, đã thay màn chính hãng
+              tháng trước. Full box, còn phiếu bảo hành.
+            </p>
+
+            <div style="height:var(--s-xl)"></div>
+            <button class="btn btn-primary">Nhắn tin cho người bán</button>
+          </div>
+        </div>
+
+        <!-- ══ ĐĂNG TIN ══ -->
+        <div class="screen hide" data-screen="post">
+          <div class="appbar">
+            <div class="iconbtn" data-go="feed">←</div>
+            <span style="font-size:15px;font-weight:800">Đăng tin</span>
+          </div>
+
+          <div class="pad">
+            <div class="note n-ok" style="margin-top:0">
+              <b>Còn 7 / 10 chỗ chờ duyệt</b>
+              Uy tín của bạn đang ở bậc cao nhất — tin sẽ lên bảng ngay khi đăng.
+            </div>
+            <div class="spec"><b>§12 · Hạn mức</b>
+              Hạn mức tính theo <b>số tin đang chờ duyệt</b>, không theo số tin mỗi ngày.
+              Người dùng chỉ tạo thêm việc cho người duyệt khi việc cũ đã xong.</div>
+
+            <div class="field" style="margin-top:var(--s-xl)">
+              <span class="label">Tin này đăng cho ai xem?</span>
+              <div class="spec"><b>§8.2 · SỬA</b>
+                Bắt buộc chọn tường minh. Hệ hiện tại suy ra từ nhóm đang đứng, và nó đoán sai ở
+                đúng tình huống phổ biến nhất.</div>
+              <div class="pick">
+                <label class="pickopt on"><b>🌐 Cả sàn</b><span>Ai cũng thấy. Người phụ trách danh mục duyệt. Cần chọn tỉnh và phường.</span></label>
+                <label class="pickopt"><b>🏫 Nhóm công khai — THPT Lê Quý Đôn</b><span>Ai cũng đọc được, nhưng quản trị nhóm duyệt.</span></label>
+                <label class="pickopt"><b>🔒 Chỉ thành viên nhóm</b><span>Chỉ người trong nhóm thấy.</span></label>
+              </div>
+            </div>
+
+            <div class="field">
+              <span class="label">Danh mục</span>
+              <div class="input">Điện tử › Điện thoại</div>
+            </div>
+
+            <div class="spec"><b>§6.2 · Thuộc tính theo danh mục</b>
+              Các trường dưới đây do template của danh mục quyết định, không hardcode ở app.</div>
+
+            <div class="field">
+              <span class="label">Hãng <span style="color:var(--danger)">*</span></span>
+              <div class="input">Apple</div>
+            </div>
+            <div class="field">
+              <span class="label">Dung lượng <span style="color:var(--danger)">*</span></span>
+              <div class="input">128 GB</div>
+            </div>
+
+            <div class="field">
+              <span class="label">Ảnh (tối đa 12)</span>
+              <div class="row">
+                <div style="width:72px;height:72px;border-radius:var(--r-md);background:linear-gradient(135deg,#C9E7D5,#9FD4B4)"></div>
+                <div style="width:72px;height:72px;border-radius:var(--r-md);background:var(--sand);border:1.5px dashed var(--line-input);display:flex;align-items:center;justify-content:center;color:var(--ink-3);font-size:21px">＋</div>
+              </div>
+              <div class="spec"><b>§7.1 · SỬA — nháp giữ quyền sở hữu ảnh</b>
+                Ảnh tải lên ngay lúc chọn. Nếu không có bản nháp thật thì mọi tấm bị bỏ đều thành
+                ảnh vô chủ — đây là nguồn rác ảnh lớn nhất.</div>
+            </div>
+
+            <div class="field">
+              <span class="label">Tiêu đề</span>
+              <div class="input">iPhone 13 128GB — pin 92%, máy đẹp</div>
+            </div>
+            <div class="field">
+              <span class="label">Giá</span>
+              <div class="input">8.900.000 đ</div>
+            </div>
+            <div class="field">
+              <span class="label">Khu vực <span style="color:var(--danger)">*</span></span>
+              <div class="input">TP.HCM › Phường Bến Thành</div>
+              <div class="spec"><b>§8.4</b> Tin lên sàn <b>bắt buộc</b> có tỉnh và phường — chính chúng
+                quyết định ai duyệt. Tin trong nhóm thì không cần.</div>
+            </div>
+
+            <button class="btn btn-primary" data-go="mine">Đăng tin</button>
+            <div style="height:var(--s-xl)"></div>
+          </div>
+        </div>
+
+        <!-- ══ TIN CỦA TÔI ══ -->
+        <div class="screen hide" data-screen="mine">
+          <div class="appbar">
+            <div class="iconbtn" data-go="feed">←</div>
+            <span style="font-size:15px;font-weight:800">Tin của tôi</span>
+          </div>
+
+          <div class="pad">
+            <div class="row" style="margin-bottom:var(--s-md);flex-wrap:wrap">
+              <span class="chip on">Tất cả</span><span class="chip">Đang hiện</span>
+              <span class="chip">Chờ duyệt</span><span class="chip">Bị từ chối</span>
+            </div>
+
+            <div class="spec"><b>§9.4</b> Mọi lý do giữ tin lại phải dịch được thành một câu người đăng
+              đọc hiểu, kèm việc họ làm được ngay. Câu chữ sinh ở máy chủ, không ở app.</div>
+
+            <div class="card" style="cursor:default">
+              <div class="body">
+                <div class="row" style="justify-content:space-between;align-items:flex-start">
+                  <h4 style="flex:1">iPhone 13 128GB — pin 92%</h4>
+                  <span class="status st-live">Đang hiện</span>
+                </div>
+                <div class="price" style="font-size:14px">8.900.000 đ</div>
+                <div class="meta">👁 142 lượt xem · 3 người quan tâm · còn 27 ngày</div>
+              </div>
+            </div>
+
+            <div class="card" style="cursor:default">
+              <div class="body">
+                <div class="row" style="justify-content:space-between;align-items:flex-start">
+                  <h4 style="flex:1">Tai nghe Sony WH-1000XM4</h4>
+                  <span class="status st-wait">Chờ duyệt</span>
+                </div>
+                <div class="price" style="font-size:14px">3.200.000 đ</div>
+                <div class="note n-wait">
+                  <b>Giá của tin lệch xa mức thường thấy trong danh mục này.</b>
+                  Kiểm tra lại đơn vị (đồng) và số 0. Nếu giá đúng, người duyệt sẽ xem trong ít giờ.
+                </div>
+              </div>
+            </div>
+            <div class="spec"><b>§9.3</b> Câu trên là câu thật trong mã nguồn. Máy chỉ <b>giữ lại</b>,
+              không từ chối — heuristic có ngày đoán sai, và cái giá phải là một cái liếc mắt của
+              người duyệt, không phải một tin thật bị đánh trượt.</div>
+
+            <div class="card" style="cursor:default">
+              <div class="body">
+                <div class="row" style="justify-content:space-between;align-items:flex-start">
+                  <h4 style="flex:1">Bàn phím cơ — ảnh chụp hơi tối</h4>
+                  <span class="status st-no">Bị từ chối</span>
+                </div>
+                <div class="price" style="font-size:14px">750.000 đ</div>
+                <div class="note n-no">
+                  <b>Ảnh chưa rõ sản phẩm.</b>
+                  Bạn có thể sửa nội dung rồi đăng lại.
+                </div>
+              </div>
+            </div>
+            <div class="spec"><b>§10.3 · SỬA</b>
+              Đây là từ chối mức <b>“sai sót”</b> — theo đặc tả nó <b>không</b> trừ uy tín, không bóp
+              hạn mức. Hệ hiện tại vẫn trừ một bậc, và đó là lỗi phải sửa.</div>
+
+            <div class="card" style="cursor:default">
+              <div class="body">
+                <div class="row" style="justify-content:space-between;align-items:flex-start">
+                  <h4 style="flex:1">Ghế công thái học</h4>
+                  <span class="status st-old">Hết hạn</span>
+                </div>
+                <div class="price" style="font-size:14px">2.400.000 đ</div>
+                <div class="meta">Hết hạn 3 ngày trước · vẫn xem được trang chi tiết</div>
+                <div style="height:var(--s-sm)"></div>
+                <button class="btn btn-ghost" style="padding:10px;font-size:12.5px">Gia hạn thêm 30 ngày</button>
+              </div>
+            </div>
+            <div class="spec"><b>§7.3</b> Tin hết hạn <b>không bị xoá</b>. Gia hạn <b>không</b> đẩy tin
+              lên đầu bảng — nếu có, cách rẻ nhất để lên đầu là để tin hết hạn rồi bấm gia hạn.</div>
+          </div>
+        </div>
+
+        <!-- ══ UY TÍN ══ -->
+        <div class="screen hide" data-screen="standing">
+          <div class="appbar">
+            <div class="iconbtn" data-go="feed">←</div>
+            <span style="font-size:15px;font-weight:800">Uy tín &amp; hạn mức</span>
+          </div>
+
+          <div class="pad">
+            <div style="background:var(--paper-warm);border-radius:var(--r-lg);padding:var(--s-lg);text-align:center">
+              <div style="font-size:11.5px;font-weight:700;color:var(--ink-2);letter-spacing:.04em;text-transform:uppercase">Bậc uy tín</div>
+              <div style="font-size:44px;font-weight:800;color:var(--brand-tx);line-height:1.1;margin:6px 0">2<span style="font-size:19px;color:var(--ink-3)"> / 2</span></div>
+              <div style="font-size:12.5px;color:var(--ink-2)">Tin của bạn lên bảng ngay khi đăng</div>
+            </div>
+
+            <div class="spec"><b>§11.1</b> Tài khoản mới bắt đầu ở bậc <b>trần</b>, không phải bậc 0.
+              Bậc là thứ <b>mất đi</b>, không phải thứ kiếm được. Hàng rào lúc đăng là cổng nội dung,
+              không phải uy tín.</div>
+
+            <div class="sectionhead"><h3>Hạn mức tin chờ duyệt</h3></div>
+            <div style="background:var(--paper-warm);border-radius:var(--r-md);padding:var(--s-md)">
+              <div class="row" style="justify-content:space-between;margin-bottom:8px">
+                <span style="font-size:12.5px;color:var(--ink-2)">Đang chờ duyệt</span>
+                <span style="font-size:13px;font-weight:800">3 / 10</span>
+              </div>
+              <div class="bar"><i style="width:30%"></i></div>
+            </div>
+
+            <div class="sectionhead"><h3>Chuỗi tin sạch</h3></div>
+            <div style="background:var(--paper-warm);border-radius:var(--r-md);padding:var(--s-md)">
+              <div class="row" style="justify-content:space-between;margin-bottom:8px">
+                <span style="font-size:12.5px;color:var(--ink-2)">Đã có 3 tin được duyệt liên tiếp</span>
+                <span style="font-size:13px;font-weight:800">3 / 5</span>
+              </div>
+              <div class="bar"><i style="width:60%;background:var(--star)"></i></div>
+            </div>
+            <div class="spec"><b>§12.3</b> Con số này phải <b>trừ phần chuỗi đang dở</b> — nói “còn 5” với
+              người đã có 4 bài sạch là nói quá với đúng người cần nó nhất.</div>
+
+            <div class="sectionhead"><h3>Ví dụ — đang bị phạt</h3></div>
+            <div class="note n-no" style="margin-top:0">
+              <b>Bạn có 1 tin bị từ chối vì vi phạm</b>
+              Hạn mức tạm còn 2 chỗ, và tin mới cần người duyệt xem trước.
+              Án phạt hết sau <b>5 ngày nữa</b>; bậc uy tín tự hồi sau <b>23 ngày nữa</b> nếu không có
+              vi phạm mới.
+            </div>
+            <div class="spec"><b>§11.4 · SỬA</b>
+              Vế cuối là luật <b>mới</b>. Hệ hiện tại chỉ hồi bậc bằng 5 bài sạch — mà 5 bài sạch phụ
+              thuộc tốc độ người duyệt, nên trên thực tế hình phạt là <b>vô thời hạn</b> và người dùng
+              không biết khi nào thoát.
+            </div>
+            <div style="height:var(--s-xl)"></div>
+          </div>
+        </div>
+
+        <!-- ══ BÀN DUYỆT ══ -->
+        <div class="screen hide dk" data-screen="desk">
+          <div class="appbar">
+            <span class="brandmark">Bàn duyệt</span>
+            <div style="flex:1"></div>
+            <span class="chip">12 chờ</span>
+          </div>
+
+          <div class="pad">
+            <div class="row" style="margin-bottom:var(--s-md)">
+              <span class="chip on">Nhóm của tôi · 4</span>
+              <span class="chip">Người ngoài · 2</span>
+              <span class="chip">Danh mục · 6</span>
+            </div>
+            <div class="spec"><b>§10.1 · Bốn hàng đợi</b>
+              Mỗi tin thuộc <b>đúng một</b> hàng đợi, nên không có câu hỏi “ai duyệt trước”.
+              Một người chỉ đứng trên một trục.</div>
+
+            <div class="card" style="cursor:default">
+              <div class="body">
+                <div class="row" style="align-items:flex-start;gap:var(--s-md)">
+                  <div style="width:62px;height:62px;border-radius:var(--r-sm);background:linear-gradient(135deg,#2C5238,#1F2A19);flex:0 0 auto"></div>
+                  <div style="flex:1">
+                    <h4 style="margin-bottom:4px">Tai nghe Sony WH-1000XM4</h4>
+                    <div style="font-size:13px;font-weight:800;color:var(--ok-text)">3.200.000 đ</div>
+                    <div class="meta">Minh Anh · uy tín bậc 2 · Điện tử</div>
+                  </div>
+                </div>
+                <div style="margin-top:var(--s-md);padding:9px 11px;border-radius:var(--r-sm);
+                     background:rgba(245,185,33,.12);color:#E0B84A;font-size:11.5px;line-height:1.5">
+                  ⚠ Máy giữ lại: <b>giá lệch hơn 10 lần</b> mức phổ biến của danh mục.
+                </div>
+                <div class="row" style="margin-top:var(--s-md);gap:var(--s-sm)">
+                  <button class="dkbtn dk-ok">Duyệt</button>
+                  <button class="dkbtn dk-no">Từ chối</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="sectionhead"><h3>Khi bấm Từ chối</h3></div>
+            <div class="card" style="cursor:default">
+              <div class="body">
+                <span class="label">Mức độ</span>
+                <div class="pick">
+                  <label class="pickopt on" style="background:var(--desk-raise);border-color:var(--moss)">
+                    <b style="color:var(--desk-txt)">Sai sót <span style="font-weight:600;color:var(--desk-dim)">— mặc định</span></b>
+                    <span style="color:var(--desk-soft)">Ảnh mờ, mô tả thiếu. Người bán sửa rồi đăng lại.
+                    <b style="display:inline;color:var(--ok-text)">Không trừ uy tín, không phạt.</b></span>
+                  </label>
+                  <label class="pickopt" style="background:var(--desk-panel);border-color:var(--desk-line-2)">
+                    <b style="color:var(--desk-txt)">Vi phạm quy định sàn</b>
+                    <span style="color:var(--desk-soft)">Trừ 1 bậc uy tín · án phạt 7 ngày · hạn mức còn 2 chỗ.
+                    Lặp lại 3 lần trong 7 ngày là <b style="display:inline;color:var(--bad-text)">khoá quyền đăng</b>.</span>
+                  </label>
+                </div>
+                <div style="height:var(--s-md)"></div>
+                <span class="label">Lý do gửi cho người đăng</span>
+                <div class="input" style="background:var(--desk-raise);border-color:var(--desk-line-2);color:var(--desk-soft)">Ảnh chưa rõ sản phẩm</div>
+              </div>
+            </div>
+            <div class="spec"><b>§10.3 · SỬA</b>
+              Mặc định là <b>“sai sót”</b>: người duyệt phải <b>chủ động</b> chọn “vi phạm” mới có hình
+              phạt. Ngược lại thì mọi cú bấm từ chối đều trừng phạt — ảnh mờ và bán hàng cấm bị đối xử
+              như nhau.</div>
+
+            <div class="spec"><b>§10.4</b> Lượt duyệt này <b>không</b> tính vào uy tín nếu người duyệt
+              chính là người đăng, hoặc nếu tin nằm ở hàng đợi người ngoài.</div>
+            <div style="height:var(--s-xl)"></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Bật <b>Ghi chú đặc tả</b> ở trên để thấy mỗi màn đang minh hoạ điều khoản nào trong
+    <code style="background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px">DAC-TA-NGHIEP-VU-CHUAN.pdf</code>.
+    Các mục đánh dấu <b>SỬA</b> là chỗ giao diện mới khác hệ đang chạy.
+  </div>
+</div>
+
+<script>
+  const label = {
+    feed:'Bảng tin', detail:'Chi tiết tin', post:'Đăng tin',
+    mine:'Tin của tôi', standing:'Uy tín & hạn mức', desk:'Bàn duyệt'
+  };
+  const screens = document.querySelectorAll('[data-screen]');
+  const tabs = document.querySelectorAll('.tab');
+
+  function go(name){
+    screens.forEach(s => s.classList.toggle('hide', s.dataset.screen !== name));
+    tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.go === name)));
+    document.getElementById('devLabel').textContent = label[name] || name;
+    const sc = document.querySelector('[data-screen="' + name + '"]');
+    if (sc) sc.scrollTop = 0;
+  }
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-go]');
+    if (el) go(el.dataset.go);
+  });
+
+  document.getElementById('specToggle').addEventListener('change', (e) => {
+    document.body.classList.toggle('showspec', e.target.checked);
+  });
+</script>
+</body>
+</html>
