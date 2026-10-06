@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Đặc tả cụm tính năng</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+  :root { --ink:#1b1f24; --soft:#5b6470; --line:#d9dee5; --accent:#1f4e79; --tag:#eef1f5;
+          --run:#2f6f4f; --run-bg:#e9f5ee; --part:#b25e09; --part-bg:#fff4e5; --no:#8a8f98; --no-bg:#f1f2f4; --gone:#b42318; --gone-bg:#fdecea; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Segoe UI", Arial, sans-serif; font-size:10.5pt; line-height:1.5; color:var(--ink); }
+  h1 { font-size:22pt; margin:0 0 4pt; color:var(--accent); letter-spacing:-0.2px; }
+  h2 { font-size:14pt; margin:22pt 0 8pt; padding-bottom:4pt; border-bottom:1.5px solid var(--accent); color:var(--accent); page-break-after:avoid; }
+  h3 { font-size:11pt; margin:12pt 0 4pt; color:var(--accent); page-break-after:avoid; }
+  p { margin:0 0 6pt; }
+  .kicker { font-size:9pt; text-transform:uppercase; letter-spacing:1.2px; color:var(--soft); margin-bottom:6pt; }
+  .meta { width:100%; border-collapse:collapse; margin:10pt 0 14pt; font-size:9.5pt; }
+  .meta td { padding:4pt 8pt; border-bottom:1px solid var(--line); vertical-align:top; }
+  .meta td:first-child { width:28%; color:var(--soft); }
+  .box { background:#f4f6f9; border-left:3px solid var(--accent); padding:9pt 12pt; margin:8pt 0 12pt; }
+  .box p:last-child { margin-bottom:0; }
+  .badge { display:inline-block; font-size:8.5pt; font-weight:600; padding:1pt 7pt; border-radius:10pt; white-space:nowrap; vertical-align:middle; }
+  .s-run { color:var(--run); background:var(--run-bg); } .s-part { color:var(--part); background:var(--part-bg); }
+  .s-no { color:var(--no); background:var(--no-bg); } .s-gone { color:var(--gone); background:var(--gone-bg); }
+  table.t { width:100%; border-collapse:collapse; font-size:9.5pt; margin:4pt 0 8pt; page-break-inside:auto; }
+  table.t th, table.t td { border:1px solid var(--line); padding:3.5pt 6pt; text-align:left; vertical-align:top; }
+  table.t th { background:#f4f6f9; font-weight:600; }
+  table.t tr { page-break-inside:avoid; }
+  code { font-family:Consolas, "Courier New", monospace; font-size:9pt; background:var(--tag); padding:0 3pt; border-radius:3pt; }
+  .cluster { page-break-inside:avoid; }
+  .cluster.long { page-break-inside:auto; }
+  .head { display:flex; align-items:baseline; gap:8pt; margin:16pt 0 6pt; padding-bottom:4pt; border-bottom:1.5px solid var(--accent); page-break-after:avoid; }
+  .head .num { font-size:13pt; font-weight:700; color:var(--accent); }
+  .head .ttl { font-size:13pt; font-weight:700; color:var(--accent); flex:1; }
+  .kv { display:grid; grid-template-columns:86pt 1fr; gap:3pt 10pt; margin-bottom:6pt; }
+  .kv .k { color:var(--soft); font-size:9.5pt; padding-top:1pt; }
+  ul { margin:2pt 0 6pt 16pt; padding:0; } li { margin:0 0 2pt; }
+  .note { font-size:9.5pt; color:var(--soft); }
+  .foot { margin-top:16pt; font-size:9pt; color:var(--soft); border-top:1px solid var(--line); padding-top:6pt; }
+  .toc td { padding:3pt 6pt; }
+</style>
+</head>
+<body>
+
+<div class="kicker">Đặc tả · Hệ thống đang chạy</div>
+<h1>Cụm tính năng của sàn rao vặt hai trục</h1>
+<p style="color:var(--soft)">Backend <code>docs/market</code> (Express + MongoDB) và ứng dụng di động Ghim (Expo React Native, <code>docs/VueSer</code>). Đọc trực tiếp từ mã nguồn ngày 06/10/2026, đối chiếu với <b>LUAT-NGHIEP-VU.pdf</b> và <b>DAC-TA-NGHIEP-VU-CHUAN.pdf</b>.</p>
+
+<table class="meta">
+  <tr><td>Phạm vi</td><td>29 module trong <code>src/features</code>, khoảng 148 endpoint REST dưới một prefix API, 4 sự kiện Socket.IO, 8 công việc nền, 35 biến môi trường.</td></tr>
+  <tr><td>Nguồn số liệu</td><td>Mọi con số là giá trị đang có hiệu lực trong mã nguồn. Chỗ nào đặc tả đích (05/10/2026) muốn đổi thì ghi riêng, không trộn.</td></tr>
+  <tr><td>Dành cho</td><td>Người cần nắm hệ thống đang làm được gì theo từng cụm: trình bày với khách hàng, lên kế hoạch xây lại, hoặc onboard thành viên mới.</td></tr>
+  <tr><td>Nhãn trạng thái</td><td><span class="badge s-run">Đang chạy</span> đầy đủ &nbsp; <span class="badge s-part">Một phần</span> có nền, thiếu đường dùng &nbsp; <span class="badge s-no">Chưa có</span> khung rỗng hoặc chưa viết &nbsp; <span class="badge s-gone">Đã gỡ</span> từng có, gỡ có chủ ý</td></tr>
+</table>
+
+<h2>0. Bức tranh tổng thể</h2>
+
+<div class="box">
+  <p><b>Hai trục trách nhiệm.</b> Trục <b>nhóm</b> (trường, công ty, cộng đồng): mỗi nhóm có bảng tin riêng, quản trị nhóm chịu trách nhiệm nội dung. Trục <b>danh mục</b> (sàn chung): bảng tin công khai toàn quốc, chia ô theo danh mục × tỉnh × phường, mỗi ô một người phụ trách. Một tài khoản chỉ đứng trên một trục để luôn có bên thứ hai kiểm chéo; quản trị hệ thống đứng ngoài cả hai.</p>
+  <p><b>Thang phủ sóng của một tin.</b> Chỉ thành viên ⊂ Nhóm công khai ⊂ Sàn chung. Một tin là một bản ghi duy nhất, bậc trên bao bậc dưới, nên lượt xem và hội thoại không bị tách đôi.</p>
+</div>
+
+<h3>Tác nhân</h3>
+<table class="t">
+  <tr><th style="width:150pt">Tác nhân</th><th>Làm được gì</th></tr>
+  <tr><td>Khách chưa đăng nhập</td><td>Xem tin công khai, hồ sơ nhóm công khai, hồ sơ người bán, tra tỉnh/xã, danh mục. Không đăng, không nhắn, không lưu.</td></tr>
+  <tr><td>Người dùng đã xác thực email</td><td>Đăng tin, sửa, gia hạn, đánh dấu đã bán, lưu tin, nhắn tin, xin vào nhóm, nhận lời mời, báo cáo, nộp KYC, nhận thông báo và push.</td></tr>
+  <tr><td>Quản trị nhóm</td><td>Duyệt và ẩn tin trong nhóm, duyệt đơn xin vào, mời, gỡ thành viên, xoay mã tham gia, sửa hồ sơ và công tắc của nhóm, gửi thông báo cho cả nhóm.</td></tr>
+  <tr><td>Người phụ trách ô danh mục</td><td>Duyệt và từ chối tin sàn chung trong ô của mình, xem hàng đợi và tổng quan công khai, xử báo cáo về tin trong ô.</td></tr>
+  <tr><td>Quản trị hệ thống (master)</td><td>Duy nhất một tài khoản. Tạo nhóm, giao quản trị, cấp và thu quyền, sửa danh mục và template, cụm cấm, KYC, khoá tài khoản, ân xá, quản chế, điều chỉnh ví, hỗ trợ người dùng, thống kê toàn nền tảng.</td></tr>
+  <tr><td>Máy duyệt</td><td>Công việc nền chạy mỗi 2 phút: duyệt, từ chối (chỉ khi dính cụm cấm) hoặc giữ lại kèm lý do cho người thật.</td></tr>
+</table>
+
+<h3>Bề mặt</h3>
+<ul>
+  <li><b>App Ghim</b> (iOS/Android): bảng tin, tìm kiếm, đăng tin, chi tiết tin, chat, hộp thông báo, hồ sơ, nhóm, và một <b>bàn quản trị trong app</b> (<code>app/admin/*</code>: hàng đợi duyệt, báo cáo, thành viên, đơn xin vào, danh mục, template, cụm cấm, KYC, phân quyền, gói tin, thống kê, hỗ trợ).</li>
+  <li><b>API REST</b> có tài liệu OpenAPI tại <code>/docs</code>; mọi phản hồi cùng một vỏ <code>{ success, message, data }</code>, danh sách phân trang với trần 100 dòng mỗi trang.</li>
+  <li><b>Realtime</b> Socket.IO cho chat, hộp thư thông báo và hỗ trợ; <b>push</b> qua Expo Push Service.</li>
+</ul>
+
+<h3>Bản đồ cụm</h3>
+<table class="t toc">
+  <tr><th style="width:22pt">#</th><th>Cụm</th><th>Module</th><th style="width:48pt">Endpoint</th><th style="width:72pt">Trạng thái</th></tr>
+  <tr><td>1</td><td>Tài khoản, phiên và định danh</td><td>auth · user · kyc</td><td>28</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>2</td><td>Nhóm và thành viên</td><td>organization · org-unit · membership · join-request · invite</td><td>28</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>3</td><td>Phân quyền và phạm vi</td><td>role-grant · guards · tenant plugin</td><td>5</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>4</td><td>Danh mục, thuộc tính và địa bàn</td><td>category · category-template · location</td><td>16</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>5</td><td>Tin đăng</td><td>listing · favorite · upload · search</td><td>20</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>6</td><td>Định tuyến, cổng nội dung và duyệt tin</td><td>banned-phrase · moderation · listing.routing/review</td><td>13</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>7</td><td>Uy tín, hạn mức và quản chế</td><td>trust · listing.quota · user (master)</td><td>—</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>8</td><td>Nhắn tin realtime</td><td>chat · sockets</td><td>8</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>9</td><td>Thông báo và push</td><td>notification · push</td><td>9</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>10</td><td>Báo cáo, hỗ trợ và góp ý</td><td>report · support · social-feedback</td><td>13</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+  <tr><td>11</td><td>Ví Xu, gói tin và đánh giá</td><td>wallet · listing-product · listing.pricing · review</td><td>7</td><td><span class="badge s-part">Một phần</span></td></tr>
+  <tr><td>12</td><td>Bàn quản trị, thống kê và vận hành</td><td>metrics · moderation (tổng quan) · agenda · config</td><td>1 + 6</td><td><span class="badge s-run">Đang chạy</span></td></tr>
+</table>
+
+<!-- ============================================================ 1 -->
+<div class="head"><span class="num">1</span><span class="ttl">Tài khoản, phiên và định danh</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Một tài khoản toàn cục, độc lập với mọi nhóm; email là khoá duy nhất toàn hệ thống.</div>
+  <div class="k">Tác nhân</div><div>Khách, người dùng, master.</div>
+  <div class="k">Màn hình app</div><div>login, register, verify-email, settings, profile, kyc, admin/users, admin/kyc.</div>
+</div>
+<b>Khả năng</b>
+<ul>
+  <li>Đăng ký bằng email + mật khẩu, hoặc Google (tài khoản không có mật khẩu, email coi như đã xác thực, avatar lấy từ Google).</li>
+  <li>Xác thực email bằng mã gửi về hộp thư; chưa xác thực thì không đăng tin, không nhắn tin.</li>
+  <li>Phiên: access token ngắn hạn + refresh token theo phiên (<code>jti</code> ghi trong tài khoản, tối đa 20 phiên), đăng xuất thu hồi đúng phiên đó. Token chỉ mang danh tính; nhóm đang làm việc đi theo header riêng và được đối chiếu với quan hệ thành viên ở mỗi request.</li>
+  <li>Quên mật khẩu bằng mã, đổi mật khẩu khi đang đăng nhập.</li>
+  <li>Hồ sơ: xem công khai của bất kỳ ai (DTO công khai là ranh giới chống rò rỉ), sửa hồ sơ của mình, cài đặt hiện số điện thoại trên tin.</li>
+  <li>Xoá tài khoản: tin của người đó bị ẩn theo tầng (lý do "Tài khoản đã xoá"), hội thoại ẩn phía người xoá.</li>
+  <li>KYC: nộp hồ sơ định danh, xem trạng thái; master duyệt hoặc từ chối kèm lý do. Số định danh không bao giờ trả ra ngoài hồ sơ, chỉ đi đường duyệt của master.</li>
+  <li>Master trên một tài khoản: khoá/mở, xoá án từ chối, khôi phục uy tín, đặt hoặc gỡ quản chế.</li>
+</ul>
+<b>Luật và con số</b>
+<table class="t">
+  <tr><th>Tham số</th><th style="width:110pt">Giá trị</th><th>Ghi chú</th></tr>
+  <tr><td>Hiệu lực mã xác thực</td><td>10 phút</td><td>Gõ sai quá 5 lần thì mã bị huỷ</td></tr>
+  <tr><td>Chờ giữa hai lần gửi lại mã</td><td>60 giây</td><td></td></tr>
+  <tr><td>Xoá cứng tài khoản chưa xác thực</td><td>sau 7 ngày</td><td>Job quét mỗi 6 giờ; là xoá thật, không phải khoá</td></tr>
+  <tr><td>Số phiên refresh tối đa</td><td>20</td><td>Vượt thì phiên cũ nhất bị đẩy ra</td></tr>
+  <tr><td>Cờ tạm thời</td><td>SKIP_EMAIL_VERIFICATION · KYC_REQUIRED</td><td>Phục vụ vòng kiểm duyệt cơ quan quản lý. Cờ đầu đánh dấu tài khoản đã xác thực ngay lúc tạo; cờ sau chặn mọi route cho tới khi KYC được duyệt</td></tr>
+</table>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>POST /auth/register · /login · /google · /refresh · /logout</code></td><td>Khách, người dùng</td></tr>
+  <tr><td><code>POST /auth/email/send-code · /email/verify</code></td><td>Người dùng chưa xác thực</td></tr>
+  <tr><td><code>POST /auth/password/forgot · /verify-code · /reset · /change</code></td><td>Khách, người dùng</td></tr>
+  <tr><td><code>GET|PATCH|DELETE /users/me · GET /users/:id · GET /users/report</code></td><td>Người dùng</td></tr>
+  <tr><td><code>GET /users · PATCH /users/:id/status · POST /users/:id/clear-rejections · /restore-trust · /probation</code></td><td>Master</td></tr>
+  <tr><td><code>POST|GET /kyc/me · GET /kyc · PATCH /kyc/:id/approve · /reject</code></td><td>Người dùng, master</td></tr>
+</table>
+
+<!-- ============================================================ 2 -->
+<div class="head"><span class="num">2</span><span class="ttl">Nhóm và thành viên</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Đơn vị cách ly dữ liệu của trục nhóm. Thân phận trong nhóm tách hẳn khỏi quyền hạn.</div>
+  <div class="k">Tác nhân</div><div>Master tạo và giao quản trị; quản trị nhóm vận hành; người dùng xin vào, được mời, rời.</div>
+  <div class="k">Màn hình app</div><div>find-org, join-org, org/[id], org/[id]/edit, admin/organizations, admin/members, admin/join-requests, admin/notice.</div>
+</div>
+<b>Khả năng</b>
+<ul>
+  <li>Bốn loại nhóm (trường học, công ty, cộng đồng, khác); loại chỉ chọn cấu hình lúc tạo, sau đó logic đọc cấu hình. Trường và công ty có nhóm con (lớp, phòng ban) để duyệt phân tầng.</li>
+  <li>Ba trạng thái nhóm: đang hoạt động · tạm khoá (master khoá, tin nội bộ bị ẩn theo tầng) · chờ người phụ trách (đã tạo, chưa có quản trị, không ai vào được).</li>
+  <li>Bốn công tắc do quản trị nhóm đặt: công khai · nhận đơn tham gia · nhận tin người ngoài · kiểu bảng tin (dòng hoặc lưới). Chuyển sang riêng tư là hạ mọi tin bậc "nhóm công khai" về "chỉ thành viên" trước, gạt cờ sau.</li>
+  <li>Ba đường vào: nhóm công khai vào ngay (vẫn ghi một đơn đã duyệt để truy vết), nhóm riêng tư gửi đơn chờ quản trị duyệt, hoặc mã tham gia 6 ký tự (xoay được khi lộ). Tra nhóm theo tên hoặc theo mã.</li>
+  <li>Đơn xin vào: duyệt lẻ hoặc hàng loạt, từ chối kèm lý do, người xin tự rút đơn. Lời mời qua email hoặc số điện thoại, nhận bằng token.</li>
+  <li>Rời nhóm hoặc bị gỡ: tin nội bộ của người đó trong nhóm bị ẩn theo tầng với lý do tương ứng. Ba thân phận: quản trị · thành viên · cựu thành viên.</li>
+  <li>Quản trị nhóm gửi thông báo cho cả nhóm (xem cụm 9).</li>
+</ul>
+<b>Luật và con số</b>
+<table class="t">
+  <tr><th>Tham số</th><th style="width:110pt">Giá trị</th><th>Ghi chú</th></tr>
+  <tr><td>Đơn tự hết hiệu lực</td><td>21 ngày</td><td>Không để hàng đợi phình vô hạn</td></tr>
+  <tr><td>Bị từ chối, chờ gửi lại</td><td>7 ngày</td><td>Áp cho cả nhóm công khai</td></tr>
+  <tr><td>Trần đơn đang chờ mỗi người</td><td>3</td><td>Toàn hệ thống, chỉ nhóm riêng tư</td></tr>
+  <tr><td>Hiệu lực lời mời</td><td>14 ngày</td><td></td></tr>
+  <tr><td>Mã tham gia</td><td>6 ký tự</td><td>Mỗi nhóm một mã, duy nhất</td></tr>
+</table>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>GET /organizations/lookup · /by-code/:code · /profile/:id · /mine</code></td><td>Khách, người dùng</td></tr>
+  <tr><td><code>PATCH /organizations/current · POST /organizations/current/join-code</code></td><td>Quản trị nhóm</td></tr>
+  <tr><td><code>GET|POST /organizations · GET /:id/managers · POST /:id/admin · PATCH /:id/status · /:id/visibility</code></td><td>Master</td></tr>
+  <tr><td><code>POST|GET /join-requests · GET /mine · DELETE /:id · PATCH /:id/approve · /:id/reject · POST /bulk-approve</code></td><td>Người dùng, quản trị nhóm</td></tr>
+  <tr><td><code>POST|GET|DELETE /invites · GET /invites/mine · GET|POST /invites/token/:token[/accept]</code></td><td>Quản trị nhóm, người được mời</td></tr>
+  <tr><td><code>GET /memberships · POST /memberships/leave · DELETE /memberships/:userId</code></td><td>Thành viên, quản trị nhóm</td></tr>
+</table>
+
+<!-- ============================================================ 3 -->
+<div class="head"><span class="num">3</span><span class="ttl">Phân quyền và phạm vi</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Quyền hạn là một bản ghi riêng (grant) gắn vào tài khoản, có vai và phạm vi; đọc từ nguồn sống ở mỗi request, thu hồi có hiệu lực ngay request kế tiếp.</div>
+  <div class="k">Tác nhân</div><div>Master cấp và thu; người có quyền xem quyền của mình.</div>
+  <div class="k">Màn hình app</div><div>admin/role-grants, admin/coverage.</div>
+</div>
+<b>Khả năng và luật</b>
+<ul>
+  <li>Ba vai: quản trị hệ thống (đúng một, không đường runtime nào sinh ra người thứ hai) · quản lý (một nhóm hoặc một ô danh mục, phân biệt bằng phạm vi) · nhân viên (di sản, không cấp mới).</li>
+  <li>Năm phạm vi: toàn hệ thống · một nhóm · một nhóm con · danh mục × tỉnh · danh mục × phường. Danh sách tỉnh để trống nghĩa là toàn quốc.</li>
+  <li>Một ô một người phụ trách: hệ thống từ chối grant nếu nó tạo ra hai người cùng phủ một ô, kể cả ba ca đè khó thấy (toàn quốc đè mọi tỉnh; cấp tỉnh đè cấp phường cùng tỉnh; hai grant cấp phường so danh sách phường).</li>
+  <li>Chỉ master cấp quyền; không ai tự cấp cho mình; vai master không ai cấp được, là dữ liệu seed cùng cơ sở dữ liệu. Mọi dấu vết của master chụp tên hiển thị chung "Quản trị hệ thống", và người dùng không đặt tên trùng chuỗi đó.</li>
+  <li>Cách ly dữ liệu: plugin tenant ép phạm vi lên mọi truy vấn theo header nhóm đã đối chiếu; không có ngữ cảnh nhóm thì từ chối. Nhóm khác trả 404, không phải 403.</li>
+</ul>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>POST /role-grants · PATCH /role-grants/:id · DELETE /role-grants/:id · GET /role-grants/category-axis</code></td><td>Master</td></tr>
+  <tr><td><code>GET /role-grants/mine</code></td><td>Người có quyền</td></tr>
+</table>
+
+<!-- ============================================================ 4 -->
+<div class="head"><span class="num">4</span><span class="ttl">Danh mục, thuộc tính và địa bàn</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Từ điển dùng chung toàn hệ thống cho danh mục, thuộc tính động theo danh mục, và bảng tỉnh/xã sau sáp nhập.</div>
+  <div class="k">Tác nhân</div><div>Master sửa; mọi người đọc.</div>
+  <div class="k">Màn hình app</div><div>admin/categories, admin/category-templates, bộ lọc trong search, form đăng tin.</div>
+</div>
+<b>Khả năng và luật</b>
+<ul>
+  <li>Danh mục: bật/tắt chứ không xoá (tin cũ vẫn trỏ vào, danh mục tắt thì tin bị ẩn theo tầng); cờ "luôn duyệt tay" (thú cưng là ca đầu tiên); slug ổn định để app chọn thang giá gợi ý.</li>
+  <li>Template hai lớp: từ điển trường (tên, nhãn, kiểu, đơn vị, khoảng, lựa chọn; dùng lại giữa các danh mục) và template danh mục (dùng trường nào, thứ tự, bắt buộc, lọc được). Bảy kiểu trường: chữ ngắn, chữ dài, số, chọn một, chọn nhiều, đúng/sai, năm.</li>
+  <li>Phiên bản template: nháp và đã phát hành; tin ghim phiên bản lúc đăng, sửa template không viết lại tin cũ; mã trường không đổi sau khi phát hành. Có template mặc định cho danh mục chưa khai.</li>
+  <li>Địa bàn: 34 tỉnh và 3.321 phường/xã đọc từ hằng số trong bộ nhớ, kèm tên cũ để tìm; tin sàn chung bắt buộc có tỉnh và phường vì chúng quyết định ai duyệt.</li>
+</ul>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>GET /categories · GET /categories/:id · GET /categories/:id/template</code></td><td>Mọi người</td></tr>
+  <tr><td><code>POST /categories · PATCH /categories/:id · POST|PATCH /categories/:id/template[/:version][/publish]</code></td><td>Master</td></tr>
+  <tr><td><code>GET|POST|PATCH /field-definitions · GET|POST /default-template</code></td><td>Master</td></tr>
+  <tr><td><code>GET /locations/provinces · GET /locations/wards?province=</code></td><td>Mọi người</td></tr>
+</table>
+
+<!-- ============================================================ 5 -->
+<div class="head"><span class="num">5</span><span class="ttl">Tin đăng</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Vòng đời một tin từ lúc đăng tới lúc hết hạn, cùng đường đọc công khai có lọc và ảnh.</div>
+  <div class="k">Tác nhân</div><div>Người bán, người mua, khách.</div>
+  <div class="k">Màn hình app</div><div>feed, search, search/results, post, listing/[id], listing/edit/[id], mylistings, saved.</div>
+</div>
+<b>Khả năng</b>
+<ul>
+  <li>Đăng tin qua bảy chốt theo thứ tự: danh mục còn dùng · thuộc tính khớp template · nhóm đích, bậc phủ sóng, tỉnh, phường · cổng cụm cấm (mọi tin, không phụ thuộc uy tín) · quyền tự đăng · cờ nghi ngờ · hạn mức tin chờ. Có khoá chống đăng đôi.</li>
+  <li>Sửa tin: chỉ duyệt lại khi chạm phần đã duyệt (tiêu đề, mô tả, giá, danh mục, danh sách ảnh kể cả thứ tự), so giá trị chứ không so trường gửi lên. Cổng cụm cấm chạy cả ở đường sửa trên nội dung sau khi ghép.</li>
+  <li>Gia hạn (đặt lại 30 ngày, không đẩy lên đầu, tin hết hạn gia hạn phải còn chỗ trong trần tin sống), đánh dấu đã bán (lặp lại không lỗi), xoá mềm, đẩy tin (gói, chờ ví).</li>
+  <li>Đọc công khai: danh sách lọc theo từ khoá, tỉnh, phường, danh mục, khoảng giá (giá 0 = miễn phí), thuộc tính động, nhóm; tin gần đây theo toạ độ; chi tiết tin với ba tầng dữ liệu; tin tương tự.</li>
+  <li>Tin của tôi: danh sách theo trạng thái, đối soát tin sắp hết hạn, trạng thái hạn mức. Lưu tin (chỉ tin mình xem được).</li>
+  <li>Ảnh: app thu về cạnh dài 1600px và nén JPEG trước khi tải, tối đa 6 ảnh, ảnh đầu là ảnh bìa; upload thẳng lên Cloudinary bằng chữ ký do backend cấp (preset signed); job dọn ảnh mồ côi.</li>
+</ul>
+<b>Trạng thái</b>
+<table class="t">
+  <tr><th style="width:120pt">Trạng thái</th><th style="width:60pt">Người lạ thấy</th><th>Ý nghĩa</th></tr>
+  <tr><td>Nháp</td><td>Không</td><td>Khai trong hệ nhưng chưa đường code nào sinh ra (đặc tả đích muốn biến thành trạng thái thật)</td></tr>
+  <tr><td>Chờ duyệt</td><td>Không</td><td>Trong hàng đợi của trục tương ứng</td></tr>
+  <tr><td>Chờ duyệt, người ngoài</td><td>Không</td><td>Người đăng không phải thành viên nhóm đích</td></tr>
+  <tr><td>Đang hiển thị</td><td>Có</td><td>Trên bảng tin</td></tr>
+  <tr><td>Đã bán</td><td>Có</td><td>Người bán tự đánh dấu; vẫn xem được, không mở hội thoại mới</td></tr>
+  <tr><td>Hết hạn</td><td>Có</td><td>Quá 30 ngày, rơi khỏi bảng tin, trang chi tiết vẫn xem, gia hạn được</td></tr>
+  <tr><td>Bị từ chối</td><td>Không</td><td>Người duyệt hoặc máy từ chối, có mức độ; mức sai sót sửa là về chờ duyệt</td></tr>
+  <tr><td>Đã ẩn</td><td>Không</td><td>Quản trị rút khỏi lưu thông, hoặc ẩn theo tầng (nhóm khoá, rời nhóm, tài khoản xoá, danh mục tắt)</td></tr>
+</table>
+<b>Luật và con số</b>
+<table class="t">
+  <tr><th>Tham số</th><th style="width:110pt">Giá trị</th><th>Ghi chú</th></tr>
+  <tr><td>Hạn hiển thị</td><td>30 ngày</td><td>Từ lúc đăng hoặc gia hạn; job hạ hết hạn chạy mỗi giờ, không xoá</td></tr>
+  <tr><td>Cửa sổ nhắc sắp hết hạn</td><td>7 ngày</td><td>Hỏi tối đa 20 tin mỗi lượt đối soát</td></tr>
+  <tr><td>Ảnh mỗi tin</td><td>≤ 6, cạnh dài ≤ 1600px</td><td>Chuẩn hoá phía app, ảnh gốc không lên server</td></tr>
+  <tr><td>Giá</td><td>số nguyên ≥ 0, đơn vị đồng</td><td>0 nghĩa là cho tặng, app hiện "Miễn phí"</td></tr>
+  <tr><td>Trang tối đa</td><td>100 dòng</td><td>Mọi danh sách</td></tr>
+</table>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>GET /listings · GET /listings/nearby · GET /listings/:id · GET /listings/products</code></td><td>Khách, người dùng</td></tr>
+  <tr><td><code>POST /listings · PATCH|DELETE /listings/:id · POST /listings/:id/renew · /sold · /bump</code></td><td>Người bán đã xác thực</td></tr>
+  <tr><td><code>GET /listings/mine · /mine/:id · /quota · /report</code></td><td>Người bán</td></tr>
+  <tr><td><code>GET|POST|DELETE /favorites[/:listingId] · GET /favorites/ids</code></td><td>Người dùng</td></tr>
+  <tr><td><code>POST /uploads/signature</code></td><td>Người dùng, trước mỗi lượt tải ảnh</td></tr>
+  <tr><td><code>/search/*</code></td><td><span class="badge s-no">Chưa có</span> tìm kiếm toàn văn, module trả "chưa triển khai"; tìm hiện tại dùng regex trong <code>GET /listings</code></td></tr>
+</table>
+
+<!-- ============================================================ 6 -->
+<div class="head"><span class="num">6</span><span class="ttl">Định tuyến, cổng nội dung và duyệt tin</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Mỗi tin thuộc đúng một hàng đợi; máy lọc trước, người quyết sau; mọi quyết định có nhật ký.</div>
+  <div class="k">Tác nhân</div><div>Máy duyệt, quản trị nhóm, người phụ trách ô danh mục, master (dự phòng), người đăng (đọc lý do).</div>
+  <div class="k">Màn hình app</div><div>admin/moderation, admin/public-queue, admin/public-overview, admin/listings, admin/banned-phrases.</div>
+</div>
+<b>Khả năng và luật</b>
+<ul>
+  <li><b>Bốn hàng đợi:</b> nhóm (thành viên) · người ngoài của nhóm · ô danh mục × tỉnh × phường · master khi ô chưa có ai. Bậc "nhóm công khai" đi chung hàng đợi với "chỉ thành viên". Tin sàn của thành viên mang badge nhóm nhưng nhóm không duyệt, chỉ gỡ được.</li>
+  <li><b>Cổng cụm cấm:</b> từ điển do master sửa qua API, chỉ nhận cụm (không nhận từ đơn), cache trong bộ nhớ làm tươi tức thì. Tin dính cụm cấm bị <b>từ chối</b> ngay từ cửa (không phải lỗi 400) và đếm vào án, nên dò luật ba lần trong bảy ngày là tự khoá.</li>
+  <li><b>Máy duyệt:</b> ba quyền duyệt · từ chối (chỉ khi dính cụm cấm) · giữ lại kèm lý do. Sáu dấu hiệu giữ lại: chữ như gõ bừa; giá trên 50 triệu; giá lệch quá 10 lần mức phổ biến (mẫu 50 tin, dưới 5 tin thì bỏ); trùng tiêu đề trong 7 ngày; có án phạt trong 7 ngày; danh mục bắt duyệt tay. Máy không duyệt hộ người dưới bậc 1 hoặc đang quản chế. Máy duyệt không cộng uy tín, máy từ chối không trừ uy tín.</li>
+  <li><b>Người duyệt:</b> hai hạng thao tác. "Cho đi tiếp" (duyệt, từ chối) chỉ đúng người phụ trách trục của tin. "Rút khỏi lưu thông" (ẩn) rộng hơn, nhóm luôn ẩn được tin mang tên mình. Từ chối có hai mức: sai sót (mặc định, sửa rồi về chờ duyệt) và vi phạm (vào án). Người duyệt chuyển được tin sang ô khác khi định tuyến sai.</li>
+  <li><b>Không tính uy tín</b> cho tự duyệt tin mình, mọi quyết định trên hàng đợi người ngoài, và thao tác ẩn.</li>
+  <li><b>Nhật ký:</b> mỗi quyết định ghi ai, làm gì, tin nào, lý do, mức độ, bậc uy tín sau đó; master đọc được dòng hoạt động.</li>
+</ul>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>GET /moderation/listings · GET /moderation/overview · GET /moderation/activity</code></td><td>Quản trị nhóm (theo header nhóm)</td></tr>
+  <tr><td><code>GET /moderation/public-queue · /public-overview · /coverage</code></td><td>Người phụ trách danh mục, master</td></tr>
+  <tr><td><code>GET|PATCH|DELETE /moderation/listings/:id · PATCH /moderation/listings/:id/route</code></td><td>Người duyệt đúng trục</td></tr>
+  <tr><td><code>GET|POST /banned-phrases · DELETE /banned-phrases/:id</code></td><td>Master</td></tr>
+</table>
+
+<!-- ============================================================ 7 -->
+<div class="head"><span class="num">7</span><span class="ttl">Uy tín, hạn mức và quản chế</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Hàng rào hậu kiểm: thu quyền lại sau vi phạm đầu tiên, và giới hạn việc một người tạo ra cho người duyệt.</div>
+  <div class="k">Tác nhân</div><div>Hệ thống tính; master ân xá, khôi phục, quản chế; người bán đọc trạng thái của mình.</div>
+</div>
+<b>Khả năng và luật</b>
+<ul>
+  <li>Một người một bậc, dùng chung cho mọi luồng đăng. Tài khoản mới ở <b>bậc trần 2</b>, nên hàng rào lúc đăng là cổng nội dung, không phải uy tín.</li>
+  <li>Thăng: 5 bài sạch liên tiếp được người thật duyệt thì lên 1 bậc. Giáng: từ chối mức vi phạm tụt 1 bậc, chuỗi sạch về 0, vào án phạt 7 ngày. Không xoá trắng bậc, không vượt trần, không xuống dưới 0.</li>
+  <li>Hạn mức tin chờ theo bậc 3 / 5 / 10; đang trong án thì 2; người ngoài gửi vào nhóm thì 2 cứng; bị từ chối từ 3 lần trong 7 ngày thì 0 và cần master gỡ tay. Tin chờ ở sàn đếm theo danh mục, ở nhóm đếm theo nhóm; lượt bị từ chối đếm xuyên tất cả.</li>
+  <li><b>Trần tin sống</b> (đang hiện cộng đang chờ, mọi trục) theo bậc 10 / 30 / 100, kiểm cả khi gia hạn tin hết hạn.</li>
+  <li><b>Quản chế</b> (master đặt, có hạn): không tự đăng, máy không duyệt hộ, tin của người đó phải do người khác duyệt kể cả khi họ là quản trị nhóm.</li>
+  <li><b>Ân xá:</b> master hạ mọi lượt từ chối vi phạm gần đây xuống mức sai sót; án tự hết vì cơ chế đếm bỏ qua mức này; không xoá gì khỏi nhật ký.</li>
+  <li>Người bán luôn đọc được: còn bao nhiêu chỗ, có đang bị phạt không và tới khi nào, còn mấy bài sạch nữa thì lên bậc.</li>
+</ul>
+<p class="note">Lưu ý về tài liệu: LUAT §19 và đặc tả đích §10.3 ghi "hàm ghi uy tín chưa xét mức độ, từ chối mức sai sót vẫn tụt bậc". Code hiện tại đã xét mức độ (audit 2.9, chốt 26/09/2026): từ chối mức sai sót không ghi gì vào uy tín, và có ca kiểm thử đo ở bậc 1 để phân biệt. Hai tài liệu kia cũ hơn code ở điểm này.</p>
+
+<!-- ============================================================ 8 -->
+<div class="head"><span class="num">8</span><span class="ttl">Nhắn tin realtime</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Người mua và người bán nói chuyện quanh một tin, thời gian thực.</div>
+  <div class="k">Tác nhân</div><div>Người dùng đã xác thực email.</div>
+  <div class="k">Màn hình app</div><div>(tabs)/chatlist, chat/[id].</div>
+</div>
+<b>Khả năng và luật</b>
+<ul>
+  <li>Mở hội thoại với tin đang hiển thị mà mình xem được: tin nội bộ phải là thành viên nhóm sở hữu tin; tin công khai ai đọc được cũng nhắn được; không cần cùng nhóm. Tin đã bán hoặc hết hạn vẫn xem nhưng không mở hội thoại mới; hội thoại cũ vẫn đọc tiếp.</li>
+  <li>Không nhắn cho tin của chính mình. Một tin + một người mua = đúng một hội thoại, mở lại là vào hội thoại cũ. Hội thoại chụp tiêu đề và ảnh đầu của tin.</li>
+  <li>Quyền truy cập theo danh sách người tham gia, không theo nhóm; người ngoài nhận 404. Xoá hội thoại chỉ ẩn khỏi hộp thư của người xoá.</li>
+  <li>Realtime qua Socket.IO: <code>chat:join</code>, <code>chat:leave</code>, <code>chat:joined</code>, <code>chat:error</code>, và <code>admin:join</code> cho phòng của bàn quản trị. Push "tin nhắn mới" không hiện banner khi người nhận đang mở đúng hội thoại đó.</li>
+</ul>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>POST /chats · GET /chats · GET /chats/:id · GET|POST /chats/:id/messages · PATCH /chats/:id/read · DELETE /chats[/:id]</code></td><td>Người tham gia</td></tr>
+</table>
+
+<!-- ============================================================ 9 -->
+<div class="head"><span class="num">9</span><span class="ttl">Thông báo và push</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Hộp thư trong app cộng push ra thiết bị, có tuỳ chọn theo nhóm sự kiện.</div>
+  <div class="k">Tác nhân</div><div>Hệ thống sinh; quản trị nhóm gửi thông báo nhóm; người dùng đọc và cài đặt.</div>
+  <div class="k">Màn hình app</div><div>(tabs)/notif, settings (thẻ thông báo), admin/notice.</div>
+</div>
+<b>Khả năng và luật</b>
+<ul>
+  <li>Hộp thư: danh sách, đánh dấu đã đọc, xoá tất cả. Sự kiện realtime chỉ mang mốc thời gian, client hỏi lại danh sách; nội dung không đi qua socket.</li>
+  <li>Chín nhóm thông báo, cũng là kênh Android: tin nhắn · tin đăng của bạn · nhóm của bạn · báo cáo của bạn · tài khoản (luôn bật) · ví Xu · thông báo của nhóm · tin mới trong nhóm · hỗ trợ. Người dùng bật tắt từng nhóm.</li>
+  <li>Push qua Expo: đăng ký thiết bị kèm token, phiên bản app, tên máy; huỷ đăng ký không cần phiên; gửi thử. Job gửi theo lô và job đọc biên nhận để dọn thiết bị chết. Cờ tổng PUSH_ENABLED.</li>
+  <li>Chạm vào push mở đúng màn trong app theo đường dẫn an toàn do server trả, kèm đánh dấu đã đọc.</li>
+</ul>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>GET /notifications · PATCH /notifications/:id/read · DELETE /notifications</code></td><td>Người dùng</td></tr>
+  <tr><td><code>POST /notifications</code></td><td>Quản trị nhóm, gửi cho cả nhóm</td></tr>
+  <tr><td><code>POST /push/devices · POST /push/devices/unregister · GET|PATCH /push/preferences · POST /push/test</code></td><td>Người dùng</td></tr>
+</table>
+
+<!-- ============================================================ 10 -->
+<div class="head"><span class="num">10</span><span class="ttl">Báo cáo, hỗ trợ và góp ý</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Ba kênh người dùng nói với hệ thống: tố một tin hoặc một người, hỏi đội hỗ trợ, góp ý công khai.</div>
+  <div class="k">Màn hình app</div><div>Nút báo cáo trong listing/[id] và user/[id], admin/reports, admin/support, legal/feedback, admin/social-feedback.</div>
+</div>
+<b>Khả năng và luật</b>
+<ul>
+  <li><b>Báo cáo:</b> hai đối tượng (tin, người), năm loại (lừa đảo, sai thông tin, quấy rối, hàng cấm, khác), ba trạng thái (đang mở, đã xử, đã bác). Báo cáo về tin đi theo trục của TIN: tin công khai về trục danh mục hoặc master, tin nội bộ về nhóm sở hữu. Báo cáo về người chỉ đóng dấu nhóm khi người bị tố cũng ở trong nhóm đó, còn lại về master. Đối tượng bị gỡ thì báo cáo tự đóng.</li>
+  <li><b>Hỗ trợ:</b> mỗi người một luồng với đội hỗ trợ, gửi tin và đánh dấu đã đọc; master xem danh sách luồng, trả lời; realtime qua socket, có push nhóm "hỗ trợ".</li>
+  <li><b>Góp ý công khai:</b> ai cũng gửi và đọc được bản đã duyệt; master duyệt từng góp ý.</li>
+</ul>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>POST /reports · GET /reports · PATCH /reports/:id</code></td><td>Người dùng; người duyệt đúng trục đóng</td></tr>
+  <tr><td><code>GET /support/me · POST /support/me/messages · POST /support/me/read</code></td><td>Người dùng</td></tr>
+  <tr><td><code>GET /support/threads[/:id] · POST /support/threads/:id/reply</code></td><td>Master</td></tr>
+  <tr><td><code>POST|GET /social-feedback · GET /social-feedback/review · PATCH /social-feedback/:id</code></td><td>Mọi người; master duyệt</td></tr>
+</table>
+
+<!-- ============================================================ 11 -->
+<div class="head"><span class="num">11</span><span class="ttl">Ví Xu, gói tin và đánh giá</span><span class="badge s-part">Một phần</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Nền móng thu phí để ngày bật phí không phải thiết kế lại; hiện phí đăng tin bằng 0.</div>
+</div>
+<table class="t">
+  <tr><th style="width:120pt">Hạng mục</th><th style="width:80pt">Trạng thái</th><th>Chi tiết</th></tr>
+  <tr><td>Ví và sổ cái Xu</td><td><span class="badge s-run">Đang chạy</span></td><td>Số dư và lịch sử giao dịch của người dùng; master điều chỉnh thủ công tối đa 1.000.000 Xu mỗi lần, 0 bị từ chối. Sổ cái chỉ thêm, sai thì ghi dòng đảo; mọi biến động qua một cửa có khoá chống trùng; job đối soát ví chạy nền. Xu một chiều, không quy đổi ngược ra tiền.</td></tr>
+  <tr><td>Phí đăng tin</td><td><span class="badge s-run">Đang chạy</span></td><td>Bằng 0. Chính sách hoàn đã chốt: từ chối khi duyệt thì hoàn; gỡ sau khi lên bảng không hoàn; bị cổng nội dung chặn thì không trừ từ đầu; Xu không hết hạn.</td></tr>
+  <tr><td>Gói tin</td><td><span class="badge s-part">Một phần</span></td><td>Catalog đã có với ba hiệu ứng: đẩy lên đầu (chờ 24 giờ giữa hai lượt trên cùng tin), nổi bật 3 hoặc 7 ngày, gia hạn 30 ngày. Master quản catalog (mở bán phải có giá, mã gói bất biến). Endpoint <code>POST /listings/:id/bump</code> có nhưng đường mua chờ ví vận hành.</td></tr>
+  <tr><td>Nạp tiền</td><td><span class="badge s-gone">Đã gỡ</span></td><td>Dựng rồi gỡ có chủ ý ngày 23/08/2026: chưa có nhu cầu quét tiền thật, giữ code thanh toán không dùng là giữ một mặt tấn công không ai canh.</td></tr>
+  <tr><td>Đánh giá người bán</td><td><span class="badge s-no">Chưa có</span></td><td>Module trả "chưa triển khai". Chưa quyết luật chống đánh giá khống.</td></tr>
+</table>
+<b>API chính</b>
+<table class="t">
+  <tr><th style="width:280pt">Endpoint</th><th>Ai gọi</th></tr>
+  <tr><td><code>GET /wallet · GET /wallet/transactions</code></td><td>Người dùng</td></tr>
+  <tr><td><code>POST /wallet/:userId/adjust</code></td><td>Master</td></tr>
+  <tr><td><code>GET|POST|PATCH|DELETE /listing-products[/:id]</code></td><td>Master quản catalog; app đọc qua <code>GET /listings/products</code></td></tr>
+</table>
+
+<!-- ============================================================ 12 -->
+<div class="head"><span class="num">12</span><span class="ttl">Bàn quản trị, thống kê và vận hành</span><span class="badge s-run">Đang chạy</span></div>
+<div class="kv">
+  <div class="k">Mục đích</div><div>Số liệu cho người vận hành, công việc nền, và hợp đồng kỹ thuật mà mọi cụm trên tựa vào.</div>
+  <div class="k">Màn hình app</div><div>admin/index, admin/analytics, admin/posting-stats, admin/public-overview, admin/coverage.</div>
+</div>
+<b>Thống kê</b>
+<ul>
+  <li>Tổng quan toàn nền tảng cho master (tách hẳn khỏi tổng quan theo nhóm và theo trục công khai để không phát số liệu xuyên nhóm cho người phụ trách danh mục).</li>
+  <li>Tổng quan nhóm cho quản trị nhóm; tổng quan và độ phủ ô danh mục cho trục công khai; thống kê lượng đăng theo người cho master; dòng hoạt động duyệt.</li>
+</ul>
+<b>Công việc nền (Agenda, một tiến trình)</b>
+<table class="t">
+  <tr><th style="width:170pt">Công việc</th><th style="width:70pt">Nhịp mặc định</th><th>Làm gì</th></tr>
+  <tr><td><code>machine-review:sweep</code></td><td>2 phút</td><td>Quét hàng đợi chờ duyệt, tối đa 50 tin mỗi lượt</td></tr>
+  <tr><td><code>listing-expiry:sweep</code></td><td>1 giờ</td><td>Đổi tin quá 30 ngày sang hết hạn, không xoá</td></tr>
+  <tr><td><code>unverified-cleanup:sweep</code></td><td>6 giờ</td><td>Xoá cứng tài khoản chưa xác thực quá 7 ngày</td></tr>
+  <tr><td><code>wallet-reconcile:sweep</code></td><td>theo cấu hình</td><td>Đối soát số dư với sổ cái</td></tr>
+  <tr><td><code>image-cleanup:sweep</code> · <code>:full</code></td><td>24 giờ · thưa</td><td>Dọn ảnh mồ côi trên Cloudinary; lượt quét toàn kho có ngân sách 5 phút, trang 500, xoá theo lô 100. Chỉ chạy khi có cấu hình kho ảnh</td></tr>
+  <tr><td><code>push:dispatch</code> · <code>push:receipts</code></td><td>theo cấu hình</td><td>Gửi push theo lô, đọc biên nhận để dọn thiết bị chết. Chỉ chạy khi bật push</td></tr>
+</table>
+<b>Hợp đồng kỹ thuật</b>
+<ul>
+  <li>Mọi phản hồi cùng vỏ <code>{ success, message, data }</code>; lỗi hiện chỉ có <code>message</code> tiếng Việt, <b>chưa có mã lỗi ổn định</b> và <b>chưa có mã truy vết request</b> (hai mục đặc tả đích yêu cầu).</li>
+  <li>Bảo vệ: helmet, CORS theo danh sách, giới hạn tần suất, JWT hai khoá riêng, Sentry tuỳ chọn, tin cậy proxy cấu hình được.</li>
+  <li>Cờ môi trường nghiệp vụ: SKIP_EMAIL_VERIFICATION, KYC_REQUIRED, PUSH_ENABLED, cùng nhịp của từng job. Múi giờ mọi báo cáo: Asia/Ho_Chi_Minh.</li>
+  <li>Tài liệu API tự sinh tại <code>/docs</code>; app sinh SDK từ chính OpenAPI này.</li>
+</ul>
+
+<h2>Phụ lục A. Những gì chưa có hoặc đã gỡ</h2>
+<table class="t">
+  <tr><th style="width:150pt">Hạng mục</th><th style="width:80pt">Trạng thái</th><th>Ghi chú</th></tr>
+  <tr><td>Tìm kiếm toàn văn</td><td><span class="badge s-no">Chưa có</span></td><td>Module khung, tìm hiện tại là regex trên tiêu đề và mô tả</td></tr>
+  <tr><td>Đánh giá người bán</td><td><span class="badge s-no">Chưa có</span></td><td>Module khung</td></tr>
+  <tr><td>Mua gói tin</td><td><span class="badge s-part">Một phần</span></td><td>Catalog và hiệu ứng có, đường mua chờ ví</td></tr>
+  <tr><td>Nạp tiền</td><td><span class="badge s-gone">Đã gỡ</span></td><td>23/08/2026</td></tr>
+  <tr><td>Mã lỗi phân loại, mã truy vết</td><td><span class="badge s-no">Chưa có</span></td><td>Client đang phân biệt lỗi theo câu chữ</td></tr>
+  <tr><td>Trạng thái nháp của tin</td><td><span class="badge s-no">Chưa có</span></td><td>Khai nhưng không đường nào sinh ra</td></tr>
+  <tr><td>Vòng đời dữ liệu (lưu bao lâu, xoá khi nào)</td><td><span class="badge s-no">Chưa có</span></td><td>Chỉ có xoá tài khoản chưa xác thực và dọn ảnh mồ côi</td></tr>
+</table>
+
+<h2>Phụ lục B. Bảng con số then chốt</h2>
+<table class="t">
+  <tr><th>Tham số</th><th style="width:110pt">Giá trị</th><th style="width:70pt">Cụm</th></tr>
+  <tr><td>Hiệu lực mã xác thực · số lần sai · chờ gửi lại</td><td>10 phút · 5 · 60 giây</td><td>1</td></tr>
+  <tr><td>Xoá tài khoản chưa xác thực · số phiên tối đa</td><td>7 ngày · 20</td><td>1</td></tr>
+  <tr><td>Đơn hết hiệu lực · chờ sau từ chối · trần đơn chờ · lời mời · mã tham gia</td><td>21 ngày · 7 ngày · 3 · 14 ngày · 6 ký tự</td><td>2</td></tr>
+  <tr><td>Hạn hiển thị · nhắc sắp hết hạn · tin hỏi mỗi lượt</td><td>30 ngày · 7 ngày · 20</td><td>5</td></tr>
+  <tr><td>Ảnh mỗi tin · cạnh dài · trang tối đa</td><td>6 · 1600px · 100 dòng</td><td>5</td></tr>
+  <tr><td>Máy duyệt: nhịp · lô · giá trần · lệch giá · mẫu · mẫu tối thiểu · trùng tiêu đề</td><td>2 phút · 50 · 50.000.000đ · 10 lần · 50 · 5 · 7 ngày</td><td>6</td></tr>
+  <tr><td>Bậc uy tín: trần · mới · bài sạch để lên bậc · án phạt</td><td>2 · 2 · 5 · 7 ngày</td><td>7</td></tr>
+  <tr><td>Tin chờ tối đa theo bậc 0/1/2 · đang phạt · người ngoài</td><td>3 / 5 / 10 · 2 · 2</td><td>7</td></tr>
+  <tr><td>Tin sống tối đa theo bậc 0/1/2</td><td>10 / 30 / 100</td><td>7</td></tr>
+  <tr><td>Khoá đăng tin: số lần từ chối · cửa sổ</td><td>3 · 7 ngày</td><td>7</td></tr>
+  <tr><td>Nhóm thông báo</td><td>9</td><td>9</td></tr>
+  <tr><td>Phí đăng tin · điều chỉnh Xu tối đa · chờ giữa hai lượt đẩy</td><td>0 · 1.000.000 · 24 giờ</td><td>11</td></tr>
+  <tr><td>Hạ hết hạn · dọn tài khoản · dọn ảnh</td><td>1 giờ · 6 giờ · 24 giờ</td><td>12</td></tr>
+</table>
+
+<div class="foot">Tài liệu mô tả hệ thống đang chạy tại thời điểm 06/10/2026. Những chỗ đặc tả đích (05/10/2026) muốn đổi đã được rà riêng trong RA-SOAT-DAC-TA-NGHIEP-VU.pdf; bản này không trộn hai trạng thái.</div>
+
+</body>
+</html>

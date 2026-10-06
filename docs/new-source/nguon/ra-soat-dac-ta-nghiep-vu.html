@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Rà soát đặc tả nghiệp vụ</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+  :root {
+    --ink: #1b1f24; --soft: #5b6470; --line: #d9dee5; --paper: #ffffff;
+    --high: #b42318; --high-bg: #fdecea; --mid: #b25e09; --mid-bg: #fff4e5; --low: #2f6f4f; --low-bg: #e9f5ee;
+    --tag: #eef1f5; --accent: #1f4e79;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--paper); color: var(--ink); }
+  body { font-family: "Segoe UI", Arial, "Helvetica Neue", sans-serif; font-size: 10.5pt; line-height: 1.5; }
+  h1 { font-size: 22pt; margin: 0 0 4pt; letter-spacing: -0.2px; color: var(--accent); }
+  h2 { font-size: 14pt; margin: 22pt 0 8pt; padding-bottom: 4pt; border-bottom: 1.5px solid var(--accent); color: var(--accent); page-break-after: avoid; }
+  h3 { font-size: 11pt; margin: 0 0 4pt; page-break-after: avoid; }
+  p { margin: 0 0 6pt; }
+  .kicker { font-size: 9pt; text-transform: uppercase; letter-spacing: 1.2px; color: var(--soft); margin-bottom: 6pt; }
+  .meta { width: 100%; border-collapse: collapse; margin: 10pt 0 14pt; font-size: 9.5pt; }
+  .meta td { padding: 4pt 8pt; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .meta td:first-child { width: 28%; color: var(--soft); }
+  .summary { background: #f4f6f9; border-left: 3px solid var(--accent); padding: 10pt 12pt; margin: 10pt 0 14pt; }
+  .summary p:last-child { margin-bottom: 0; }
+  .legend { display: flex; gap: 10pt; flex-wrap: wrap; font-size: 9pt; margin: 6pt 0 0; }
+  .badge { display: inline-block; font-size: 8.5pt; font-weight: 600; padding: 1pt 7pt; border-radius: 10pt; vertical-align: middle; white-space: nowrap; }
+  .b-high { color: var(--high); background: var(--high-bg); }
+  .b-mid { color: var(--mid); background: var(--mid-bg); }
+  .b-low { color: var(--low); background: var(--low-bg); }
+  .item { border: 1px solid var(--line); border-radius: 6pt; padding: 9pt 11pt 8pt; margin: 0 0 9pt; page-break-inside: avoid; }
+  .item .head { display: flex; align-items: baseline; gap: 8pt; margin-bottom: 4pt; }
+  .item .id { font-weight: 700; color: var(--accent); min-width: 26pt; }
+  .item .title { font-weight: 600; flex: 1; }
+  .refs { font-size: 9pt; color: var(--soft); margin-bottom: 5pt; }
+  .refs span { display: inline-block; background: var(--tag); border-radius: 3pt; padding: 0 5pt; margin-right: 4pt; }
+  .row { display: grid; grid-template-columns: 78pt 1fr; gap: 2pt 8pt; margin-top: 4pt; }
+  .row .k { color: var(--soft); font-size: 9.5pt; }
+  .row .v { }
+  .code-ok { color: var(--low); font-weight: 600; }
+  .code-bad { color: var(--high); font-weight: 600; }
+  .code-diff { color: var(--mid); font-weight: 600; }
+  table.sum { width: 100%; border-collapse: collapse; font-size: 9.5pt; margin-top: 8pt; }
+  table.sum th, table.sum td { border: 1px solid var(--line); padding: 4pt 7pt; text-align: left; vertical-align: top; }
+  table.sum th { background: #f4f6f9; font-weight: 600; }
+  table.sum td.c { text-align: center; }
+  .note { font-size: 9.5pt; color: var(--soft); margin-top: 10pt; }
+  .foot { margin-top: 16pt; font-size: 9pt; color: var(--soft); border-top: 1px solid var(--line); padding-top: 6pt; }
+</style>
+</head>
+<body>
+
+<div class="kicker">Rà soát · Đặc tả đích dùng để xây lại hệ thống</div>
+<h1>Những chỗ lủng trong đặc tả nghiệp vụ sàn rao vặt hai trục</h1>
+<p style="color:var(--soft)">Đối chiếu <b>DAC-TA-NGHIEP-VU-CHUAN.pdf</b> (bản đích, 05/10/2026) với <b>LUAT-NGHIEP-VU.pdf</b> (bản mô tả hệ đang chạy, 02/10/2026) và với mã nguồn backend <code>docs/market</code>.</p>
+
+<table class="meta">
+  <tr><td>Ngày rà soát</td><td>06/10/2026</td></tr>
+  <tr><td>Phạm vi</td><td>Toàn bộ 19 phần của bản đích, bảng bất biến BT-01 đến BT-30, và danh sách thay đổi ở Phần 18.</td></tr>
+  <tr><td>Cách đối chiếu</td><td>Đọc hai tài liệu trọn vẹn. Mỗi chỗ ghi "code hiện tại" đều đã mở đúng hàm trong <code>docs/market/src</code> để xác nhận, không suy từ tài liệu.</td></tr>
+  <tr><td>Dành cho</td><td>Đội viết đặc tả và đội xây lại, trước khi chốt bản đích.</td></tr>
+</table>
+
+<div class="summary">
+  <p><b>Kết luận chung.</b> Bản đặc tả viết chặt, có bất biến đánh số và nguyên tắc "mỗi luật phải sai được" là đúng hướng. Còn <b>23 chỗ lủng</b>, chia ba nhóm: <b>A</b> mâu thuẫn trong chính đặc tả (6), <b>B</b> luật chưa được định nghĩa (15), <b>C</b> đặc tả đổi chiều so với code đang chạy mà không nêu lý do (2).</p>
+  <p>Nhóm nguy hiểm nhất là những chỗ <b>code hiện tại đã làm đúng mà đặc tả bỏ mất</b> (A5, A6, B1, B3, B8, B9, C1, C2): đội xây lại sẽ tin đặc tả và làm hệ mới kém hơn hệ cũ.</p>
+  <div class="legend">
+    <span class="badge b-high">Cao</span> Sai luật hoặc mất hàng rào an toàn, phải sửa trước khi code.
+    <span class="badge b-mid">Trung bình</span> Hành vi lệch thiết kế hoặc gây việc thừa cho người duyệt.
+    <span class="badge b-low">Thấp</span> Lỗ cạnh, mặc định từ chối vẫn an toàn nhưng cần ghi rõ.
+  </div>
+</div>
+
+<h2>A. Mâu thuẫn trong chính đặc tả</h2>
+
+<div class="item">
+  <div class="head"><span class="id">A1</span><span class="title">Lượt từ chối của máy không thuộc mức độ nào</span><span class="badge b-high">Cao</span></div>
+  <div class="refs"><span>§9.1</span><span>§9.3</span><span>§10.3</span><span>BT-07</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§9.1 nói tin dính cụm cấm "được tính là vi phạm" để khoá sau 3 lần trong 7 ngày. §9.3 nói "máy từ chối KHÔNG trừ uy tín". §10.3 và BT-07 nói mức độ quyết định MỌI hậu quả, và "vi phạm" thì trừ 1 bậc. Lượt từ chối của máy vì vậy không phải "sai sót" (có án phạt) cũng không phải "vi phạm" (không trừ bậc).</div>
+    <div class="k">Hệ quả</div><div class="v">Một mức độ thứ ba tồn tại trong hành vi nhưng không có trong bảng. Ca kiểm thử cho BT-07 không viết được vì không biết kỳ vọng.</div>
+    <div class="k">Đề xuất</div><div class="v">Thêm dòng thứ ba vào bảng §10.3, ví dụ "vi phạm do máy": vào án phạt và đếm khoá, không trừ bậc, không xoá chuỗi sạch. Ghi rõ nó có làm đồng hồ 30 ngày ở §11.4 chạy lại hay không.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">A2</span><span class="title">Ba câu khác nhau về nhóm đích của một request</span><span class="badge b-high">Cao</span></div>
+  <div class="refs"><span>§3.3</span><span>§8.2</span><span>BT-17</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§3.3: nhóm đang làm việc đến từ một header riêng mỗi request. §8.2: yêu cầu tạo tin phải nêu nhóm đích và bậc phủ sóng tường minh. BT-17: mã nhóm do client gửi luôn bị bỏ qua khi quyết định phạm vi. Header cũng là client gửi.</div>
+    <div class="k">Hệ quả</div><div class="v">Đội xây lại không biết đọc nhóm đích từ đâu. Đọc từ header là tái tạo đúng lỗi "không gửi mã nhóm thì rơi vào nhóm đang đứng" mà §8.2 muốn bỏ.</div>
+    <div class="k">Đề xuất</div><div class="v">Một câu duy nhất: header là ngữ cảnh cho thao tác đọc, body là nhóm đích cho thao tác đăng, cả hai luôn đối chiếu với quan hệ thành viên tại thời điểm request. Sửa lời BT-17 thành "mã nhóm trong body hoặc query không bao giờ mở rộng phạm vi".</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">A3</span><span class="title">Đường vào nhóm riêng tư và bốn tổ hợp công tắc chưa có bảng</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§4.3</span><span>§4.4</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§4.4 vừa nói nhóm riêng tư vào bằng "gửi đơn, quản trị duyệt tay", vừa nói "mã tham gia là đường vào duy nhất của nhóm riêng tư". Hai công tắc Công khai và Nhận đơn tham gia tạo bốn tổ hợp nhưng không tổ hợp nào được định nghĩa hành vi. "Bị từ chối thì chờ 7 ngày, áp cho cả nhóm công khai" vô nghĩa khi nhóm công khai vào ngay, không ai duyệt.</div>
+    <div class="k">Hệ quả</div><div class="v">Không viết được ca kiểm thử cho đường vào nhóm; mỗi người đọc hiểu một kiểu.</div>
+    <div class="k">Đề xuất</div><div class="v">Một bảng 4 dòng: Công khai × Nhận đơn, mỗi dòng ghi ai tìm thấy, ai vào bằng cách nào, có cần duyệt không. Mã tham gia là cách <i>tìm ra</i> nhóm riêng tư, còn vào thì theo công tắc Nhận đơn.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">A4</span><span class="title">"Vết cấp quyền luôn có hai người" khi chỉ có một người cấp được</span><span class="badge b-high">Cao</span></div>
+  <div class="refs"><span>§5.5</span><span>BT-28</span><span>BT-29</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">BT-28 chốt đúng một quản trị hệ thống. §5.5.1 chốt chỉ người đó cấp quyền. Người thứ hai duy nhất có thể xuất hiện trong vết là người nhận, nên luật "hai người" không chặn được gì. Quan trọng hơn: tài khoản đó là điểm chết đơn.</div>
+    <div class="k">Hệ quả</div><div class="v">Mất hoặc bị khoá tài khoản này là không cấp quyền, không sửa danh mục, không ân xá, không gỡ khoá 3 lần cho ai được. Đặc tả không có đường khôi phục.</div>
+    <div class="k">Đề xuất</div><div class="v">Ghi một quy trình khôi phục ngoài runtime (seed lại từ cơ sở dữ liệu, có nhật ký), hoặc cho phép một tài khoản dự phòng ở trạng thái ngủ. Sửa lời §5.5.2 cho khớp thực tế.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">A5</span><span class="title">Báo cáo về người đi vào hàng đợi không có thẩm quyền</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§13.2</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">Đặc tả nói báo cáo về người "đóng dấu nhóm của người tố", nhưng cùng mục lại nói thẩm quyền đóng báo cáo phải đối xứng với thẩm quyền xử lý đối tượng. Quản trị nhóm của người tố không có quyền gì trên một người không thuộc nhóm họ.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-ok">Đã đúng.</span> Chỉ đóng dấu nhóm khi người bị tố cũng đang là thành viên nhóm đó; còn lại về hàng đợi quản trị hệ thống (audit 2.5).</div>
+    <div class="k">Đề xuất</div><div class="v">Chép luật của code vào §13.2 và đổi nhãn mục này từ GIỮ sang đúng nghĩa.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">A6</span><span class="title">"Sửa rồi đăng lại" không có đường đi trong bảng chuyển trạng thái</span><span class="badge b-high">Cao</span></div>
+  <div class="refs"><span>§7.2</span><span>§9.3</span><span>§10.3</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§10.3 nói từ chối mức sai sót thì "sửa rồi đăng lại được". Bảng §7.2 không có dòng Bị từ chối → Chờ duyệt; lối ra duy nhất là Đã xoá. Nếu "đăng lại" nghĩa là tạo tin mới thì tin đó dính ngay cờ "trùng tiêu đề 7 ngày" của §9.3, ăn thêm hạn mức, và tin cũ nằm lại 90 ngày.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-ok">Đã đúng.</span> Sửa tin bị từ chối mức sai sót đưa tin về Chờ duyệt; mức vi phạm thì không có cửa sửa, phải đăng tin mới (audit 1.20).</div>
+    <div class="k">Đề xuất</div><div class="v">Thêm dòng "Bị từ chối (sai sót) → Chờ duyệt · Chủ tin · Sửa nội dung" vào §7.2, và loại tin đăng lại khỏi phép kiểm trùng tiêu đề.</div>
+  </div>
+</div>
+
+<h2>B. Luật còn thiếu</h2>
+
+<div class="item">
+  <div class="head"><span class="id">B1</span><span class="title">Không có trần tin đang hiển thị</span><span class="badge b-high">Cao</span></div>
+  <div class="refs"><span>§12</span><span>§12.2</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">Hạn mức chỉ áp cho tin CHỜ, và đếm theo từng danh mục hoặc từng nhóm. Một tài khoản bậc 2 giữ được vô hạn tin đang hiển thị, và 10 tin chờ ở mỗi danh mục nhân với số danh mục.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-ok">Có trần.</span> Trần tin sống theo bậc uy tín (tin đang hiện cộng tin chờ), kiểm cả khi gia hạn tin hết hạn để không vượt trần bằng cách đăng trước rồi gia hạn dần.</div>
+    <div class="k">Hệ quả</div><div class="v">Xây theo đặc tả là mất hàng rào chống spam duy nhất trên tin đã lên bảng. Đây là lỗ lớn nhất của bản đích.</div>
+    <div class="k">Đề xuất</div><div class="v">Thêm bảng "trần tin đang hiện theo bậc" vào §12, kèm luật gia hạn phải qua trần đó. Thêm trần tổng tin chờ xuyên danh mục.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B2</span><span class="title">Sửa tỉnh, phường, thuộc tính không phải duyệt lại</span><span class="badge b-high">Cao</span></div>
+  <div class="refs"><span>§7.4</span><span>§8.3</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">Danh sách "phần đã được duyệt" chỉ gồm tiêu đề, mô tả, giá, danh mục, ảnh. Đổi phường sau khi duyệt là đổi ô định tuyến, tức đổi người chịu trách nhiệm, mà không ai nhìn. Đổi thuộc tính như "tình trạng: mới" là đổi thứ người mua lọc theo.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-bad">Cũng thiếu.</span> Hàm so sánh chỉ xét đúng năm trường đó. Lỗ chung của cả hai bản.</div>
+    <div class="k">Đề xuất</div><div class="v">Thêm thuộc tính, tỉnh, phường, bậc phủ sóng và nhóm đích vào §7.4. Đổi ô định tuyến thì tin về hàng đợi của ô mới.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B3</span><span class="title">Tự duyệt tin của mình vẫn được phép, và cơ chế quản chế biến mất</span><span class="badge b-high">Cao</span></div>
+  <div class="refs"><span>§2.1</span><span>§10.4</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§10.4 chỉ nói tự duyệt "không cộng uy tín", nghĩa là vẫn được duyệt. §2.1 lập luận cả hệ hai trục tồn tại để "luôn có bên thứ hai". Người phụ trách ô danh mục cũng tự duyệt được tin sàn của mình trong ô đó.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-ok">Có van an toàn.</span> Quản chế (quyết định 1.12): người bị quản chế thì tin phải do người khác duyệt, máy không duyệt hộ, không tự đăng. Đặc tả không nhắc tới quản chế một chữ.</div>
+    <div class="k">Đề xuất</div><div class="v">Đưa quản chế vào §11 như một trạng thái của uy tín, kèm bất biến "người bị quản chế không tự duyệt, không được máy duyệt". Cân nhắc cấm hẳn tự duyệt với tin bậc Sàn chung.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B4</span><span class="title">Tài khoản mới ở bậc trần cộng với định danh chỉ bằng email</span><span class="badge b-high">Cao</span></div>
+  <div class="refs"><span>§3.1</span><span>§3.5</span><span>§11.1</span><span>§11.2</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§11.2 tự nói "người dùng bỏ tài khoản đi tạo cái mới là thứ cần tránh nhất", nhưng thiết kế khiến một email mới (mã 10 phút) là cách rẻ nhất để thoát khoá 3 lần hoặc bậc 0 và có lại quyền tự đăng ngay.</div>
+    <div class="k">Hệ quả</div><div class="v">Biện pháp duy nhất là cổng KYC, và §3.5 gắn nhãn "tạm thời" cho nó. Khi cờ tắt, hệ không còn gì chống tài khoản dùng một lần.</div>
+    <div class="k">Đề xuất</div><div class="v">Một trong hai: tài khoản mới chưa có quyền tự đăng trong N ngày hoặc N tin được người duyệt; hoặc KYC là điều kiện của quyền tự đăng chứ không phải cờ môi trường.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B5</span><span class="title">Khoá 3 lần và tự hồi 30 ngày chưa nối với nhau</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§11.4</span><span>§12.1</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§12.1 nói khoá quyền đăng "cần người gỡ tay". §11.4 nói bậc tự hồi +1 sau 30 ngày không vi phạm. Khoá có tự mở theo không? Lượt từ chối của máy (A1) có làm đồng hồ 30 ngày chạy lại không?</div>
+    <div class="k">Đề xuất</div><div class="v">Ghi rõ: khoá 3 lần tự hết theo cửa sổ 7 ngày hay giữ tới khi người gỡ; và định nghĩa "vi phạm mới" của §11.4 bao gồm những mức độ nào.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B6</span><span class="title">Trần giá 50 triệu là trần chung cho mọi danh mục</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§6.1</span><span>§9.3</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">Với bất động sản và xe cộ thì mọi tin đều vượt 50 triệu, nên cờ "giá vượt trần" thành "luôn duyệt tay" cho cả danh mục, làm cờ riêng ở §6.1 thừa và dồn toàn bộ tin của hai danh mục lớn lên người duyệt.</div>
+    <div class="k">Đề xuất</div><div class="v">Trần theo danh mục. Ứng dụng đã có sẵn thang giá theo danh mục để dùng chung một nguồn.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B7</span><span class="title">Tin miễn phí bị coi là giá dị thường</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§9.3</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">Phép kiểm "lệch quá 10 lần mức phổ biến" không miễn trừ giá 0, trong khi cho tặng là tính năng chính thức có nhãn và bộ lọc riêng.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-bad">Cũng dính.</span> 0 nhân 10 luôn nhỏ hơn mức phổ biến, nên mọi tin cho tặng trong danh mục có đủ mẫu đều bị giữ lại chờ người duyệt.</div>
+    <div class="k">Đề xuất</div><div class="v">Miễn trừ giá 0 khỏi phép kiểm tương đối, hoặc coi 0 là một dải riêng. Ghi tường minh vào §9.3.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B8</span><span class="title">Ẩn hội thoại của tài khoản đã xoá làm người kia mất bằng chứng</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§14.1</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">"Ẩn ngay" áp cho cả hội thoại, nhưng hội thoại có hai người. Người còn lại có thể cần nó để khiếu nại lừa đảo đúng trong 90 ngày đó.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-ok">Ẩn theo từng người tham gia.</span> Xoá khỏi hộp thư của một bên không đụng bên kia.</div>
+    <div class="k">Đề xuất</div><div class="v">Ghi: chỉ ẩn phía người đã xoá; bên còn lại giữ quyền đọc tới khi xoá cứng.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B9</span><span class="title">Cờ bỏ qua xác thực email và job xoá tài khoản chưa xác thực</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§3.5</span><span>§14.1</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">Nếu cờ bật mà không đánh dấu tài khoản là đã xác thực thì job 7 ngày xoá cứng mọi tài khoản demo.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-ok">Đã đúng.</span> Cờ bật thì đặt thời điểm xác thực ngay lúc tạo, nên job không đụng tới.</div>
+    <div class="k">Đề xuất</div><div class="v">Thêm một câu vào §3.5: cờ này đánh dấu tài khoản là đã xác thực tại thời điểm tạo.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B10</span><span class="title">Chủ tin rút ngắn được thời gian lưu bằng chứng vi phạm</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§7.2</span><span>§14.1</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">Tin bị từ chối giữ 90 ngày, nhưng "Bất kỳ → Đã xoá" rồi 30 ngày là xoá cứng kèm ảnh. Nhật ký "không kèm nội dung" không giải quyết được tranh chấp về hàng cấm.</div>
+    <div class="k">Đề xuất</div><div class="v">Tin bị từ chối mức vi phạm giữ nguyên đồng hồ 90 ngày dù chủ tin xoá mềm.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B11</span><span class="title">Ai được bỏ ẩn một tin đã ẩn</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§7.2</span><span>§10.2</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§10.2 cho nhóm ẩn tin sàn mang tên mình. §7.2 cho "người duyệt" bỏ ẩn mà không nói người duyệt nào. Nếu người phụ trách ô danh mục bỏ ẩn được thứ nhóm vừa ẩn thì quyền "từ chối cho mượn tên" của nhóm là rỗng.</div>
+    <div class="k">Đề xuất</div><div class="v">Lưu ai ẩn và vì sao; chỉ người đó hoặc quản trị hệ thống bỏ ẩn.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B12</span><span class="title">Badge của nhóm riêng tư lộ ra sàn chung</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§4.3</span><span>§8.3</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§8.3 cho thành viên nhóm riêng tư đăng tin sàn mang badge "đăng bởi nhóm X". §4.3 nói nhóm riêng tư trả 404 với người ngoài. Tên và sự tồn tại của nhóm vẫn lộ qua badge.</div>
+    <div class="k">Đề xuất</div><div class="v">Tin sàn của thành viên nhóm riêng tư không mang badge công khai, hoặc chỉ hiện badge với thành viên nhóm đó.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B13</span><span class="title">Bảng chuyển trạng thái thiếu vài đường bình thường, gia hạn không qua cổng</span><span class="badge b-low">Thấp</span></div>
+  <div class="refs"><span>§7.2</span><span>§7.3</span><span>§8.1</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">Thiếu: rút tin đang chờ về nháp; sửa phần đã duyệt của tin hết hạn; người ngoài vừa vào nhóm khi tin còn ở hàng đợi người ngoài. Gia hạn Hết hạn → Đang hiển thị không chạy lại cổng cụm cấm và chốt "danh mục còn dùng được", dù từ điển cấm có thể đã đổi.</div>
+    <div class="k">Đề xuất</div><div class="v">Thêm các dòng trên vào §7.2 (hoặc ghi rõ là từ chối có chủ ý), và ghi "gia hạn chạy lại chốt 1 và chốt 4".</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B14</span><span class="title">Thứ tự "hạ bậc trước, gạt cờ sau" không chặn tin tạo đồng thời</span><span class="badge b-low">Thấp</span></div>
+  <div class="refs"><span>§4.3</span><span>BT-03</span><span>§16.3</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">Giữa hai bước vẫn có thể có một request tạo tin bậc Nhóm công khai. Một tiến trình không làm các request tuần tự.</div>
+    <div class="k">Đề xuất</div><div class="v">Khoá nhóm hoặc trạng thái "đang chuyển" trong lúc hạ bậc; chốt tạo tin từ chối khi nhóm đang ở trạng thái đó.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">B15</span><span class="title">Hạn mức người ngoài đếm theo từng nhóm</span><span class="badge b-low">Thấp</span></div>
+  <div class="refs"><span>§12.1</span><span>§12.2</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">"Người ngoài: 2, cứng" đếm theo nhóm, nên một người gửi được 2 tin chờ vào mỗi nhóm trong hàng trăm nhóm.</div>
+    <div class="k">Đề xuất</div><div class="v">Thêm trần tổng tin chờ của người ngoài xuyên mọi nhóm.</div>
+  </div>
+</div>
+
+<h2>C. Đặc tả đổi chiều so với code đang chạy mà không nêu lý do</h2>
+
+<div class="item">
+  <div class="head"><span class="id">C1</span><span class="title">Nhắn tin trên tin đã bán hoặc hết hạn</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§13.1</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">"Xem được là nhắn được", mà tin hết hạn và đã bán vẫn xem được. Người bán đồ đã bán sẽ tiếp tục nhận hội thoại mới.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-diff">Khác đặc tả.</span> Cố ý chỉ cho mở hội thoại mới trên tin đang hiển thị; hội thoại cũ vẫn đọc tiếp được.</div>
+    <div class="k">Đề xuất</div><div class="v">Giữ luật của code. Nếu đổi thì phải gắn nhãn SỬA kèm lý do, không để dưới nhãn GIỮ.</div>
+  </div>
+</div>
+
+<div class="item">
+  <div class="head"><span class="id">C2</span><span class="title">Máy duyệt hộ cả người ở bậc 0</span><span class="badge b-mid">Trung bình</span></div>
+  <div class="refs"><span>§9.2</span></div>
+  <div class="row">
+    <div class="k">Vấn đề</div><div class="v">§9.2 không đặt điều kiện uy tín cho quyền "duyệt" của máy.</div>
+    <div class="k">Code hiện tại</div><div class="v"><span class="code-diff">Khác đặc tả.</span> Có bậc tối thiểu để máy tự duyệt; dưới bậc đó máy chỉ giữ lại cho người thật.</div>
+    <div class="k">Đề xuất</div><div class="v">Thêm điều kiện "người đăng từ bậc 1 trở lên và không bị quản chế" vào quyền duyệt của máy.</div>
+  </div>
+</div>
+
+<h2>Bảng tổng hợp</h2>
+
+<table class="sum">
+  <tr><th style="width:36pt">Mã</th><th>Vấn đề</th><th style="width:70pt">Mức</th><th style="width:96pt">Code hiện tại</th></tr>
+  <tr><td>A1</td><td>Lượt từ chối của máy không thuộc mức độ nào</td><td><span class="badge b-high">Cao</span></td><td>—</td></tr>
+  <tr><td>A2</td><td>Ba câu khác nhau về nhóm đích</td><td><span class="badge b-high">Cao</span></td><td>—</td></tr>
+  <tr><td>A3</td><td>Đường vào nhóm riêng tư, bốn tổ hợp công tắc</td><td><span class="badge b-mid">Trung bình</span></td><td>—</td></tr>
+  <tr><td>A4</td><td>Một quản trị hệ thống, không có đường khôi phục</td><td><span class="badge b-high">Cao</span></td><td>—</td></tr>
+  <tr><td>A5</td><td>Báo cáo về người đi sai hàng đợi</td><td><span class="badge b-mid">Trung bình</span></td><td class="code-ok">Đã đúng</td></tr>
+  <tr><td>A6</td><td>"Sửa rồi đăng lại" không có đường đi</td><td><span class="badge b-high">Cao</span></td><td class="code-ok">Đã đúng</td></tr>
+  <tr><td>B1</td><td>Không có trần tin đang hiển thị</td><td><span class="badge b-high">Cao</span></td><td class="code-ok">Có trần</td></tr>
+  <tr><td>B2</td><td>Sửa tỉnh, phường, thuộc tính không duyệt lại</td><td><span class="badge b-high">Cao</span></td><td class="code-bad">Cũng thiếu</td></tr>
+  <tr><td>B3</td><td>Tự duyệt tin của mình, mất cơ chế quản chế</td><td><span class="badge b-high">Cao</span></td><td class="code-ok">Có quản chế</td></tr>
+  <tr><td>B4</td><td>Tài khoản mới bậc trần, định danh chỉ bằng email</td><td><span class="badge b-high">Cao</span></td><td>—</td></tr>
+  <tr><td>B5</td><td>Khoá 3 lần và tự hồi 30 ngày chưa nối</td><td><span class="badge b-mid">Trung bình</span></td><td>—</td></tr>
+  <tr><td>B6</td><td>Trần giá 50 triệu chung cho mọi danh mục</td><td><span class="badge b-mid">Trung bình</span></td><td>—</td></tr>
+  <tr><td>B7</td><td>Tin miễn phí bị coi là giá dị thường</td><td><span class="badge b-mid">Trung bình</span></td><td class="code-bad">Cũng dính</td></tr>
+  <tr><td>B8</td><td>Ẩn hội thoại của tài khoản đã xoá</td><td><span class="badge b-mid">Trung bình</span></td><td class="code-ok">Đã đúng</td></tr>
+  <tr><td>B9</td><td>Cờ bỏ qua xác thực vs job xoá tài khoản</td><td><span class="badge b-mid">Trung bình</span></td><td class="code-ok">Đã đúng</td></tr>
+  <tr><td>B10</td><td>Chủ tin rút ngắn lưu bằng chứng</td><td><span class="badge b-mid">Trung bình</span></td><td>—</td></tr>
+  <tr><td>B11</td><td>Ai được bỏ ẩn</td><td><span class="badge b-mid">Trung bình</span></td><td>—</td></tr>
+  <tr><td>B12</td><td>Badge nhóm riêng tư lộ ra sàn</td><td><span class="badge b-mid">Trung bình</span></td><td>—</td></tr>
+  <tr><td>B13</td><td>Thiếu đường chuyển trạng thái, gia hạn không qua cổng</td><td><span class="badge b-low">Thấp</span></td><td>—</td></tr>
+  <tr><td>B14</td><td>Race khi chuyển nhóm sang riêng tư</td><td><span class="badge b-low">Thấp</span></td><td>—</td></tr>
+  <tr><td>B15</td><td>Hạn mức người ngoài theo từng nhóm</td><td><span class="badge b-low">Thấp</span></td><td>—</td></tr>
+  <tr><td>C1</td><td>Nhắn tin trên tin đã bán hoặc hết hạn</td><td><span class="badge b-mid">Trung bình</span></td><td class="code-diff">Khác đặc tả</td></tr>
+  <tr><td>C2</td><td>Máy duyệt hộ người bậc 0</td><td><span class="badge b-mid">Trung bình</span></td><td class="code-diff">Khác đặc tả</td></tr>
+</table>
+
+<p class="note">Ba thay đổi mà bản đích tự đánh dấu "đáng tranh luận" (§8.2 bắt buộc nêu bậc phủ sóng, §11.4 tự hồi sau 30 ngày, §14.1 giữ 90 ngày) không tính là lỗ. Riêng §11.4 cần đọc cùng B5 trước khi quyết.</p>
+
+<div class="foot">Tài liệu rà soát, không phải đặc tả. Không có file nào trong hai bản PDF nguồn hay trong mã nguồn bị sửa trong lượt rà soát này.</div>
+
+</body>
+</html>
