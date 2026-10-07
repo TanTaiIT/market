@@ -1,0 +1,40 @@
+<!-- ======================================================================= 13 MACHINE ARCH -->
+<section class="pg">
+  <div class="ph"><span class="num">13</span><h2>Kiến trúc duyệt máy mới</h2><span class="ctx">Module Duyệt máy · người duyệt duy nhất lúc đăng · chữ và ảnh xong trước khi tin hiện</span></div>
+  <figure class="fig" id="d9a" data-name="13a-duyet-may-luc-dang" data-src="m-d9a" data-maxh="270"><div class="canvas"></div><figcaption>Lúc đăng · chữ chấm trong request, ảnh chấm bằng worker, tin chỉ hiện khi cả hai xong</figcaption></figure>
+  <figure class="fig" id="d9b" data-name="13b-duyet-may-vong-hoc" data-src="m-d9b" data-maxscale="0.82" data-maxh="190" style="margin-top:6px"><div class="canvas"></div><figcaption>Vòng học · hậu kiểm giữ hay lật kết quả máy, master chỉnh luật</figcaption></figure>
+  <div class="cols three" style="margin-top:6px">
+    <div class="box"><p><b>Ba lối ra, không có "giữ cho người".</b> Cho qua đầy đủ · cho qua hạn chế · từ chối kèm lý do sửa được. Máy không ra gậy, không hạ mức. Ba lượt dính cổng cứng trong 24 giờ thì có <b>thời gian chờ 24 giờ</b>, không phải gậy.</p></div>
+    <div class="box"><p><b>Cụm từ cấm hai mức</b> <span class="tag t-chg">ĐỔI</span>. So theo ranh giới âm tiết sau khi bỏ dấu, không nối chữ ("bổ sung" không chứa "sung"). Cụm "chắc" thì từ chối; cụm "mơ hồ" chỉ cộng điểm. Có danh sách ngoại lệ. Cụm mới chạy bóng 7 ngày và master xem số lần trúng trước khi bật.</p></div>
+    <div class="box"><p><b>Luật có phiên bản.</b> Mỗi luật có mã, trọng số, chế độ <i>bật · bóng · tắt</i> và ghi đè theo danh mục. <b>Lưới an toàn:</b> 5 phút quét tin Đang kiểm quá hạn hoặc tin đang hiện thiếu kết quả ảnh. <b>Giới hạn đã biết:</b> chưa đọc chữ trong ảnh; ghi vào mục hoãn, không hứa.</p></div>
+  </div>
+<script type="text/x-mermaid" id="m-d9a">
+flowchart LR
+  classDef step fill:#fbeee4,stroke:#c05621,color:#1b1f24
+  classDef out fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef lim fill:#fff4e5,stroke:#b25e09,color:#1b1f24
+  classDef bad fill:#fdecea,stroke:#c53030,color:#1b1f24
+  classDef store fill:#f4f6f9,stroke:#5b6470,color:#1b1f24
+  classDef dec fill:#fffbea,stroke:#b7791f,color:#1b1f24
+  in(["Gửi · sửa<br/>gia hạn"]) --> gate["Chuẩn hoá chữ<br/>cụm từ cấm mức chắc"]:::dec
+  gate -- "dính" --> rej["Từ chối<br/>đếm lượt dò luật"]:::bad
+  gate -- "sạch" --> score["Tín hiệu chữ, giá,<br/>trùng lặp, tài khoản<br/>suy danh mục thật"]:::step
+  rules[("Kho luật<br/>có phiên bản")]:::store -.-> score
+  score --> wait["Chờ worker ảnh<br/>băm · trùng xuyên tài khoản<br/>nhạy cảm · thường dưới 1 phút"]:::step
+  wait -- "ảnh cấm hoặc<br/>trùng tài khoản khác" --> rej
+  wait -- "ảnh đạt" --> mx["Ma trận<br/>dải × mức tin cậy<br/>× cổng cứng"]:::dec
+  mx -- "Thấp" --> live["Đang hiển thị<br/>đầy đủ"]:::out
+  mx -- "Vừa" --> lim["Đang hiển thị<br/>hạn chế + hậu kiểm"]:::lim
+  mx -- "Cao, vượt trần" --> rej2["Từ chối<br/>kèm lý do sửa được"]:::bad
+  score -.-> log[("Nhật ký chấm<br/>luật trúng, phiên bản")]:::store
+</script>
+<script type="text/x-mermaid" id="m-d9b">
+flowchart LR
+  classDef step fill:#fbeee4,stroke:#c05621,color:#1b1f24
+  classDef store fill:#f4f6f9,stroke:#5b6470,color:#1b1f24
+  classDef out fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  pc["Hậu kiểm: hạn chế, danh mục<br/>rủi ro cao, mẫu, báo cáo"]:::step -- "giữ hay lật<br/>kết quả máy" --> log[("Nhật ký chấm<br/>kết quả máy + người")]:::store
+  log --> prec["Độ chính xác từng luật<br/>theo danh mục, theo dải"]:::step
+  prec -- "master chỉnh trọng số,<br/>bật luật bóng" --> rules[("Kho luật<br/>phiên bản mới")]:::store
+</script>
+</section>

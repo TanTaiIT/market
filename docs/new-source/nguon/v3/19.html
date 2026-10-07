@@ -1,0 +1,41 @@
+<!-- ======================================================================= 19 REPORTS -->
+<section class="pg">
+  <div class="ph"><span class="num">19</span><h2>Báo cáo vi phạm</h2><span class="ctx">Uy tín &amp; an toàn nhận báo cáo · Duyệt người xử · hạn 72 giờ · không có đường tự đóng</span></div>
+  <div class="cols" style="grid-template-columns:1fr 84mm">
+    <figure class="fig" id="d14" data-name="19-bao-cao-vi-pham" data-wrap="wide" data-src="m-d14" data-maxh="650"><div class="canvas"></div></figure>
+    <div class="side">
+      <ul>
+        <li>Năm loại đóng: lừa đảo, sai thông tin, quấy rối, hàng cấm, khác.</li>
+        <li>Báo cáo về tin đi theo bậc phủ sóng của <b>tin</b>; báo cáo về người đi tới staff an toàn, thiếu thì master.</li>
+        <li>Báo cáo trùng đối tượng gộp vào báo cáo đang mở, chỉ tăng số người báo; cùng đi qua luật "mỗi tin một việc mở".</li>
+        <li>Người bị báo cáo không thấy tên người báo.</li>
+        <li><b>Chủ xoá tin hay xoá tài khoản thì báo cáo vẫn xử</b> <span class="tag t-chg">ĐỔI</span> trên bản lưu: kết quả đúng vẫn ra gậy, vẫn khoá. Báo cáo chỉ đóng bằng quyết định của người (N-25).</li>
+        <li>Hội thoại có báo cáo mở được <b>giữ làm bằng chứng</b> tới khi báo cáo đóng, dù cả hai bên đã xoá.</li>
+      </ul>
+      <div class="box"><p><b>Tạm ẩn khi nhiều người báo</b> <span class="tag t-chg">ĐỔI</span>: từ 3 người báo độc lập trong 24 giờ, chỉ tính người từ mức T1 có điểm tin cậy bình thường, thì tin sàn mang cờ ẩn <code>reported_hold</code>. Cờ <b>giữ tới khi có người xử</b>; quá 72 giờ lên master, vẫn ẩn. Mỗi tin chỉ tự ẩn <b>một lần</b> giữa hai quyết định của người: sau khi người bác, báo cáo mới về tin đó vào hàng nhưng không tự ẩn nữa. Hết vòng lặp ẩn–hiện; còn "ẩn vô thời hạn không ai xử" nay là "ẩn tới khi master xử", đỏ trên bảng tồn.</p></div>
+      <div class="box"><p><b>Điểm tin cậy báo cáo</b>: mỗi báo cáo bị bác trừ một điểm, báo cáo đúng cộng một. Dưới −3 thì báo cáo của người đó không tính vào ngưỡng tạm ẩn và xếp cuối hàng; dưới −6 thì mất quyền báo cáo 30 ngày.</p></div>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d14">
+flowchart TB
+  classDef no fill:#fdecea,stroke:#c53030,color:#1b1f24
+  classDef q fill:#fbe9e9,stroke:#c53030,color:#1b1f24,stroke-width:1.5px
+  classDef ok fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef dec fill:#fffbea,stroke:#b7791f,color:#1b1f24
+  classDef src fill:#eef3f9,stroke:#1f4e79,color:#1b1f24
+  ab(["Báo cáo tin hoặc người · hợp lệ?<br/>không tự báo cáo, dưới 10 lượt mỗi giờ,<br/>còn quyền báo cáo"]):::dec
+  ab -- "không" --> no["Từ chối"]:::no
+  ab -- "có" --> rt["Đối tượng?"]:::dec
+  rt -- "tin sàn" --> qs["Staff danh mục"]:::q
+  rt -- "tin nhóm" --> qg["Điều hành nhóm"]:::q
+  rt -- "người" --> qt["Staff an toàn<br/>hoặc master"]:::q
+  qs --> th["Từ 3 người báo đủ tin cậy trong 24 giờ,<br/>và tin chưa bị tạm ẩn<br/>kể từ quyết định gần nhất?"]:::dec
+  th -- "có: cờ ẩn reported_hold<br/>giữ tới khi xử" --> wk["Nhận việc và xử · hạn 72 giờ<br/>quá hạn lên master, cờ giữ nguyên"]
+  th -- "không" --> wk
+  qg --> wk
+  qt --> wk
+  del["Chủ xoá tin<br/>hoặc tài khoản"]:::src -. "vẫn xử trên bản lưu" .-> wk
+  wk -- "bác" --> dis["Đóng, gỡ cờ ẩn<br/>người báo −1 điểm tin cậy"]:::ok
+  wk -- "đúng" --> act["Gỡ tin, gậy nếu staff<br/>cấm khỏi nhóm, khoá tài khoản<br/>đóng mọi báo cáo cùng đối tượng<br/>người báo +1"]:::ok
+</script>
+</section>

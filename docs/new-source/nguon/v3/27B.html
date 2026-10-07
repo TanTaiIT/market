@@ -1,0 +1,22 @@
+<!-- ======================================================================= 27B REVIEW RESPONSE V2 PAGE 2 -->
+<section class="pg">
+  <div class="ph"><span class="num">27</span><h2>Phản hồi 23 mục rà soát bản v2 · phần 2</h2><span class="ctx">Mục 14–24</span></div>
+  <table class="t" style="font-size:8.3pt">
+    <tr><th style="width:4%">#</th><th style="width:30%">Mục rà soát</th><th style="width:11%">Kết luận</th><th>Xử lý trong v3</th></tr>
+    <tr><td>14</td><td>Khối lượng việc chưa thật giảm; quá hạn làm tồn đọng vô hình</td><td class="p">Đúng một phần</td><td>Việc không biến mất mà hiện ra: hàng 0 có tồn đọng nhìn thấy, bảng tồn, cảnh báo 50%. Hàng 3 chỉ còn T1 dải Vừa, vì T0 và người có gậy ở dải Vừa đã sang hàng 0; mẫu bỏ tin đã có việc. Đủ người hay không là câu hỏi chốt 2 và 3 (mục 12, 25)</td></tr>
+    <tr><td>15</td><td>Master là cấp cuối nhưng không có hạn xử; khiếu nại tới master có tự thắng không</td><td class="y">Đóng</td><td>Hàng của master có hạn nhắc 72 giờ, quá hạn đỏ trên bảng tồn và giữ nguyên; khiếu nại lên master không bao giờ tự thắng (mục 12, 17, N-09)</td></tr>
+    <tr><td>16</td><td>Staff ra gậy cho master? Tài khoản quyền cao nhất đi bán hàng</td><td class="y">Đóng</td><td>Tin của master chỉ master xử, ghi thành câu ở mục 3, 4, 12 và N-01; khuyến nghị master bán bằng tài khoản cá nhân, không bắt buộc vì master toàn quyền</td></tr>
+    <tr><td>17</td><td>Ba chỗ nói khác nhau về xoá tin bị gỡ vì vi phạm</td><td class="y">Đóng</td><td>Một luật xoá duy nhất ở mục 10; mục 9 và 23 chỉ tham chiếu</td></tr>
+    <tr><td>18</td><td>Một tin nằm trong nhiều việc hậu kiểm, hai staff ra hai quyết định</td><td class="y">Đóng</td><td>Mỗi tin tối đa một việc mở, việc mới gộp lý do vào việc cũ; mẫu bỏ tin đã có việc; ràng buộc duy nhất trong <code>REVIEW_TASK</code> (mục 12, 21, N-09)</td></tr>
+    <tr><td>19</td><td>Tín hiệu đăng dồn theo giờ không bao giờ bắn</td><td class="y">Đóng</td><td>Đo theo ngày: vượt 10 lượt ở T0–T1, vượt 30 ở T2–T3 (mục 14)</td></tr>
+    <tr><td>20</td><td>Cờ tạm ẩn bật tắt lặp vô hạn</td><td class="y">Đóng</td><td>Mỗi tin chỉ tự ẩn một lần giữa hai quyết định của người; cờ giữ tới khi người xử (mục 19, N-26)</td></tr>
+    <tr><td>21</td><td>Khôi phục sau khi quá 30 ngày; gia hạn chỉ từ Hết hạn</td><td class="y">Đóng</td><td>Đồng hồ hiển thị dừng khi bị gỡ, chạy tiếp khi khôi phục; gia hạn được trong 7 ngày cuối (mục 9, 10, N-27)</td></tr>
+    <tr><td>22</td><td>Băm số điện thoại không phải ẩn danh</td><td class="y">Đóng</td><td>Băm email bằng HMAC với khoá riêng; ghi là dữ liệu giả danh hoá, vẫn có hạn lưu (mục 15, 21, 23)</td></tr>
+    <tr><td>23</td><td>T0 chỉ có email có thể vướng quy định xác thực số di động</td><td class="p">Cần luật sư</td><td>Quyết định 3: giai đoạn này chỉ xác thực email, số điện thoại giữ chỗ trong dữ liệu để bật mà không chuyển đổi; câu hỏi chốt 7 giữ cho luật sư (mục 1, 21, 25)</td></tr>
+    <tr><td>24</td><td>Huy hiệu bị thu hẹp: trường và công ty thường để nhóm riêng tư</td><td class="p">Quyết định sản phẩm</td><td>Chốt theo G3: nhóm riêng tư tự bật "hiện tên nhóm trên tin sàn"; huy hiệu vẫn theo đường vào của thành viên (mục 7, N-14)</td></tr>
+  </table>
+  <div class="cols half" style="margin-top:4px">
+    <div class="box"><p><b>Số liệu rà soát</b>: 23 mục. Đóng bằng thiết kế 18 · đúng một phần, đóng phần đúng và ghi rõ phần còn lại 3 (mục 5, 8, 14) · chủ sản phẩm chốt 2 (mục 23, 24). Hai giới hạn còn ghi lại: chưa có tín hiệu "tài khoản lâu năm đổi hành vi"; phơi bày hạn chế không cản lừa đảo qua link ngoài danh mục rủi ro cao.</p></div>
+    <div class="box"><p><b>Điều v3 đổi so với đề xuất lúc rà soát</b>: lúc rà soát tôi đề xuất một đường "xin người xem lại" riêng cho cổng cứng. Quyết định 1 làm nó thừa: cổng cứng cũng là giữ cho người, cùng một hàng 0, cùng một màn hình, nên không còn hai cơ chế cho một việc.</p></div>
+  </div>
+</section>

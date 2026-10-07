@@ -1,0 +1,64 @@
+<!-- ======================================================================= COVER -->
+<section class="pg cover">
+  <div class="kicker">Bản thiết kế v3 · Xây lại sàn rao vặt</div>
+  <h1>Hệ thống mới: một trục nhóm, máy duyệt tin, người xử phần máy chưa chắc</h1>
+  <p style="color:var(--soft)">Lược đồ tổng thể mọi tính năng, dùng làm bản vẽ chung trước khi viết dòng code đầu tiên. Bản v3 sửa theo 23 mục rà soát bản v2 và ba quyết định mới của chủ sản phẩm.</p>
+  <div class="cols half" style="margin-top:6px">
+    <div>
+      <table class="meta">
+        <tr><td>Ngày lập</td><td>v1 06/10 · v2 07/10 · v3 08/10/2026</td></tr>
+        <tr><td>Đầu vào</td><td>Hệ đang chạy <code>docs/market</code> · LUAT-NGHIEP-VU · DAC-TA-NGHIEP-VU-CHUAN · RA-SOAT-DAC-TA-NGHIEP-VU (23 lỗ) · audit 26/09/2026 (97 mục) · 1.293 ca kiểm thử · 30 mục rà soát v1 · 23 mục rà soát v2</td></tr>
+        <tr><td>Dành cho</td><td>Chủ sản phẩm duyệt hướng đi; đội xây lại dùng làm bản vẽ</td></tr>
+        <tr><td>Nhãn</td><td><span class="tag t-new">MỚI</span> chưa có ở hệ cũ &nbsp; <span class="tag t-chg">ĐỔI</span> khác hệ cũ &nbsp; <span class="tag t-def">HOÃN</span> giữ chỗ, chưa làm</td></tr>
+      </table>
+      <h3>Ba quyết định chốt của chủ sản phẩm</h3>
+      <div class="box">
+        <p><b>1. Master toàn quyền.</b> Master làm được mọi việc và quyết định của master là cuối cùng. Không có cơ chế kiểm soát master; nhật ký ghi để tra cứu.</p>
+        <p><b>2. Máy duyệt tin; đạt chuẩn thì lên ngay; máy không chắc thì giữ cho người quản lý tin duyệt.</b> Không có hàng chờ cho tin đạt chuẩn. Máy chỉ giữ lại phần nó không dám quyết: dải rủi ro cao, cổng cứng, danh mục rủi ro cao, tài khoản mới ở dải vừa. Phần giữ lại đi tới staff danh mục hoặc điều hành nhóm, có hạn xử và khi quá hạn thì <b>vẫn giữ</b>, không tự mở.</p>
+        <p><b>3. Chỉ xác thực bằng email ở giai đoạn này.</b> Số điện thoại là giữ chỗ cho sau. Mức tin cậy tính từ tuổi tài khoản và tin sạch; tài khoản mới chỉ được phơi bày hạn chế ở nơi công khai.</p>
+      </div>
+    </div>
+    <div>
+      <div class="box warn">
+        <p><b>Giả định còn lại cần bạn xác nhận:</b></p>
+        <ul>
+          <li><b>G1.</b> Sàn chung vẫn còn; máy duyệt tin sàn, staff theo danh mục xử phần máy giữ và hậu kiểm.</li>
+          <li><b>G2.</b> Tin trong nhóm mà máy giữ lại thì điều hành nhóm duyệt; nhóm hết điều hành thì staff danh mục. Điều hành vẫn không ra gậy.</li>
+          <li><b>G3.</b> Huy hiệu nhóm riêng tư theo kiểu nhóm tự bật "hiện tên nhóm trên tin sàn".</li>
+          <li><b>G4.</b> Ví Xu, gói tin, đánh giá người bán, tìm toàn văn, số điện thoại, chữ trong ảnh: hoãn, giữ chỗ trong dữ liệu.</li>
+        </ul>
+      </div>
+      <h3>Mục lục</h3>
+      <ol class="toc" start="0">
+        <li>Nguyên tắc · hệ cũ → hệ mới</li>
+        <li>Bản đồ tính năng</li>
+        <li>Ngữ cảnh hệ thống</li>
+        <li>Vai trò và quyền</li>
+        <li>Ma trận quyền</li>
+        <li>Module và sự kiện</li>
+        <li>Danh mục sự kiện</li>
+        <li>Nhóm: vòng đời và chế độ</li>
+        <li>Nhóm: đường vào và thành viên</li>
+        <li>Vòng đời tin đăng</li>
+        <li>Quy tắc quản lý tin</li>
+        <li>Luồng đăng tin</li>
+        <li>Hàng đợi của người: duyệt phần máy giữ và hậu kiểm</li>
+        <li>Kiến trúc duyệt máy</li>
+        <li>Tín hiệu và ma trận quyết định</li>
+        <li>Mô hình uy tín</li>
+        <li>Gậy, hạn chế, ví dụ</li>
+        <li>Gậy và khiếu nại</li>
+        <li>Người duyệt: một quyết định từ đầu tới cuối</li>
+        <li>Báo cáo vi phạm</li>
+        <li>Nhắn tin và thông báo</li>
+        <li>Dữ liệu: ai sở hữu bảng nào</li>
+        <li>Dữ liệu: quan hệ lõi</li>
+        <li>Công việc nền và lưu trữ</li>
+        <li>Bất biến</li>
+        <li>Lỗ cũ được đóng · câu hỏi cần chốt</li>
+        <li>Phản hồi 30 mục rà soát bản v1</li>
+        <li>Phản hồi 23 mục rà soát bản v2</li>
+      </ol>
+    </div>
+  </div>
+</section>

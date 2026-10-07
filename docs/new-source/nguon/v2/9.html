@@ -1,0 +1,46 @@
+<!-- ======================================================================= 9 LISTING LIFECYCLE -->
+<section class="pg">
+  <div class="ph"><span class="num">9</span><h2>Vòng đời tin đăng</h2><span class="ctx">Module Tin đăng · bảng chuyển trạng thái đóng: ngoài các mũi tên này là từ chối · không có trạng thái "chờ người duyệt"</span></div>
+  <div class="cols" style="grid-template-columns:1fr 60mm">
+    <figure class="fig" id="d6" data-name="09-vong-doi-tin-dang" data-wrap="wide" data-src="m-d6" data-maxh="650"><div class="canvas"></div></figure>
+    <div class="side">
+      <h3 style="margin-top:0">Ai đi mũi tên nào</h3>
+      <ul>
+        <li><b>Chủ tin:</b> gửi, rút về nháp, sửa, gia hạn, đã bán, xoá.</li>
+        <li><b>Máy:</b> cho qua, từ chối, hết hạn.</li>
+        <li><b>Hậu kiểm (staff, master, điều hành nhóm với tin nhóm):</b> gỡ, khôi phục.</li>
+        <li><b>Người xét khiếu nại:</b> khiếu nại thắng.</li>
+      </ul>
+      <div class="box"><p><b>Đang kiểm</b> kéo dài tới khi cả chữ lẫn ảnh đã có kết quả, thường dưới một phút. Tin chưa hiện với ai trong lúc đó. Gửi, sửa, gia hạn, sửa sau từ chối hay sau gỡ đều đi qua <b>cùng một cổng</b>.</p></div>
+      <div class="box"><p><b>Đang hiển thị</b> có hai mức phơi bày: đầy đủ, hoặc hạn chế (mục 10). Mức phơi bày không phải trạng thái, đổi được mà không đổi trạng thái.</p></div>
+      <div class="box"><p><b>Đã xoá</b> không vẽ: chủ tin xoá mềm được từ mọi trạng thái, trừ tin bị gỡ vì vi phạm còn trong hạn giữ bằng chứng.</p></div>
+      <div class="box warn"><p><b>Bị từ chối</b> chỉ do máy, luôn kèm lý do sửa được. <b>Bị gỡ</b> chia hai: sai sót thì sửa rồi qua lại cổng; vi phạm thì khoá, chỉ còn khiếu nại.</p></div>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d6">
+stateDiagram-v2
+  direction TB
+  state "Nháp" as Draft
+  state "Đang kiểm" as Screening
+  state "Đang hiển thị" as Live
+  state "Bị từ chối" as Rejected
+  state "Đã bán" as Sold
+  state "Hết hạn" as Expired
+  state "Bị gỡ" as Removed
+  [*] --> Draft : tạo nháp, gắn ảnh
+  Draft --> Screening : gửi
+  Screening --> Live : máy cho qua, đầy đủ hoặc hạn chế
+  Screening --> Rejected : máy từ chối, kèm lý do
+  Screening --> Draft : chủ tin rút về
+  Rejected --> Screening : sửa, gửi lại
+  Rejected --> Draft : chủ tin rút về
+  Live --> Screening : sửa nội dung người mua thấy
+  Live --> Sold : chủ tin
+  Live --> Expired : quá 30 ngày
+  Live --> Removed : hậu kiểm gỡ
+  Expired --> Screening : gia hạn
+  Expired --> Sold : chủ tin
+  Removed --> Screening : sửa, chỉ khi gỡ mức sai sót
+  Removed --> Live : khôi phục, khiếu nại thắng
+</script>
+</section>

@@ -1,0 +1,46 @@
+<!-- ======================================================================= 10 LISTING RULES -->
+<section class="pg">
+  <div class="ph"><span class="num">10</span><h2>Quy tắc quản lý tin</h2><span class="ctx">Module Tin đăng</span></div>
+  <div class="cols half">
+    <div>
+      <h3 style="margin-top:0">Sửa trường nào thì qua máy lại <span class="tag t-chg">ĐỔI</span></h3>
+      <table class="t">
+        <tr><th>Trường</th><th style="width:36%">Khi đổi</th></tr>
+        <tr><td>Nội dung: tiêu đề, mô tả, giá, danh mục, ảnh (kể cả thứ tự), thuộc tính, tỉnh, phường, nhóm đích</td><td>Qua lại cổng</td></tr>
+        <tr><td>Mở rộng phủ sóng, cả hai nấc: chỉ thành viên → nhóm công khai → sàn</td><td>Qua lại cổng</td></tr>
+        <tr><td>Thu hẹp phủ sóng</td><td>Không, giảm phơi bày là an toàn</td></tr>
+        <tr><td>Cờ giao dịch: có thương lượng, giao tận nơi, hiện số điện thoại</td><td>Không. Đây là cờ đúng/sai do hệ thống định nghĩa, không phải nội dung tự do; máy không có gì để chấm</td></tr>
+      </table>
+      <p class="legend" style="margin-top:0">So giá trị, không so việc client có gửi trường lên. Bất biến N-11 nói rõ "nội dung tự do", nên không mâu thuẫn với dòng cuối.</p>
+      <h3>Mức phơi bày <span class="tag t-new">MỚI</span></h3>
+      <table class="t">
+        <tr><th>Mức</th><th>Hiện ở đâu</th><th>Khi nào</th></tr>
+        <tr><td>Đầy đủ</td><td>Bảng tin, tìm kiếm, gợi ý, hồ sơ</td><td>Máy cho qua ở dải Thấp</td></tr>
+        <tr><td>Hạn chế</td><td>Tìm kiếm có từ khoá, hồ sơ người bán, link trực tiếp; không lên bảng tin và gợi ý</td><td>Máy cho qua ở dải Vừa; người bán đang có gậy; danh mục rủi ro cao chưa hậu kiểm</td></tr>
+      </table>
+      <p class="legend" style="margin-top:0">Hậu kiểm "giữ" thì chuyển về đầy đủ; không ai xử trong 72 giờ thì tự chuyển về đầy đủ, trừ danh mục rủi ro cao.</p>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Cờ ẩn hệ thống <span class="tag t-new">MỚI</span></h3>
+      <table class="t">
+        <tr><th>Cờ</th><th>Do</th><th>Gỡ khi</th></tr>
+        <tr><td><code>account_locked</code></td><td>Khoá tài khoản</td><td>Mở khoá</td></tr>
+        <tr><td><code>account_deleted</code></td><td>Xoá tài khoản</td><td>Không gỡ; xoá cứng sau 90 ngày</td></tr>
+        <tr><td><code>group_suspended</code> · <code>group_closed</code></td><td>Khoá, đóng nhóm</td><td>Mở nhóm; đóng thì không gỡ</td></tr>
+        <tr><td><code>member_left</code></td><td>Rời, bị gỡ, bị cấm</td><td>Vào lại nhóm</td></tr>
+        <tr><td><code>category_disabled</code></td><td>Tắt danh mục</td><td>Bật lại</td></tr>
+        <tr><td><code>reported_hold</code></td><td>Nhiều người báo cáo</td><td>Báo cáo được xử, hoặc quá 24 giờ không ai xử</td></tr>
+      </table>
+      <h3>Ai thấy tin</h3>
+      <div class="box"><p><b>Thấy được</b> = trạng thái thuộc {Đang hiển thị, Đã bán, Hết hạn} <b>và</b> không có cờ ẩn <b>và</b> người xem nằm trong bậc phủ sóng <b>và</b> bề mặt đang xem nằm trong mức phơi bày. Bảng tin chỉ lấy Đang hiển thị, phơi bày đầy đủ.</p></div>
+      <h3>Hạn mức và hệ quả khi tụt mức</h3>
+      <table class="t">
+        <tr><th></th><th class="c">T0</th><th class="c">T1</th><th class="c">T2</th><th class="c">T3</th></tr>
+        <tr><td>Tin đang sống tối đa (hiện + đang kiểm)</td><td class="c">10</td><td class="c">20</td><td class="c">50</td><td class="c">100</td></tr>
+        <tr><td>Gửi tối đa mỗi giờ</td><td class="c">3</td><td class="c">5</td><td class="c">10</td><td class="c">20</td></tr>
+      </table>
+      <p class="legend" style="margin-top:0">Không còn hạn mức "tin chờ" vì không còn tin chờ. Tụt mức xuống dưới số tin đang sống thì tin cũ <b>giữ nguyên</b>, chỉ không đăng mới và không gia hạn cho tới khi về dưới trần. Bị khoá đăng vì gậy thì vẫn sửa, đánh dấu đã bán và xoá được; không gia hạn, không đăng mới. Người ngoài thêm trần 2 tin sống mỗi nhóm.</p>
+      <p>Hạn hiển thị 30 ngày · nhắc trước 7 ngày · tối đa 6 ảnh · giá số nguyên ≥ 0, 0 là cho tặng · khoá chống đăng đôi bắt buộc.</p>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,66 @@
+<!-- ======================================================================= 3 ROLES -->
+<section class="pg">
+  <div class="ph"><span class="num">3</span><h2>Vai trò và quyền · một trục</h2><span class="ctx">Tầng nền tảng gắn trên tài khoản · tầng nhóm gắn trên thành viên</span></div>
+  <figure class="fig" id="d3" data-name="03-vai-tro-va-quyen" data-src="m-d3" data-maxh="400"><div class="canvas"></div></figure>
+  <div class="cols three" style="grid-template-columns:1fr 1fr 1fr 1fr; gap:5mm; margin-top:6px">
+    <div>
+      <h3 style="margin-top:0">Master</h3>
+      <ul>
+        <li>Toàn quyền trên mọi module; quyết định là cuối cùng, không khiếu nại lên ai khác.</li>
+        <li>Mọi thao tác vào nhật ký để tra cứu.</li>
+        <li>Một chính, một dự phòng cùng quyền; tạo bằng CLI; hai lớp bằng app TOTP; tối đa 3 phiên.</li>
+        <li>Tin do master đăng chỉ master xử; staff không gỡ, không ra gậy. <b>Khuyến nghị</b> master bán hàng bằng tài khoản cá nhân để thu hẹp bề mặt chiếm tài khoản; đây là khuyến nghị, không phải luật.</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Staff theo danh mục</h3>
+      <ul>
+        <li>Duyệt tin sàn mà máy giữ lại trong danh mục, kể cả giữ vì cổng cứng</li>
+        <li>Hậu kiểm: kiểm mẫu, gỡ, khôi phục tin sàn</li>
+        <li>Xử báo cáo về tin trong danh mục; xử việc điều hành nhóm chuyển lên</li>
+        <li>Xử khiếu nại gậy do staff khác ký</li>
+        <li>Soạn template; master phát hành; xem số liệu và tồn</li>
+        <li>Quyền toàn cục master giao thêm: hỗ trợ, an toàn, KYC</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Điều hành nhóm</h3>
+      <ul>
+        <li>Duyệt tin trong nhóm mà máy giữ lại; nhóm hết điều hành thì staff danh mục</li>
+        <li>Gỡ tin khỏi nhóm, gỡ huy hiệu nhóm</li>
+        <li>Xử báo cáo về tin trong nhóm</li>
+        <li>Duyệt đơn vào, mời, gỡ, cấm thành viên</li>
+        <li>Không ra gậy; vi phạm quy định sàn thì chuyển staff</li>
+        <li>Cần mức T1 và không có gậy nặng; có gậy nặng thì tạm mất vai</li>
+      </ul>
+    </div>
+    <div class="box" style="margin-top:0"><p><b>Staff là tài khoản công việc</b>, không đăng tin, không vào nhóm. Muốn bán đồ thì dùng tài khoản cá nhân và khai liên kết; hệ thống <b>tự gợi ý liên kết</b> khi staff và một tài khoản cá nhân trùng dấu thiết bị, master xác nhận. Việc về tin của tài khoản đã liên kết, hoặc của người bán trùng thiết bị với staff, không hiện với staff đó. Tài khoản cá nhân đã liên kết nhận gậy nặng thì staff bị đình chỉ, master quyết.</p></div>
+  </div>
+<script type="text/x-mermaid" id="m-d3">
+flowchart LR
+  classDef plat fill:#e8eef6,stroke:#1f4e79,color:#1b1f24
+  classDef grp fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef usr fill:#ffffff,stroke:#5b6470,color:#1b1f24,stroke-width:1.5px
+  classDef top fill:#1f4e79,stroke:#1f4e79,color:#ffffff
+  subgraph P["Tầng nền tảng · quyền trên TÀI KHOẢN"]
+    M["Master<br/>toàn quyền, quyết định cuối<br/>1 chính + 1 dự phòng"]:::top
+    S["Staff<br/>tài khoản công việc<br/>không đăng, không vào nhóm"]:::plat
+    SA["Phân công<br/>staff × danh mục"]:::plat
+  end
+  U["Người dùng<br/>tự đăng ký"]:::usr
+  subgraph G["Tầng nhóm · quyền trên THÀNH VIÊN"]
+    O["Chủ nhóm<br/>đúng 1, chuyển nhượng được"]:::grp
+    MOD["Điều hành viên<br/>phạm vi: cả nhóm<br/>hoặc một đơn vị con"]:::grp
+    MEM["Thành viên"]:::grp
+    ALU["Đã rời, bị gỡ<br/>bị cấm, cựu thành viên"]:::grp
+  end
+  M -- "tạo, khoá" --> S
+  M -- "gán, thu" --> SA
+  SA -. "của" .-> S
+  M -- "tạo nhóm, giao" --> O
+  U -- "tham gia" --> MEM
+  U -. "có thể giữ vai" .-> O
+  O -- "bổ nhiệm, miễn" --> MOD
+  MEM -- "rời, bị gỡ, bị cấm" --> ALU
+</script>
+</section>

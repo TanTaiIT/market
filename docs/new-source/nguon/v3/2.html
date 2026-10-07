@@ -1,0 +1,58 @@
+<!-- ======================================================================= 2 CONTEXT -->
+<section class="pg">
+  <div class="ph"><span class="num">2</span><h2>Ngữ cảnh hệ thống</h2><span class="ctx">Ai dùng, qua bề mặt nào, chạm dịch vụ ngoài nào</span></div>
+  <figure class="fig" id="d2" data-name="02-ngu-canh-he-thong" data-src="m-d2" data-maxh="440"><div class="canvas"></div></figure>
+  <div class="cols half" style="margin-top:6px">
+    <ul>
+      <li>Năm tác nhân, ba bề mặt, một hệ thống chạy dạng <b>modular monolith</b>: một tiến trình, nhiều module có ranh giới cứng.</li>
+      <li><b>Điều hành nhóm</b> không phải loại tài khoản riêng. Đó là người dùng giữ vai trong một nhóm, nên dùng chính app Ghim; phần máy giữ của tin nhóm cũng duyệt ở đó.</li>
+    </ul>
+    <ul>
+      <li><b>Staff và master</b> dùng bàn vận hành web nội bộ <span class="tag t-chg">ĐỔI</span>. Hệ cũ nhét bàn quản trị vào app người dùng, nên mọi màn quản trị phải phát hành cùng app.</li>
+      <li><b>Chỉ xác thực email</b> ở giai đoạn này, có chặn email dùng một lần. <b>SMS OTP</b> <span class="tag t-def">HOÃN</span> là giữ chỗ cho xác thực số điện thoại về sau. Mọi tác động chéo giữa module đi qua <b>outbox</b> ghi cùng giao dịch.</li>
+    </ul>
+  </div>
+<script type="text/x-mermaid" id="m-d2">
+flowchart LR
+  classDef actor fill:#ffffff,stroke:#1f4e79,stroke-width:1.5px,color:#1f4e79
+  classDef surface fill:#eef3f9,stroke:#1f4e79,color:#1b1f24
+  classDef core fill:#1f4e79,stroke:#1f4e79,color:#ffffff
+  classDef store fill:#f4f6f9,stroke:#5b6470,color:#1b1f24
+  classDef ext fill:#fff8e6,stroke:#b25e09,color:#1b1f24
+  classDef def fill:#f4f6f9,stroke:#a0a6ae,color:#5b6470,stroke-dasharray:4 3
+  guest(["Khách"]):::actor
+  user(["Người dùng"]):::actor
+  gmod(["Điều hành nhóm<br/><i>người dùng giữ vai trong nhóm</i>"]):::actor
+  staff(["Staff<br/><i>tài khoản công việc</i>"]):::actor
+  master(["Master"]):::actor
+  app["App Ghim<br/>iOS · Android"]:::surface
+  gdesk["Bàn điều hành nhóm<br/>trong app"]:::surface
+  ops["Bàn vận hành<br/>web nội bộ"]:::surface
+  api["API REST + Realtime"]:::core
+  outbox[("Outbox<br/>sự kiện miền")]:::store
+  db[("Cơ sở dữ liệu")]:::store
+  workers["Worker<br/>kiểm ảnh · thông báo · dọn dẹp"]:::core
+  cdn["Cloudinary<br/>ảnh"]:::ext
+  push["Expo Push"]:::ext
+  mail["Email"]:::ext
+  sms["SMS OTP<br/><i>hoãn</i>"]:::def
+  google["Google OAuth"]:::ext
+  guest --> app
+  user --> app
+  gmod --> gdesk
+  staff --> ops
+  master --> ops
+  app --> api
+  gdesk --> api
+  ops --> api
+  app -- "tải ảnh có chữ ký" --> cdn
+  api --> db
+  api -- "cùng giao dịch" --> outbox
+  api --> mail
+  api -.-> sms
+  api --> google
+  outbox --> workers
+  workers --> push
+  workers --> cdn
+</script>
+</section>

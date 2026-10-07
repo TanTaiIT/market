@@ -1,0 +1,35 @@
+<!-- ======================================================================= 11 SUBMIT SEQUENCE -->
+<section class="pg">
+  <div class="ph"><span class="num">11</span><h2>Luồng đăng tin từ đầu tới cuối</h2><span class="ctx">Tin đăng · Uy tín · Duyệt máy · Ảnh · Duyệt người</span></div>
+  <figure class="fig" id="d7" data-name="11-luong-dang-tin" data-src="m-d7" data-maxh="605"><div class="canvas"></div></figure>
+<script type="text/x-mermaid" id="m-d7">
+sequenceDiagram
+  autonumber
+  participant App as App
+  participant LI as Tin đăng
+  participant TS as Uy tín
+  participant SC as Duyệt máy
+  participant MD as Ảnh
+  participant HR as Duyệt người
+  App->>LI: gửi nháp đã gắn ảnh<br/>bậc phủ sóng · nhóm đích · khoá chống trùng
+  LI->>TS: trần tin sống · nhịp gửi<br/>thời gian chờ · khoá đăng?
+  opt không được gửi
+    LI-->>App: lỗi yêu cầu · mã lỗi · thời điểm thử lại
+  end
+  LI->>SC: chấm chữ, giá, trùng, tài khoản, cổng cứng
+  LI-->>App: Đang kiểm · chờ ảnh
+  LI-)MD: kiểm từng ảnh
+  MD-)SC: ImageScreened
+  SC-)LI: ScreeningDone · cho qua hoặc giữ
+  alt máy cho qua
+    LI-)App: Đang hiển thị<br/>đầy đủ, hoặc hạn chế kèm lý do
+    LI-)HR: PostCheckRequested nếu hạn chế do máy hoặc trúng mẫu
+  else máy giữ
+    LI-)App: Chờ duyệt<br/>gợi ý sửa nếu tự sửa được
+    LI-)HR: ReviewRequested · hạn 24 giờ
+    HR-)LI: DecisionRecorded
+    LI-)App: Đang hiển thị<br/>hoặc Bị từ chối kèm lý do
+  end
+</script>
+  <p class="legend">Mũi tên liền: gọi đồng bộ trong request; mũi tên mở: sự kiện qua outbox. Bước 2 là kiểm yêu cầu (trần, nhịp, thời gian chờ, danh mục, template, tư cách nhóm, tỉnh, phường): thiếu thì lỗi ngay, không tin nào được tạo. Tin không ảnh có kết quả máy ngay trong request; có ảnh thì chờ ảnh cuối, thường dưới một phút, quá 5 phút là giữ cho người. Người thật chỉ xuất hiện ở nhánh máy giữ; không nhánh nào tự mở khi quá hạn.</p>
+</section>

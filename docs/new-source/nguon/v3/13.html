@@ -1,0 +1,40 @@
+<!-- ======================================================================= 13 MACHINE ARCH -->
+<section class="pg">
+  <div class="ph"><span class="num">13</span><h2>Kiến trúc duyệt máy mới</h2><span class="ctx">Module Duyệt máy · hai lối ra: cho qua, hoặc giữ cho người · chữ và ảnh xong trước khi tin hiện</span></div>
+  <figure class="fig" id="d9a" data-name="13a-duyet-may-luc-dang" data-src="m-d9a" data-maxh="270"><div class="canvas"></div><figcaption>Lúc đăng · chữ chấm trong request, ảnh chấm bằng worker; không nhánh nào kết thúc ở "từ chối"</figcaption></figure>
+  <figure class="fig" id="d9b" data-name="13b-duyet-may-vong-hoc" data-src="m-d9b" data-maxscale="0.82" data-maxh="190" style="margin-top:6px"><div class="canvas"></div><figcaption>Vòng học · người duyệt phần máy giữ và hậu kiểm giữ hay lật kết quả máy, master chỉnh luật</figcaption></figure>
+  <div class="cols three" style="margin-top:6px">
+    <div class="box"><p><b>Hai lối ra, không có "từ chối".</b> <span class="tag t-chg">ĐỔI</span> Cho qua đầy đủ · cho qua hạn chế · giữ cho người. Máy không ra gậy, không hạ mức, không trả tin về. Dính cổng cứng cũng là giữ, nhưng đếm lượt dò: ba lượt trong 24 giờ thì có <b>thời gian chờ 24 giờ</b>, không phải gậy. <b>Không chắc thì giữ</b>: dịch vụ chấm lỗi, ảnh quá 5 phút chưa có kết quả đều là giữ, không bao giờ là cho qua.</p></div>
+    <div class="box"><p><b>Giải thích cho người bán</b> <span class="tag t-new">MỚI</span>. Tín hiệu tự sửa được (giá lệch, giá vượt trần, lệch danh mục, thiếu mô tả) nói rõ bằng câu người đăng hiểu. Tín hiệu về hành vi (cụm từ cấm, ảnh trùng, thiết bị, đăng dồn) chỉ hiện "đang chờ người duyệt". Cụm từ cấm hai mức, so theo ranh giới âm tiết sau khi bỏ dấu, có ngoại lệ; cụm mới chạy bóng 7 ngày.</p></div>
+    <div class="box"><p><b>Luật có phiên bản.</b> Mỗi luật có mã, trọng số, chế độ <i>bật · bóng · tắt</i> và ghi đè theo danh mục. Thước đo mới: <b>tỉ lệ giữ bị người cho qua</b> theo luật; cao là máy quá tay, master hạ trọng số. <b>Lưới an toàn:</b> 5 phút quét tin Đang kiểm quá hạn, tin đang hiện thiếu kết quả ảnh. <b>Giới hạn đã biết:</b> chưa đọc chữ trong ảnh.</p></div>
+  </div>
+<script type="text/x-mermaid" id="m-d9a">
+flowchart LR
+  classDef step fill:#fbeee4,stroke:#c05621,color:#1b1f24
+  classDef out fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef lim fill:#fff4e5,stroke:#b25e09,color:#1b1f24
+  classDef hold fill:#e8eef6,stroke:#1f4e79,color:#1b1f24
+  classDef store fill:#f4f6f9,stroke:#5b6470,color:#1b1f24
+  classDef dec fill:#fffbea,stroke:#b7791f,color:#1b1f24
+  in(["Gửi · sửa<br/>gia hạn"]) --> gate["Chuẩn hoá chữ<br/>cổng cứng: cụm cấm chắc<br/>giá vượt trần"]:::dec
+  gate -- "dính" --> hold
+  gate -- "sạch" --> score["Tín hiệu chữ, giá,<br/>trùng lặp, tài khoản<br/>suy danh mục thật"]:::step
+  rules[("Kho luật<br/>có phiên bản")]:::store -.-> score
+  score --> wait["Chờ worker ảnh<br/>băm · trùng · nhạy cảm<br/>dưới 1 phút"]:::step
+  wait -- "ảnh cấm, ảnh trùng<br/>hoặc quá 5 phút" --> hold
+  wait -- "ảnh đạt" --> mx["Ma trận<br/>dải × mức tin cậy<br/>× danh mục"]:::dec
+  mx -- "Thấp · Vừa với T2, T3" --> live["Đang hiển thị<br/>đầy đủ"]:::out
+  mx -- "Vừa với T1" --> lim["Đang hiển thị<br/>hạn chế + hậu kiểm"]:::lim
+  mx -- "Cao · rủi ro cao<br/>Vừa với T0, có gậy" --> hold["Chờ duyệt<br/>người xử trong 24 giờ<br/>cổng cứng: đếm lượt dò"]:::hold
+  score -.-> log[("Nhật ký chấm<br/>luật trúng, phiên bản")]:::store
+</script>
+<script type="text/x-mermaid" id="m-d9b">
+flowchart LR
+  classDef step fill:#fbeee4,stroke:#c05621,color:#1b1f24
+  classDef store fill:#f4f6f9,stroke:#5b6470,color:#1b1f24
+  classDef out fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  pc["Người duyệt phần máy giữ<br/>hậu kiểm: hạn chế, mẫu, báo cáo"]:::step -- "cho qua hay từ chối<br/>giữ hay lật kết quả máy" --> log[("Nhật ký chấm<br/>kết quả máy + người")]:::store
+  log --> prec["Độ chính xác từng luật<br/>tỉ lệ giữ bị người cho qua<br/>theo danh mục, theo dải"]:::step
+  prec -- "master chỉnh trọng số,<br/>bật luật bóng" --> rules[("Kho luật<br/>phiên bản mới")]:::store
+</script>
+</section>

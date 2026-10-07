@@ -1,0 +1,35 @@
+<!-- ======================================================================= 11 SUBMIT SEQUENCE -->
+<section class="pg">
+  <div class="ph"><span class="num">11</span><h2>Luồng đăng tin từ đầu tới cuối</h2><span class="ctx">Tin đăng · Uy tín · Duyệt máy · Ảnh · Hậu kiểm</span></div>
+  <figure class="fig" id="d7" data-name="11-luong-dang-tin" data-src="m-d7" data-maxh="600"><div class="canvas"></div></figure>
+<script type="text/x-mermaid" id="m-d7">
+sequenceDiagram
+  autonumber
+  participant App as App
+  participant LI as Tin đăng
+  participant TS as Uy tín
+  participant SC as Duyệt máy
+  participant MD as Ảnh
+  participant MO as Hậu kiểm
+  App->>LI: gửi nháp đã gắn ảnh<br/>bậc phủ sóng · nhóm đích · khoá chống trùng
+  LI->>TS: hạn chế · trần tin sống<br/>thời gian chờ?
+  alt không được đăng
+    LI-->>App: từ chối · mã lỗi · thời điểm thử lại
+  else được đăng
+    LI->>SC: chấm chữ, giá, trùng, tài khoản
+    alt dính cổng cứng
+      LI-->>App: Bị từ chối · lý do sửa được
+    else chữ đạt
+      LI-->>App: Đang kiểm · chờ ảnh
+      LI-)MD: kiểm từng ảnh
+      MD-)SC: ImageScreened
+      SC-)LI: ScreeningDone
+      LI-)App: Đang hiển thị, đầy đủ hoặc hạn chế<br/>hoặc Bị từ chối vì ảnh
+      opt hạn chế · rủi ro cao · trúng mẫu
+        LI-)MO: PostCheckRequested kèm hạn xử
+      end
+    end
+  end
+</script>
+  <p class="legend">Mũi tên liền: gọi đồng bộ trong cùng request; mũi tên mở: sự kiện qua outbox. Tin không có ảnh có kết quả ngay trong request; có ảnh thì đứng ở Đang kiểm tới khi ảnh cuối được kiểm, thường dưới một phút. Tin đăng kiểm danh mục, template, tư cách nhóm, tỉnh, phường trước bước 2. Không bước nào cần người thật bấm.</p>
+</section>

@@ -1,0 +1,69 @@
+<!-- ======================================================================= COVER -->
+<section class="pg cover">
+  <div class="kicker">Bản thiết kế v2 · Xây lại sàn rao vặt</div>
+  <h1>Hệ thống mới: một trục nhóm, máy duyệt tin, người hậu kiểm</h1>
+  <p style="color:var(--soft)">Lược đồ tổng thể mọi tính năng, dùng làm bản vẽ chung trước khi viết dòng code đầu tiên. Bản v2 sửa theo 30 mục rà soát và hai nguyên tắc chốt của chủ sản phẩm.</p>
+  <div class="cols half" style="margin-top:6px">
+    <div>
+      <table class="meta">
+        <tr><td>Ngày lập</td><td>v1 06/10/2026 · v2 07/10/2026</td></tr>
+        <tr><td>Đầu vào</td><td>Hệ đang chạy <code>docs/market</code> · LUAT-NGHIEP-VU · DAC-TA-NGHIEP-VU-CHUAN · RA-SOAT-DAC-TA-NGHIEP-VU (23 lỗ) · audit 26/09/2026 (97 mục, 88 đã xử lý) · 1.293 ca kiểm thử của hệ cũ · 30 mục rà soát bản v1</td></tr>
+        <tr><td>Dành cho</td><td>Chủ sản phẩm duyệt hướng đi; đội xây lại dùng làm bản vẽ</td></tr>
+        <tr><td>Nhãn</td><td><span class="tag t-new">MỚI</span> chưa có ở hệ cũ &nbsp; <span class="tag t-chg">ĐỔI</span> khác hệ cũ &nbsp; <span class="tag t-def">HOÃN</span> giữ chỗ, chưa làm</td></tr>
+      </table>
+      <h3>Hai nguyên tắc chốt của chủ sản phẩm</h3>
+      <div class="box">
+        <p><b>Master toàn quyền.</b> Master làm được mọi việc trong hệ thống và quyết định của master là cuối cùng. Không có cơ chế nào kiểm soát master. Nhật ký vẫn ghi mọi thao tác, để tra cứu chứ không để phê duyệt.</p>
+        <p><b>Tin đăng do máy duyệt, đạt chuẩn là lên bảng.</b> Không có hàng chờ người duyệt trước khi đăng. Máy là người duyệt duy nhất lúc đăng: đạt chuẩn thì hiển thị ngay, chưa đạt thì từ chối kèm lý do để sửa. Con người chỉ <b>hậu kiểm</b>: xử báo cáo, khiếu nại, kiểm mẫu theo rủi ro, gỡ tin.</p>
+      </div>
+      <h3>Bốn thay đổi lớn so với hệ cũ</h3>
+      <div class="chg4">
+        <div><b>1. Một trục.</b> Nhóm là nơi duy nhất người dùng tự quản. Bỏ ô danh mục × tỉnh × phường. Staff là tài khoản công việc do master tạo, phụ trách hậu kiểm theo danh mục.</div>
+        <div><b>2. Uy tín.</b> Bỏ bậc 0–2 cộng trừ. Thay bằng <b>mức tin cậy T0–T3</b> tính lại từ dữ kiện, cộng <b>gậy có hạn</b>. Chỉ người thật mới ra gậy; máy chỉ từ chối và đặt thời gian chờ.</div>
+        <div><b>3. Duyệt máy.</b> Máy quyết định toàn bộ lúc đăng: chữ, giá, trùng lặp, ảnh, tất cả xong trước khi tin hiện. Luật có phiên bản, chạy bóng trước khi bật, đo độ chính xác từ lượt hậu kiểm.</div>
+        <div><b>4. Quản lý tin.</b> Trạng thái tách khỏi <b>cờ ẩn hệ thống</b> và <b>mức phơi bày</b>; bảng chuyển trạng thái đóng; sửa trường nào cũng biết có qua máy lại không; nhóm chỉ gỡ tin khỏi nhóm và gỡ huy hiệu.</div>
+      </div>
+    </div>
+    <div>
+      <div class="box warn">
+        <p><b>Giả định còn lại cần bạn xác nhận:</b></p>
+        <ul>
+          <li><b>G1.</b> Sàn chung vẫn còn; máy duyệt tin sàn, staff hậu kiểm theo danh mục. Nếu bỏ hẳn sàn chung, mục 3, 4, 10, 12, 14 bỏ nhánh sàn.</li>
+          <li><b>G2.</b> Tin "chưa đạt chuẩn" bị máy từ chối kèm lý do, không có người xem lại trước khi đăng. Tin ở dải rủi ro vừa vẫn lên bảng nhưng <b>phơi bày hạn chế</b> và được hậu kiểm ưu tiên (mục 10, 14).</li>
+          <li><b>G3.</b> Tỉnh và phường chỉ là thông tin của tin để lọc và tìm gần.</li>
+          <li><b>G4.</b> Ví Xu, gói tin, đánh giá người bán, tìm toàn văn vẫn hoãn; chỉ giữ chỗ trong mô hình dữ liệu.</li>
+        </ul>
+      </div>
+      <h3>Mục lục</h3>
+      <ol class="toc" start="0">
+        <li>Nguyên tắc · hệ cũ → hệ mới</li>
+        <li>Bản đồ tính năng</li>
+        <li>Ngữ cảnh hệ thống</li>
+        <li>Vai trò và quyền</li>
+        <li>Ma trận quyền</li>
+        <li>Module và sự kiện</li>
+        <li>Danh mục sự kiện</li>
+        <li>Nhóm: vòng đời và chế độ</li>
+        <li>Nhóm: đường vào và thành viên</li>
+        <li>Vòng đời tin đăng</li>
+        <li>Quy tắc quản lý tin</li>
+        <li>Luồng đăng tin</li>
+        <li>Hậu kiểm: hàng đợi và thời hạn</li>
+        <li>Kiến trúc duyệt máy</li>
+        <li>Tín hiệu và ma trận quyết định</li>
+        <li>Mô hình uy tín</li>
+        <li>Gậy, hạn chế, ví dụ</li>
+        <li>Gậy và khiếu nại</li>
+        <li>Hậu kiểm người</li>
+        <li>Báo cáo vi phạm</li>
+        <li>Nhắn tin và thông báo</li>
+        <li>Dữ liệu: ai sở hữu bảng nào</li>
+        <li>Dữ liệu: quan hệ lõi</li>
+        <li>Công việc nền và lưu trữ</li>
+        <li>Bất biến</li>
+        <li>Lỗ cũ được đóng · câu hỏi cần chốt</li>
+        <li>Phản hồi 30 mục rà soát bản v1</li>
+      </ol>
+    </div>
+  </div>
+</section>

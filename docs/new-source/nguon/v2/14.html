@@ -1,0 +1,41 @@
+<!-- ======================================================================= 14 SIGNALS & MATRIX -->
+<section class="pg">
+  <div class="ph"><span class="num">14</span><h2>Tín hiệu rủi ro và ma trận quyết định</h2><span class="ctx">Module Duyệt máy · trọng số là con số khởi điểm, chỉnh bằng dữ liệu chạy bóng và hậu kiểm</span></div>
+  <div class="cols half">
+    <div>
+      <table class="t" style="font-size:8.5pt">
+        <tr><th style="width:34%">Tín hiệu</th><th>Cách đo</th><th class="c" style="width:10%">Điểm</th></tr>
+        <tr><td>Chữ như gõ bừa</td><td>Tỉ lệ âm tiết không có trong từ điển vượt 40%</td><td class="c">30</td></tr>
+        <tr><td>Cụm từ cấm mức mơ hồ <span class="tag t-new">MỚI</span></td><td>Trúng cụm trong danh sách "mơ hồ" sau khi so ranh giới âm tiết</td><td class="c">25</td></tr>
+        <tr><td>Liên hệ ngoài sàn trong mô tả</td><td>Số điện thoại, Zalo, link. <b>Số trùng số đã xác thực của người bán thì 0 điểm</b>, kèm gợi ý bật tuỳ chọn hiện số</td><td class="c">20</td></tr>
+        <tr><td>Giá lệch phân phối</td><td>Ngoài P2–P98 của 90 ngày cùng danh mục, mẫu ≥ 30</td><td class="c">25</td></tr>
+        <tr><td>Giá 0 ở danh mục giá trị cao <span class="tag t-new">MỚI</span></td><td>Giá 0 trong khi giá trung vị danh mục trên ngưỡng (mặc định 2 triệu), hoặc tiêu đề có từ khoá giá trị cao</td><td class="c">30</td></tr>
+        <tr><td>Trùng nội dung của chính mình, kể cả tin đã xoá, hết hạn 30 ngày <span class="tag t-chg">ĐỔI</span></td><td>Simhash ≥ 0,9. Trùng thì tin mới <b>kế thừa</b> <code>rankAt</code> của tin cũ, không được đẩy lên đầu</td><td class="c">20</td></tr>
+        <tr><td>Trùng ảnh với tài khoản khác</td><td>pHash gần nhau. Ảnh mẫu của hãng nằm trong danh sách trắng do staff nuôi</td><td class="c">cổng cứng</td></tr>
+        <tr><td>Lệch danh mục <span class="tag t-chg">ĐỔI</span></td><td>Máy suy danh mục thật; nếu suy ra danh mục rủi ro cao với độ tin ≥ 0,8 thì <b>áp luật của danh mục đó</b></td><td class="c">15</td></tr>
+        <tr><td>Tài khoản dưới 3 ngày</td><td>Tuổi tài khoản</td><td class="c">10</td></tr>
+        <tr><td>Trùng thiết bị với tài khoản có gậy <span class="tag t-new">MỚI</span></td><td>Dấu thiết bị từ app trùng tài khoản đang có gậy hoặc bị khoá</td><td class="c">30</td></tr>
+        <tr><td>Đăng dồn</td><td>Hơn 5 tin trong 1 giờ</td><td class="c">20</td></tr>
+        <tr><td>Bị từ chối nhiều</td><td>Từ 3 lần trong 7 ngày</td><td class="c">15</td></tr>
+        <tr><td>Danh mục rủi ro cao</td><td>Mức rủi ro do master đặt</td><td class="c">20</td></tr>
+      </table>
+      <p><b>Dải rủi ro</b> (ngưỡng chỉnh theo danh mục): Thấp dưới 30 · Vừa 30–59 · Cao từ 60.</p>
+      <p><b>Cổng cứng, từ chối không qua điểm:</b> cụm từ cấm mức chắc · ảnh nhạy cảm · ảnh trùng tài khoản khác · giá vượt trần danh mục · thiếu thuộc tính bắt buộc · đang thời gian chờ.</p>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Ma trận quyết định <span class="tag t-chg">ĐỔI</span></h3>
+      <table class="t" style="font-size:9.2pt">
+        <tr><th>Mức tin cậy</th><th class="c">Dải Thấp</th><th class="c">Dải Vừa</th><th class="c">Dải Cao</th></tr>
+        <tr><td><b>T0 Mới</b><br/>chỉ có email</td><td class="c hm-q">Trong nhóm: đầy đủ<br/><span class="hm-h" style="padding:0 3px">Sàn chung: hạn chế</span></td><td class="c hm-h">Hạn chế</td><td class="c hm-x">Từ chối</td></tr>
+        <tr><td><b>T1 Đã xác minh</b><br/>có số điện thoại</td><td class="c hm-q">Đầy đủ</td><td class="c hm-h">Hạn chế</td><td class="c hm-x">Từ chối</td></tr>
+        <tr><td><b>T2 Tin cậy</b></td><td class="c hm-q">Đầy đủ</td><td class="c hm-q">Đầy đủ, vào mẫu</td><td class="c hm-x">Từ chối</td></tr>
+        <tr><td><b>T3 Uy tín</b></td><td class="c hm-q">Đầy đủ</td><td class="c hm-q">Đầy đủ, vào mẫu</td><td class="c hm-h">Hạn chế</td></tr>
+        <tr><td><b>Có gậy còn hiệu lực</b><br/>trần mức là T1</td><td class="c hm-h">Hạn chế</td><td class="c hm-h">Hạn chế</td><td class="c hm-x">Từ chối</td></tr>
+        <tr><td><b>Danh mục rủi ro cao</b></td><td class="c hm-h" colspan="3">Hạn chế tới khi staff hậu kiểm trong 24 giờ, mọi mức</td></tr>
+        <tr><td><b>Đang thời gian chờ</b></td><td class="c hm-x" colspan="3">Không gửi được tin mới</td></tr>
+      </table>
+      <div class="box"><p><b>Từ chối ở dải Cao là từ chối sửa được.</b> Máy liệt kê từng tín hiệu đã trúng bằng câu người đăng hiểu ("giá thấp bất thường so với iPhone 15 trong 90 ngày qua"). Người đăng sửa và gửi lại không giới hạn số lần; chỉ cổng cứng mới đếm vào thời gian chờ.</p></div>
+      <div class="box"><p><b>Vì sao T0 đăng sàn chung chỉ được hạn chế.</b> Một email mới là cách rẻ nhất để thoát mọi án. Muốn lên bảng tin chính phải có số điện thoại; sim rác vẫn có, nên băm số điện thoại đi cùng lịch sử gậy (mục 15) và trùng thiết bị là một tín hiệu.</p></div>
+    </div>
+  </div>
+</section>

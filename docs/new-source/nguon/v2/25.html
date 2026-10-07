@@ -1,0 +1,35 @@
+<!-- ======================================================================= 25 OLD HOLES + QUESTIONS -->
+<section class="pg">
+  <div class="ph"><span class="num">25</span><h2>23 lỗ của đặc tả cũ được đóng ra sao · câu hỏi cần chốt</h2><span class="ctx">Đối chiếu RA-SOAT-DAC-TA-NGHIEP-VU · cập nhật theo v2</span></div>
+  <div class="cols" style="grid-template-columns:150mm 1fr">
+    <table class="t" style="font-size:8.4pt">
+      <tr><th style="width:7%">Lỗ</th><th>Cách thiết kế mới đóng</th><th style="width:7%">Lỗ</th><th>Cách thiết kế mới đóng</th></tr>
+      <tr><td>A1</td><td>Máy không ra gậy, chỉ từ chối và đặt thời gian chờ (N-05)</td><td>B7</td><td>Giá 0 miễn phép kiểm phân phối nhưng có luật danh mục giá trị cao (N-16)</td></tr>
+      <tr><td>A2</td><td>Nhóm đích trong yêu cầu, header chỉ để đọc (N-10)</td><td>B8</td><td>Hội thoại ẩn theo phía người xoá; giữ khi có báo cáo mở</td></tr>
+      <tr><td>A3</td><td>Bảng hiển thị × cách vào bốn dòng, kèm cột huy hiệu (mục 7)</td><td>B9</td><td>Cờ bỏ qua xác thực ghi rõ trong Định danh</td></tr>
+      <tr><td>A4</td><td>Master chính + dự phòng cùng quyền, tạo bằng CLI</td><td>B10</td><td>Tin vi phạm giữ tới khi gậy hết + 30 ngày; chủ tin không xoá được</td></tr>
+      <tr><td>A5</td><td>Báo cáo về người tới staff an toàn</td><td>B11</td><td>Nhóm chỉ gỡ khỏi nhóm và gỡ huy hiệu; khôi phục tin sàn chỉ qua staff</td></tr>
+      <tr><td>A6</td><td>Máy từ chối → sửa → qua lại cổng, không giới hạn</td><td>B12</td><td>Không huy hiệu cho nhóm riêng tư và nhóm mở (N-14)</td></tr>
+      <tr><td>B1</td><td>Trần tin sống theo mức (N-18)</td><td>B13</td><td>Bảng chuyển trạng thái đầy đủ; gia hạn qua cổng (N-12)</td></tr>
+      <tr><td>B2</td><td>Mọi nội dung người mua đọc hoặc lọc đều qua máy lại (N-11)</td><td>B14</td><td>Trạng thái nhóm "đang chuyển chế độ"</td></tr>
+      <tr><td>B3</td><td>Không còn người duyệt lúc đăng; hậu kiểm không xử việc của mình (N-01)</td><td>B15</td><td>Trần tin sống đếm toàn cục; người ngoài thêm trần mỗi nhóm</td></tr>
+      <tr><td>B4</td><td>T0 lên sàn chỉ phơi bày hạn chế; T1 cần số điện thoại; băm số giữ gậy</td><td>C1</td><td>Chỉ mở hội thoại mới với tin đang hiển thị</td></tr>
+      <tr><td>B5</td><td>Khoá suy ra từ điểm gậy có hạn; gậy nghiêm trọng định nghĩa riêng</td><td>C2</td><td>Có gậy thì trần mức T1, tin mới phơi bày hạn chế</td></tr>
+      <tr><td>B6</td><td>Trần giá theo danh mục</td><td></td><td></td></tr>
+    </table>
+    <div class="side">
+      <h3 style="margin-top:0">Câu hỏi cần chốt trước khi code</h3>
+      <ol style="margin:0 0 0 16px">
+        <li><b>Giả định G1:</b> giữ sàn chung do máy duyệt, staff hậu kiểm, hay bỏ hẳn sàn chung?</li>
+        <li><b>Dải Cao bị từ chối</b> thay vì giữ cho người xem. Chấp nhận một số tin thật bị từ chối oan và phải sửa, đổi lấy việc không có hàng chờ?</li>
+        <li><b>Danh mục rủi ro cao</b> (thú cưng): tin vẫn lên bảng ở mức hạn chế trước khi staff xem trong 24 giờ. Chấp nhận, hay riêng danh mục này giữ tin tới khi staff xem?</li>
+        <li><b>Số điện thoại:</b> bắt buộc để lên T1 và lên bảng tin chính. Chấp nhận chi phí SMS?</li>
+        <li><b>Khiếu nại quá hạn 7 ngày tự thắng:</b> nghiêng về người bán. Giữ, hay đổi thành chuyển master?</li>
+        <li><b>Yêu cầu lập nhóm:</b> mở cho mọi người dùng, hay chỉ master tạo như hệ cũ?</li>
+        <li><b>Nhịp hậu kiểm bắt buộc 100%</b> ở danh mục rủi ro cao: có đủ staff không? Nếu không, hạ xuống mẫu 50%.</li>
+        <li><b>Rà soát pháp lý</b> bảng lưu trữ, xác thực số điện thoại, giữ hội thoại làm bằng chứng.</li>
+      </ol>
+      <div class="box" style="margin-top:8px"><p>Thứ tự xây gợi ý: Định danh · Nền tảng · Nhóm → Danh mục → Tin đăng + Uy tín (hàm thuần trước) → Duyệt máy, kể cả ảnh → Hậu kiểm, báo cáo, khiếu nại → Nhắn tin, Thông báo → Lưu trữ.</p></div>
+    </div>
+  </div>
+</section>

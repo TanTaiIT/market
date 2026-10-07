@@ -1,0 +1,27 @@
+<!-- ======================================================================= 6 EVENT CATALOG -->
+<section class="pg">
+  <div class="ph"><span class="num">6</span><h2>Danh mục sự kiện miền</h2><span class="ctx">Ai phát · ai nghe · để làm gì</span></div>
+  <table class="t" style="font-size:8pt">
+    <tr><th style="width:23%">Sự kiện</th><th style="width:12%">Phát bởi</th><th style="width:17%">Ai nghe</th><th>Để làm gì</th></tr>
+    <tr><td><code>ScreeningRequested</code></td><td>Tin đăng</td><td>Duyệt máy</td><td>Chấm chữ, giá, trùng lặp, tài khoản, cổng cứng ngay trong request; chờ ảnh nếu tin có ảnh</td></tr>
+    <tr><td><code>ImageScreened</code></td><td>Ảnh</td><td>Duyệt máy</td><td>Băm ảnh, so trùng xuyên tài khoản, kiểm nhạy cảm xong; máy gộp vào kết quả cuối</td></tr>
+    <tr><td><code>ScreeningDone</code></td><td>Duyệt máy</td><td>Tin đăng, Thông báo</td><td>Qua → Đang hiển thị, đầy đủ hoặc hạn chế kèm lý do; giữ → Chờ duyệt, phát <code>ReviewRequested</code></td></tr>
+    <tr><td><code>ReviewRequested</code> · <code>PostCheckRequested</code></td><td>Tin đăng</td><td>Duyệt người</td><td>Tạo việc cho người: máy giữ → hàng 0, tin sàn tới staff danh mục, tin nhóm tới điều hành; hậu kiểm → hàng 3, 5. Có việc mở rồi thì chỉ thêm lý do</td></tr>
+    <tr><td><code>DecisionRecorded</code></td><td>Duyệt người</td><td>Tin đăng, Thông báo</td><td>Áp kết quả: duyệt, từ chối, mở phơi bày, gỡ, khôi phục; ghi có điều kiện; báo người bán</td></tr>
+    <tr><td><code>ViolationConfirmed</code></td><td>Duyệt người</td><td>Uy tín &amp; an toàn</td><td>Ghi gậy: điểm, hạn, quy định, người ký</td></tr>
+    <tr><td><code>ReportFiled</code> · <code>AppealFiled</code> · <code>GroupEscalated</code></td><td>Uy tín &amp; an toàn, Nhóm</td><td>Duyệt người</td><td>Tạo việc báo cáo, khiếu nại, hoặc việc điều hành nhóm chuyển lên staff; kèm hạn xử</td></tr>
+    <tr><td><code>StrikeIssued</code> · <code>StrikeVoided</code></td><td>Uy tín &amp; an toàn</td><td>Tin đăng, Thông báo, Nhóm</td><td>Đặt hoặc gỡ lý do hạn chế <code>strike</code> trên tin; nhóm đình chỉ vai điều hành khi gậy nặng</td></tr>
+    <tr><td><code>TrustChanged</code></td><td>Uy tín &amp; an toàn</td><td>Tin đăng, Thông báo</td><td>Làm mới trần và nhịp gửi; lên T1 thì gỡ lý do <code>new_account</code></td></tr>
+    <tr><td><code>ListingClean</code> · <code>ListingSold</code></td><td>Tin đăng</td><td>Uy tín &amp; an toàn</td><td>Đếm tin sạch, tính lại mức</td></tr>
+    <tr><td><code>ListingSaved</code> · <code>ListingDeletedByOwner</code> <span class="tag t-new">MỚI</span></td><td>Tin đăng</td><td>Ảnh, Duyệt người</td><td>Gỡ nhãn chưa xác nhận cho ảnh vừa gắn · chủ xoá tin: báo cáo và việc đang mở <b>vẫn xử</b>, chỉ việc máy giữ và mẫu bị huỷ</td></tr>
+    <tr><td><code>MembershipEnded</code> · <code>GroupPolicyChanged</code> <span class="tag t-new">MỚI</span></td><td>Nhóm</td><td>Tin đăng, Duyệt người</td><td>Cờ ẩn tin chỉ-thành-viên của người rời, gỡ huy hiệu, huỷ việc máy giữ của họ trong nhóm · tính lại huy hiệu mọi tin sàn của nhóm theo đường vào từng thành viên</td></tr>
+    <tr><td><code>GroupSuspended</code> · <code>Resumed</code> · <code>Closed</code></td><td>Nhóm</td><td>Tin đăng</td><td>Đặt hoặc gỡ cờ ẩn <code>group_suspended</code>; đóng nhóm đặt <code>group_closed</code> không gỡ</td></tr>
+    <tr><td><code>GroupGoingPrivate</code> → <code>ListingsDowngraded</code></td><td>Nhóm ↔ Tin đăng</td><td>Tin đăng, rồi Nhóm</td><td>Hạ bậc "nhóm công khai" về "chỉ thành viên", gỡ huy hiệu nếu nhóm không bật; xong thì nhóm mới gạt cờ</td></tr>
+    <tr><td><code>OwnerLost</code></td><td>Nhóm</td><td>Nhóm, Thông báo</td><td>Chủ nhóm bị khoá hoặc xoá: nhóm về Chờ giao chủ, đề cử điều hành lâu nhất, báo master</td></tr>
+    <tr><td><code>CategoryDisabled</code> · <code>Enabled</code></td><td>Danh mục</td><td>Tin đăng</td><td>Đặt hoặc gỡ cờ ẩn <code>category_disabled</code></td></tr>
+    <tr><td><code>AccountLocked</code> · <code>Unlocked</code> · <code>Deleted</code> · <code>EmailVerified</code></td><td>Định danh</td><td>Tin đăng, Nhắn tin, Nhóm, Duyệt người, Uy tín</td><td>Cờ ẩn tin; ẩn hội thoại phía người bị xoá; kết thúc thành viên; báo cáo mở vẫn xử tiếp; email xác thực là dữ kiện của mức</td></tr>
+    <tr><td><code>StaffAssignmentChanged</code> · <code>DeviceMatchFound</code> <span class="tag t-new">MỚI</span></td><td>Nền tảng, Định danh</td><td>Duyệt người, Nền tảng</td><td>Nhả việc staff ở danh mục bị thu; staff trùng thiết bị với một tài khoản cá nhân thì gợi ý liên kết cho master</td></tr>
+    <tr><td><code>MessageSent</code></td><td>Nhắn tin</td><td>Thông báo</td><td>Push, trừ khi người nhận đang mở đúng hội thoại</td></tr>
+  </table>
+  <p class="legend">Mọi sự kiện ghi vào outbox trong cùng giao dịch với thay đổi gốc; bên nghe chịu được nhận trùng. Mọi sự kiện tạo việc cho người đi qua luật "mỗi tin một việc mở".</p>
+</section>

@@ -4,8 +4,9 @@
   "description": "Dựng lại PDF và hình ảnh của bộ tài liệu thiết kế trong docs/new-source",
   "type": "module",
   "scripts": {
+    "assemble": "node apply.mjs",
     "build": "npm run build:thiet-ke && npm run build:ra-soat && npm run build:cum-tinh-nang",
-    "build:thiet-ke": "node render.mjs thiet-ke-he-thong-moi.html ../pdf/THIET-KE-HE-THONG-MOI.pdf ../hinh-anh",
+    "build:thiet-ke": "node apply.mjs && node render.mjs thiet-ke-he-thong-moi.html ../pdf/THIET-KE-HE-THONG-MOI.pdf ../hinh-anh",
     "build:ra-soat": "node print.mjs ra-soat-dac-ta-nghiep-vu.html ../pdf/RA-SOAT-DAC-TA-NGHIEP-VU.pdf",
     "build:cum-tinh-nang": "node print.mjs dac-ta-cum-tinh-nang.html ../pdf/DAC-TA-CUM-TINH-NANG.pdf"
   },

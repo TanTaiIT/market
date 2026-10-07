@@ -1,0 +1,52 @@
+<!-- ======================================================================= 5 MODULES & EVENTS -->
+<section class="pg">
+  <div class="ph"><span class="num">5</span><h2>Module và sự kiện</h2><span class="ctx">Mũi tên là sự kiện qua outbox · không module nào ghi vào dữ liệu của module khác</span></div>
+  <figure class="fig" id="d4" data-name="05-module-va-su-kien" data-wrap="wide" data-src="m-d4" data-maxh="600"><div class="canvas"></div></figure>
+<script type="text/x-mermaid" id="m-d4">
+flowchart TB
+  classDef id fill:#e8f0fa,stroke:#2b6cb0,color:#1b1f24
+  classDef plat fill:#e8eef6,stroke:#1f4e79,color:#1b1f24
+  classDef grp fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef cat fill:#f0ebfa,stroke:#6b46c1,color:#1b1f24
+  classDef lst fill:#e3f3f1,stroke:#0f766e,color:#1b1f24,stroke-width:2.5px
+  classDef scr fill:#fbeee4,stroke:#c05621,color:#1b1f24,stroke-width:2px
+  classDef mod fill:#fbe9e9,stroke:#c53030,color:#1b1f24,stroke-width:2px
+  classDef trust fill:#fbf3e2,stroke:#b7791f,color:#1b1f24,stroke-width:2px
+  classDef msg fill:#eceff3,stroke:#4a5568,color:#1b1f24
+  classDef noti fill:#e2f2f5,stroke:#0e7490,color:#1b1f24
+  classDef media fill:#f1f3f5,stroke:#718096,color:#1b1f24
+  ID["Định danh"]:::id
+  GR["Nhóm"]:::grp
+  CA["Danh mục"]:::cat
+  PL["Nền tảng"]:::plat
+  LI["TIN ĐĂNG<br/><i>chủ duy nhất của trạng thái tin</i>"]:::lst
+  SC["DUYỆT MÁY<br/><i>hai lối ra: cho qua, giữ cho người</i>"]:::scr
+  MD["Ảnh"]:::media
+  MO["DUYỆT NGƯỜI<br/><i>chủ duy nhất của quyết định của người</i>"]:::mod
+  TS["UY TÍN & AN TOÀN<br/><i>chủ duy nhất của gậy</i>"]:::trust
+  ME["Nhắn tin"]:::msg
+  NO["Thông báo"]:::noti
+  ID -- "AccountLocked · Deleted" --> LI
+  GR -- "MembershipEnded · GroupPolicyChanged<br/>GroupSuspended · Closed" --> LI
+  CA -- "CategoryDisabled" --> LI
+  LI -- "ScreeningRequested" --> SC
+  SC -- "ScreeningDone" --> LI
+  LI -- "ListingSaved" --> MD
+  MD -- "ImageScreened" --> SC
+  LI -- "ReviewRequested · PostCheckRequested<br/>ListingDeletedByOwner" --> MO
+  MO -- "DecisionRecorded" --> LI
+  PL -- "StaffAssignmentChanged" --> MO
+  GR -- "GroupEscalated" --> MO
+  MO -- "ViolationConfirmed" --> TS
+  TS -- "ReportFiled · AppealFiled" --> MO
+  LI -- "ListingClean · Sold" --> TS
+  TS -- "TrustChanged · StrikeIssued" --> LI
+  ID -- "EmailVerified" --> TS
+  ID -- "DeviceMatchFound" --> PL
+  ID -- "AccountDeleted" --> ME
+  ME -- "MessageSent" --> NO
+  MO -.-> NO
+  TS -.-> NO
+</script>
+  <p class="legend">Gọi đồng bộ chỉ có ba chỗ, đều là đọc hoặc chấm nhanh: Tin đăng hỏi Uy tín về hạn chế và hạn mức; Tin đăng gọi Duyệt máy chấm chữ lúc gửi; mọi module hỏi Định danh "người này là ai". Kiểm ảnh đi qua sự kiện nhưng tin chỉ hiện sau khi có <code>ImageScreened</code> (mục 11). Duyệt người nhận việc từ hai nguồn: máy giữ trước khi tin hiện, hậu kiểm sau khi tin hiện. Nét đứt về Thông báo là đại diện cho mọi sự kiện cần báo người dùng (mục 6).</p>
+</section>

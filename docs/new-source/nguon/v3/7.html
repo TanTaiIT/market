@@ -1,0 +1,52 @@
+<!-- ======================================================================= 7 GROUP LIFECYCLE -->
+<section class="pg">
+  <div class="ph"><span class="num">7</span><h2>Nhóm · vòng đời và chế độ</h2><span class="ctx">Module Nhóm</span></div>
+  <div class="cols" style="grid-template-columns:96mm 1fr">
+    <div>
+      <h3 style="margin-top:0">Hiển thị × cách vào × huy hiệu <span class="tag t-chg">ĐỔI</span></h3>
+      <table class="t">
+        <tr><th>Hiển thị</th><th>Cách vào</th><th>Tìm thấy bằng</th><th>Huy hiệu trên tin sàn</th></tr>
+        <tr><td>Công khai</td><td>Mở</td><td>Tìm kiếm, hồ sơ</td><td class="n">Không</td></tr>
+        <tr><td>Công khai</td><td>Duyệt</td><td>Tìm kiếm, hồ sơ</td><td class="y">Có, cho thành viên vào qua duyệt hoặc lời mời</td></tr>
+        <tr><td>Riêng tư</td><td>Duyệt</td><td>Chỉ mã nhóm</td><td class="p">Chỉ khi chủ nhóm bật "hiện tên nhóm"</td></tr>
+        <tr><td>Riêng tư</td><td>Chỉ lời mời</td><td>Không tìm được</td><td class="p">Chỉ khi chủ nhóm bật "hiện tên nhóm"</td></tr>
+      </table>
+      <p class="legend" style="margin-top:0">Huy hiệu đi theo <b>đường vào của từng thành viên</b>: người vào bằng bấm tham gia không bao giờ có huy hiệu, kể cả khi nhóm đổi sang có duyệt sau đó. Nhóm riêng tư tự chọn lộ tên, nên không còn lo lộ tên ngoài ý muốn.</p>
+      <h3>Luật của nhóm</h3>
+      <ul>
+        <li><b>Đổi cách vào hoặc công tắc hiện tên</b> phát <code>GroupPolicyChanged</code>: mọi huy hiệu trên tin sàn của nhóm được tính lại ngay.</li>
+        <li><b>Đang chuyển chế độ</b> là trạng thái thật: trong lúc đó tạo tin bậc "nhóm công khai" bị từ chối với mã lỗi "thử lại".</li>
+        <li><b>Chờ giao chủ nhóm</b> cũng là nơi nhóm rơi về khi chủ nhóm bị khoá, xoá hoặc rời: đề cử điều hành viên lâu nhất, báo master xác nhận. Trong lúc chờ, đọc được, không đăng được.</li>
+        <li><b>Đã đóng</b>: chủ nhóm tự đóng. Tin trong nhóm mang cờ ẩn <code>group_closed</code>; xoá theo hạn lưu 90 ngày.</li>
+        <li>Nhận tin người ngoài: chỉ nhóm công khai bật được. Người ngoài chỉ chọn bậc "nhóm công khai", qua máy như mọi tin, trần 2 tin sống mỗi nhóm; T0 thì phơi bày hạn chế.</li>
+        <li>Tạm khoá: không đăng, không vào; tin mang cờ ẩn, mở khoá thì hiện lại đúng như cũ.</li>
+      </ul>
+    </div>
+    <figure class="fig" id="d5" data-name="07-nhom-vong-doi" data-wrap="wide" data-src="m-d5" data-maxh="600"><div class="canvas"></div></figure>
+  </div>
+<script type="text/x-mermaid" id="m-d5">
+stateDiagram-v2
+  direction TB
+  state "Chờ duyệt yêu cầu" as Requested
+  state "Chờ giao chủ nhóm" as PendingOwner
+  state "Đang hoạt động" as Active
+  state "Đang chuyển chế độ" as Switching
+  state "Tạm khoá" as Suspended
+  state "Đã đóng" as Closed
+  state "Bị từ chối" as Declined
+  [*] --> Requested : người dùng gửi yêu cầu
+  [*] --> PendingOwner : master tạo
+  Requested --> Active : master duyệt
+  Requested --> Declined : master từ chối
+  PendingOwner --> Active : giao chủ nhóm
+  Active --> PendingOwner : mất chủ nhóm
+  Active --> Switching : sang riêng tư
+  Switching --> Active : hạ bậc xong
+  Active --> Suspended : master khoá
+  Suspended --> Active : master mở
+  Active --> Closed : đóng
+  Suspended --> Closed : master đóng
+  Closed --> [*] : hết hạn lưu trữ
+  Declined --> [*]
+</script>
+</section>

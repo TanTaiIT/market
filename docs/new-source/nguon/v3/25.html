@@ -1,0 +1,35 @@
+<!-- ======================================================================= 25 OLD HOLES + QUESTIONS -->
+<section class="pg">
+  <div class="ph"><span class="num">25</span><h2>23 lỗ của đặc tả cũ được đóng ra sao · câu hỏi cần chốt</h2><span class="ctx">Đối chiếu RA-SOAT-DAC-TA-NGHIEP-VU · cập nhật theo v3</span></div>
+  <div class="cols" style="grid-template-columns:150mm 1fr">
+    <table class="t" style="font-size:8.4pt">
+      <tr><th style="width:7%">Lỗ</th><th>Cách thiết kế mới đóng</th><th style="width:7%">Lỗ</th><th>Cách thiết kế mới đóng</th></tr>
+      <tr><td>A1</td><td>Máy không ra gậy, không từ chối; không chắc thì giữ cho người, cổng cứng chỉ đếm lượt dò (N-05)</td><td>B7</td><td>Giá 0 miễn phép kiểm phân phối nhưng có luật danh mục giá trị cao (N-16)</td></tr>
+      <tr><td>A2</td><td>Nhóm đích trong yêu cầu, header chỉ để đọc (N-10)</td><td>B8</td><td>Hội thoại ẩn theo phía người xoá; giữ khi có báo cáo mở</td></tr>
+      <tr><td>A3</td><td>Bảng hiển thị × cách vào bốn dòng, huy hiệu theo đường vào thành viên (mục 7)</td><td>B9</td><td>Cờ bỏ qua xác thực ghi rõ trong Định danh</td></tr>
+      <tr><td>A4</td><td>Master chính + dự phòng cùng quyền, tạo bằng CLI</td><td>B10</td><td>Tin vi phạm giữ tới khi gậy hết + 30 ngày; một luật xoá duy nhất ở mục 10</td></tr>
+      <tr><td>A5</td><td>Báo cáo về người tới staff an toàn</td><td>B11</td><td>Nhóm chỉ gỡ khỏi nhóm và gỡ huy hiệu; khôi phục tin sàn chỉ qua staff</td></tr>
+      <tr><td>A6</td><td>Máy giữ → người duyệt trong 24 giờ; từ chối mức sai sót → sửa → qua lại cổng</td><td>B12</td><td>Không huy hiệu cho nhóm mở; nhóm riêng tư tự bật hiện tên (N-14)</td></tr>
+      <tr><td>B1</td><td>Trần tin sống theo mức, kể cả tin chờ duyệt (N-18)</td><td>B13</td><td>Bảng chuyển trạng thái đầy đủ; gia hạn qua cổng; đồng hồ dừng khi gỡ (N-12, N-27)</td></tr>
+      <tr><td>B2</td><td>Mọi nội dung người mua đọc hoặc lọc đều qua máy lại (N-11)</td><td>B14</td><td>Trạng thái nhóm "đang chuyển chế độ"</td></tr>
+      <tr><td>B3</td><td>Không ai duyệt tin đạt chuẩn; người chỉ xử phần máy giữ và hậu kiểm, không xử việc của mình (N-01)</td><td>B15</td><td>Trần tin sống đếm toàn cục; người ngoài thêm trần mỗi nhóm</td></tr>
+      <tr><td>B4</td><td>T0 ra nơi công khai chỉ hạn chế; lên T1 bằng tuổi và tin sạch; băm email giữ gậy (N-23)</td><td>C1</td><td>Chỉ mở hội thoại mới với tin đang hiển thị</td></tr>
+      <tr><td>B5</td><td>Khoá suy ra từ điểm gậy có hạn; gậy nghiêm trọng định nghĩa riêng</td><td>C2</td><td>Có gậy thì trần mức T1, tin mới hạn chế, dải Vừa thì giữ cho người</td></tr>
+      <tr><td>B6</td><td>Trần giá theo danh mục; vượt trần là giữ cho người, không từ chối</td><td></td><td></td></tr>
+    </table>
+    <div class="side">
+      <h3 style="margin-top:0">Câu hỏi cần chốt trước khi code</h3>
+      <ol style="margin:0 0 0 16px">
+        <li><b>Giả định G1:</b> giữ sàn chung do máy duyệt, staff xử phần máy giữ và hậu kiểm, hay bỏ hẳn sàn chung?</li>
+        <li><b>Hàng máy giữ hạn 24 giờ, quá hạn vẫn giữ:</b> chấp nhận tin thật đợi hơn một ngày khi thiếu người, đổi lấy không tin rủi ro nào tự lọt?</li>
+        <li><b>Danh mục rủi ro cao giữ 100% tin:</b> có đủ staff không? Phương án hạ: chỉ giữ T0–T1, còn T2–T3 hạn chế + hậu kiểm 24 giờ.</li>
+        <li><b>Con số khởi điểm:</b> T1 = 7 ngày + 1 tin sạch; đăng dồn 10/30 lượt mỗi ngày; 3 lượt dò cổng cứng trong 24 giờ. Chỉnh được trong bảng con số, nhưng cần số ban đầu.</li>
+        <li><b>Yêu cầu lập nhóm:</b> mở cho mọi người dùng, hay chỉ master tạo như hệ cũ?</li>
+        <li><b>Danh sách email dùng một lần:</b> lấy nguồn nào, ai cập nhật?</li>
+        <li><b>Rà soát pháp lý</b> băm email, dấu thiết bị, bảng lưu trữ, giữ hội thoại làm bằng chứng.</li>
+      </ol>
+      <div class="box" style="margin-top:8px"><p><b>Đã chốt ở v3, không hỏi lại:</b> máy không từ chối, không chắc thì giữ cho người · chỉ xác thực email, số điện thoại hoãn · khiếu nại quá hạn: gậy thường tự thắng, gậy nặng lên master.</p></div>
+      <div class="box"><p>Thứ tự xây gợi ý: Định danh · Nền tảng · Nhóm → Danh mục → Tin đăng + Uy tín (hàm thuần trước) → Duyệt máy, kể cả ảnh → Duyệt người: hàng máy giữ trước, rồi báo cáo, khiếu nại → Nhắn tin, Thông báo → Lưu trữ.</p></div>
+    </div>
+  </div>
+</section>

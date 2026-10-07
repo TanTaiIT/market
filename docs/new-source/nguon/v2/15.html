@@ -1,0 +1,40 @@
+<!-- ======================================================================= 15 TRUST MODEL -->
+<section class="pg">
+  <div class="ph"><span class="num">15</span><h2>Mô hình uy tín mới</h2><span class="ctx">Module Uy tín &amp; an toàn · mức tin cậy là hàm thuần của dữ kiện và phiên bản bảng con số</span></div>
+  <div class="cols" style="grid-template-columns:1fr 70mm">
+    <figure class="fig" id="d11" data-name="15-mo-hinh-uy-tin" data-wrap="wide" data-src="m-d11" data-maxh="650"><div class="canvas"></div></figure>
+    <div class="side">
+    <div class="box"><p><b>Tính lại, không cộng trừ.</b> Mỗi khi có dữ kiện mới, hàm tính chạy lại trên toàn bộ dữ kiện và ghi kết quả kèm dấu băm dữ kiện <b>và phiên bản bảng con số</b> <span class="tag t-chg">ĐỔI</span>. Master đổi điều kiện mức thì phát hành phiên bản mới; mức được tính lại theo lô kèm thông báo cho người đổi mức, không âm thầm.</p></div>
+    <div class="box"><p><b>Tin sạch</b> = tin đã hiển thị đầy đủ ít nhất 7 ngày hoặc đã bán, không bị gỡ, không có báo cáo được xử là đúng. Tối đa 3 tin sạch mỗi <b>7 ngày cuốn chiếu</b>.</p></div>
+    <div class="box"><p><b>Danh tính bám theo số điện thoại</b> <span class="tag t-new">MỚI</span>. Băm số điện thoại được lưu cùng lịch sử gậy 2 năm. Xoá tài khoản rồi đăng ký lại bằng số cũ là kế thừa gậy còn hiệu lực. Không được xoá tài khoản khi đang có gậy nặng, nghiêm trọng hoặc đang bị khoá.</p></div>
+    <div class="box"><p><b>Hai việc tách rời.</b> Mức tin cậy quyết định quyền và hạn mức. Gậy quyết định hạn chế, kể cả lên tin đang hiện. Gậy kéo trần mức về T1 cho tới khi hết hạn.</p></div>
+  </div>
+  </div>
+<script type="text/x-mermaid" id="m-d11">
+flowchart TB
+  classDef fact fill:#ffffff,stroke:#b7791f,color:#1b1f24
+  classDef fn fill:#b7791f,stroke:#b7791f,color:#ffffff
+  classDef tier fill:#fbf3e2,stroke:#b7791f,color:#1b1f24,stroke-width:1.5px
+  classDef res fill:#fdecea,stroke:#c53030,color:#1b1f24
+  F["<b>Dữ kiện, chỉ đọc</b><br/>email đã xác thực · số điện thoại đã xác thực, một số một tài khoản · băm số điện thoại và gậy kế thừa<br/>tuổi tài khoản · tin sạch, tối đa 3 mỗi 7 ngày · gậy còn hiệu lực · phiên bản bảng con số"]:::fact
+  fn["Hàm tính mức · thuần, tính lại được, ghi phiên bản"]:::fn
+  subgraph T["Thang mức tin cậy · quyết định quyền và hạn mức"]
+    direction LR
+    T0["<b>T0 Mới</b><br/>email đã xác thực<br/>sống 10 · 3 tin mỗi giờ"]:::tier --> T1["<b>T1 Đã xác minh</b><br/>+ số điện thoại<br/>sống 20 · 5 tin mỗi giờ"]:::tier
+    T1 --> T2["<b>T2 Tin cậy</b><br/>≥ 30 ngày · ≥ 5 tin sạch<br/>không gậy · sống 50"]:::tier
+    T2 --> T3["<b>T3 Uy tín</b><br/>≥ 90 ngày · ≥ 20 tin sạch<br/>90 ngày không gậy · sống 100"]:::tier
+  end
+  subgraph R["Hạn chế suy ra từ điểm gậy · áp cả lên tin đang hiện"]
+    direction LR
+    r1["<b>1 điểm</b><br/>trần mức T1<br/>tin mới: hạn chế"]:::res
+    r2["<b>2 điểm</b><br/>mọi tin đang hiện<br/>về phơi bày hạn chế"]:::res
+    r3["<b>Từ 3 điểm</b><br/>khoá đăng và gia hạn<br/>tới khi còn dưới 3"]:::res
+    r4["<b>Gậy nghiêm trọng</b><br/>khoá tài khoản, ẩn mọi tin<br/>master mở"]:::res
+    r1 ~~~ r2 ~~~ r3 ~~~ r4
+  end
+  F --> fn
+  fn --> T
+  T ~~~ R
+  fn --> R
+</script>
+</section>

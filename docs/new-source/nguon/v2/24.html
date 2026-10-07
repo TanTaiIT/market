@@ -1,0 +1,36 @@
+<!-- ======================================================================= 24 INVARIANTS -->
+<section class="pg">
+  <div class="ph"><span class="num">24</span><h2>Bất biến của hệ thống mới</h2><span class="ctx">Mỗi dòng viết được thành một ca kiểm thử phủ định · master được miễn ở N-01, N-08</span></div>
+  <div class="cols half">
+    <table class="t">
+      <tr><th style="width:12%">Mã</th><th>Bất biến</th></tr>
+      <tr><td>N-01</td><td>Không staff hay điều hành nào xử báo cáo, khiếu nại, hậu kiểm về tin hoặc gậy của chính mình, kể cả qua tài khoản cá nhân đã liên kết</td></tr>
+      <tr><td>N-02</td><td>Tài khoản staff không có thành viên nhóm và không sở hữu tin</td></tr>
+      <tr><td>N-03</td><td>Chỉ Duyệt máy ra kết quả lúc đăng; chỉ Hậu kiểm ghi quyết định sau đăng; chỉ Uy tín &amp; an toàn ghi gậy; chỉ Tin đăng đổi trạng thái tin</td></tr>
+      <tr><td>N-04</td><td>Không tin nào hiện với người khác khi chưa có kết quả máy cho cả chữ lẫn mọi ảnh</td></tr>
+      <tr><td>N-05</td><td>Máy không ra gậy, không hạ mức tin cậy; điều hành nhóm không ra gậy</td></tr>
+      <tr><td>N-06</td><td>Mức tin cậy là hàm thuần của dữ kiện và phiên bản bảng con số: tính lại hai lần ra một kết quả</td></tr>
+      <tr><td>N-07</td><td>Mọi gậy có người ký, có quy định được trích; trừ gậy nghiêm trọng, mọi gậy có ngày hết hạn đọc được</td></tr>
+      <tr><td>N-08</td><td>Mỗi gậy khiếu nại một lần; người xét khác người ký, trừ gậy của master</td></tr>
+      <tr><td>N-09</td><td>Mỗi việc hậu kiểm có hạn xử và đường quá hạn; tối đa một người đang nhận</td></tr>
+      <tr><td>N-10</td><td>Bậc phủ sóng và nhóm đích nằm trong yêu cầu; header chỉ là ngữ cảnh đọc; thiếu là từ chối</td></tr>
+      <tr><td>N-11</td><td>Đổi bất kỳ nội dung tự do nào người mua đọc hoặc lọc theo, hoặc mở rộng phủ sóng, đều qua máy lại; cờ đúng/sai thì không</td></tr>
+      <tr><td>N-12</td><td>Gia hạn, sửa sau từ chối, sửa sau gỡ sai sót đều qua lại cổng và kiểm danh mục còn dùng</td></tr>
+    </table>
+    <table class="t">
+      <tr><th style="width:12%">Mã</th><th>Bất biến</th></tr>
+      <tr><td>N-13</td><td>Cờ ẩn và mức phơi bày không ghi đè trạng thái; gỡ cờ trả đúng nguyên trạng</td></tr>
+      <tr><td>N-14</td><td>Không tồn tại tin bậc "nhóm công khai" dưới nhóm riêng tư; huy hiệu chỉ hiện cho nhóm công khai có duyệt</td></tr>
+      <tr><td>N-15</td><td>Nhóm chỉ gỡ tin khỏi nhóm và gỡ huy hiệu của mình; không gỡ được tin sàn</td></tr>
+      <tr><td>N-16</td><td>Giá 0 không bị coi là giá dị thường theo phân phối, nhưng có luật riêng ở danh mục giá trị cao</td></tr>
+      <tr><td>N-17</td><td>Mỗi kết quả chấm máy ghi phiên bản bộ luật đã dùng; luật bóng không đổi quyết định</td></tr>
+      <tr><td>N-18</td><td>Trần tin sống và nhịp gửi đếm toàn cục theo mức tin cậy; tụt mức không gỡ tin đang hiện</td></tr>
+      <tr><td>N-19</td><td>Mọi ảnh có chủ, hoặc mang nhãn chưa xác nhận và nằm trong diện dọn</td></tr>
+      <tr><td>N-20</td><td>Tác động chéo module đi qua outbox trong cùng giao dịch; bên nghe chịu được nhận trùng</td></tr>
+      <tr><td>N-21</td><td>Mọi lỗi mang mã ổn định trong một tập đóng; mọi request có mã truy vết</td></tr>
+      <tr><td>N-22</td><td>Mọi dữ liệu cá nhân có hạn lưu; nhật ký giữ vô hạn chỉ còn mã giả sau khi gậy liên quan được ẩn danh hoá</td></tr>
+      <tr><td>N-23</td><td>Tài khoản đang có gậy nặng, nghiêm trọng hoặc đang bị khoá không tự xoá được; băm số điện thoại giữ gậy còn hiệu lực qua lần đăng ký lại</td></tr>
+      <tr><td>N-24</td><td>Tài khoản staff và master luôn bật xác thực hai lớp và không quá 3 phiên</td></tr>
+    </table>
+  </div>
+</section>

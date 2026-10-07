@@ -1,0 +1,52 @@
+<!-- ======================================================================= 12 HUMAN QUEUES -->
+<section class="pg">
+  <div class="ph"><span class="num">12</span><h2>Hàng đợi của người · duyệt phần máy giữ và hậu kiểm</h2><span class="ctx">Module Duyệt người · hàng 0 là tin chưa hiện, hàng 1–5 là tin đã có kết quả máy · quá hạn chỉ chuyển cấp, không tự mở, trừ hàng mẫu</span></div>
+  <figure class="fig" id="d8" data-name="12-hang-doi-cua-nguoi" data-wrap="wide" data-src="m-d8" data-maxh="320"><div class="canvas"></div></figure>
+  <div class="cols" style="grid-template-columns:1fr 92mm; margin-top:6px">
+    <table class="t" style="font-size:8.2pt">
+      <tr><th>Hàng đợi</th><th>Người xử</th><th style="width:11%">Hạn</th><th>Quá hạn thì</th></tr>
+      <tr><td><b>0. Máy giữ</b> <span class="tag t-new">MỚI</span> · dải Cao, cổng cứng, danh mục rủi ro cao, T0 hoặc có gậy ở dải Vừa</td><td>Tin sàn: staff danh mục · tin nhóm: điều hành nhóm, hết người thì staff</td><td>24 giờ</td><td>Chuyển master; tin <b>vẫn giữ</b></td></tr>
+      <tr><td><b>1. Báo cáo</b> · tin sàn, tin nhóm, người</td><td>Staff danh mục · điều hành nhóm · staff an toàn</td><td>72 giờ</td><td>Chuyển master; cờ <code>reported_hold</code> giữ nguyên</td></tr>
+      <tr><td><b>2. Khiếu nại</b> gậy</td><td>Staff khác người ký; gậy của master thì master</td><td>7 ngày</td><td>Gậy thường: tự thắng · nặng, nghiêm trọng: chuyển master, giữ nguyên <span class="tag t-chg">ĐỔI</span></td></tr>
+      <tr><td><b>3. Phơi bày hạn chế do máy</b> · tin dải Vừa của T1</td><td>Staff danh mục</td><td>72 giờ</td><td>Chuyển master; tin <b>vẫn hạn chế</b> <span class="tag t-chg">ĐỔI</span></td></tr>
+      <tr><td><b>4. Chuyển từ nhóm</b> · điều hành thấy vi phạm quy định sàn</td><td>Staff danh mục</td><td>72 giờ</td><td>Chuyển master</td></tr>
+      <tr><td><b>5. Mẫu theo rủi ro</b> · tin đã lên bảng</td><td>Staff danh mục</td><td>7 ngày</td><td>Việc tự huỷ, tính vào số liệu "bỏ sót"; <b>hàng duy nhất được tự huỷ</b></td></tr>
+    </table>
+    <div class="side">
+      <ul style="margin-top:0">
+        <li><b>Mỗi tin một việc mở</b> <span class="tag t-new">MỚI</span>: việc mới về cùng tin gộp vào việc đang mở, thêm lý do; hạn lấy hạn sớm nhất; người xử theo hàng số nhỏ nhất. Hết cảnh hai người xử một tin ra hai kết quả.</li>
+        <li><b>Nhận việc</b>: bấm nhận, giữ 10 phút; người khác thấy "đang xử". Quá hạn nhận thì việc tự trả về.</li>
+        <li><b>Hàng của master cũng có hạn</b> <span class="tag t-chg">ĐỔI</span>: 72 giờ nhắc; quá hạn thì bảng tồn đỏ, nhắc mỗi ngày, tin vẫn giữ nguyên. Không đường tự mở nào đi vòng qua master.</li>
+        <li><b>Không xử việc về tin của mình</b>: việc về tin của tài khoản cá nhân đã liên kết, hay của người bán trùng dấu thiết bị với mình, không hiện với staff đó. Tin của master chỉ master xử.</li>
+        <li><b>Mẫu theo rủi ro</b>: 100% tin điểm 45–59 đã lên bảng, 20% tin của T0 và T1, 5% còn lại; bỏ qua tin đang có việc mở.</li>
+        <li><b>Chủ tin xoá tin</b>: việc hàng 0 và 5 huỷ; hàng 1, 2, 4 xử tiếp trên bản lưu (mục 19).</li>
+      </ul>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d8">
+flowchart TB
+  classDef q fill:#fbe9e9,stroke:#c53030,color:#1b1f24,stroke-width:1.5px
+  classDef q0 fill:#e8eef6,stroke:#1f4e79,color:#1b1f24,stroke-width:1.5px
+  classDef fb fill:#fff4e5,stroke:#b25e09,color:#1b1f24
+  classDef who fill:#ffffff,stroke:#5b6470,color:#1b1f24
+  q0["0 · Máy giữ<br/>máy không chắc, tin chưa hiện<br/>24 giờ"]:::q0
+  q1["1 · Báo cáo<br/>người dùng gửi<br/>72 giờ"]:::q
+  q2["2 · Khiếu nại gậy<br/>người bán gửi<br/>7 ngày"]:::q
+  q3["3 · Hạn chế do máy<br/>máy cho qua dải Vừa<br/>72 giờ"]:::q
+  q4["4 · Chuyển từ nhóm<br/>điều hành chuyển lên<br/>72 giờ"]:::q
+  q5["5 · Mẫu<br/>bộ lấy mẫu hằng giờ<br/>7 ngày · tự huỷ"]:::q
+  q0 -- "tin sàn" --> st["Staff danh mục"]:::who
+  q0 -- "tin nhóm" --> gm["Điều hành nhóm<br/>hết người: staff"]:::who
+  q1 -- "tin sàn" --> st
+  q1 -- "tin nhóm" --> gm
+  q1 -- "người" --> sa["Staff an toàn<br/>thiếu: master"]:::who
+  q2 --> ap["Staff khác người ký<br/>gậy của master: master"]:::who
+  q3 --> st
+  q4 --> st
+  q5 --> st
+  st -.-> M["Master · nhận việc quá hạn, tin giữ nguyên trạng<br/>72 giờ nhắc · không tự mở · khiếu nại gậy nặng quá hạn"]:::fb
+  gm -.-> M
+  sa -.-> M
+  ap -.-> M
+</script>
+</section>

@@ -1,0 +1,52 @@
+<!-- ======================================================================= 21 DATA OWNERSHIP -->
+<section class="pg">
+  <div class="ph"><span class="num">21</span><h2>Dữ liệu · module nào sở hữu bảng nào</h2><span class="ctx">Chỉ module sở hữu được ghi · liệt kê trường quyết định nghiệp vụ</span></div>
+  <div class="cmap">
+    <div class="card" style="--k:var(--c-id)"><h4>Định danh</h4>
+      <p class="ent"><b>ACCOUNT</b> <span>email, emailHash HMAC <span class="tag t-new">MỚI</span>, phone <span class="tag t-def">HOÃN</span>, platformRole user · staff · master, status, twoFactorEnabled, linkedPersonalAccountId (staff), suggestedLinkAccountId <span class="tag t-new">MỚI</span></span></p>
+      <p class="ent"><b>SESSION · DEVICE_SEEN</b> <span>jti, deviceFingerprint, expiresAt; tài khoản quyền tối đa 3 phiên · thiết bị đã thấy theo tài khoản <span class="tag t-new">MỚI</span></span></p>
+      <p class="ent"><b>VERIFICATION_CODE · DISPOSABLE_DOMAIN</b> <span>mục đích email · mật khẩu, hạn, số lần sai · miền email dùng một lần, master nuôi <span class="tag t-new">MỚI</span></span></p></div>
+    <div class="card" style="--k:var(--c-plat)"><h4>Nền tảng &amp; nhân sự</h4>
+      <p class="ent"><b>STAFF_ASSIGNMENT</b> <span>staffId, categoryId, capabilities</span></p>
+      <p class="ent"><b>STAFF_GLOBAL_GRANT</b> <span>hỗ trợ · an toàn · KYC</span></p>
+      <p class="ent"><b>CONFIG_VERSION</b> <span>bảng con số, phiên bản, người phát hành; mức tin cậy và kết quả máy đều tham chiếu</span></p></div>
+    <div class="card" style="--k:var(--c-grp)"><h4>Nhóm</h4>
+      <p class="ent"><b>GROUP</b> <span>type, visibility, joinPolicy, showNameOnListings <span class="tag t-new">MỚI</span>, acceptOutsiders, status, joinCode</span></p>
+      <p class="ent"><b>GROUP_UNIT</b> <span>đơn vị con</span></p>
+      <p class="ent"><b>MEMBERSHIP</b> <span>role owner · moderator · member, unitScope, status (có banned), joinedVia <span class="tag t-new">MỚI</span>, roleSuspendedUntil</span></p>
+      <p class="ent"><b>JOIN_REQUEST · INVITE · GROUP_REQUEST</b> <span>đơn vào, lời mời, yêu cầu lập nhóm</span></p></div>
+    <div class="card" style="--k:var(--c-cat)"><h4>Danh mục</h4>
+      <p class="ent"><b>CATEGORY</b> <span>active, riskLevel (cao = giữ mọi tin cho người <span class="tag t-chg">ĐỔI</span>), priceCeiling, referencePrice</span></p>
+      <p class="ent"><b>FIELD_DEFINITION</b> <span>key bất biến, 7 kiểu</span></p>
+      <p class="ent"><b>TEMPLATE_VERSION</b> <span>categoryId, version, draft · published</span></p>
+      <p class="ent"><b>LOCATION</b> <span>tỉnh, phường — hằng số trong bộ nhớ</span></p></div>
+    <div class="card" style="--k:var(--c-lst)"><h4>Tin đăng</h4>
+      <p class="ent"><b>LISTING</b> <span>sellerId, groupId, reach, showBadge, status (có pendingReview <span class="tag t-chg">ĐỔI</span>), exposure full · limited, exposureReasons[] machine · new_account · strike <span class="tag t-new">MỚI</span>, suppressions, reportedHoldUsed <span class="tag t-new">MỚI</span>, price, provinceCode, wardCode, templateVersion, expiresAt, displayPausedAt <span class="tag t-new">MỚI</span>, rankAt, featuredUntil, idempotencyKey, contentHash</span></p>
+      <p class="ent"><b>FAVORITE</b> <span>người lưu, tin</span></p></div>
+    <div class="card" style="--k:var(--c-media)"><h4>Ảnh</h4>
+      <p class="ent"><b>MEDIA_ASSET</b> <span>ownerType, ownerId, state unconfirmed · attached, pHash, screenState pending · ok · flagged</span></p>
+      <p class="ent"><b>IMAGE_WHITELIST</b> <span>pHash ảnh mẫu của hãng, do staff nuôi</span></p></div>
+    <div class="card" style="--k:var(--c-scr)"><h4>Duyệt máy</h4>
+      <p class="ent"><b>RULESET_VERSION</b> <span>luật, trọng số, chế độ bật · bóng · tắt, ghi đè theo danh mục, cờ "giải thích được" theo luật <span class="tag t-new">MỚI</span></span></p>
+      <p class="ent"><b>BANNED_PHRASE</b> <span>cụm, mức chắc · mơ hồ, ngoại lệ, trạng thái bóng</span></p>
+      <p class="ent"><b>SCREENING_RESULT</b> <span>listingId, rulesetVersion, score, band, hits, verdict pass · limited · hold <span class="tag t-chg">ĐỔI</span></span></p></div>
+    <div class="card" style="--k:var(--c-mod)"><h4>Duyệt người</h4>
+      <p class="ent"><b>REVIEW_TASK</b> <span>kind hold · report · appeal · limited · groupEscalation · sample <span class="tag t-chg">ĐỔI</span>, reasons[] <span class="tag t-new">MỚI</span>, dueAt, claimedBy, claimUntil, status, escalatedAt; ràng buộc duy nhất một việc mở mỗi tin <span class="tag t-new">MỚI</span></span></p>
+      <p class="ent"><b>DECISION</b> <span>actorId, action approve · keep · rejectQuality · rejectViolation · removeQuality · removeViolation · removeFromGroup · restore <span class="tag t-chg">ĐỔI</span>, ruleRef, reason, machineVerdictBefore, consequence</span></p></div>
+    <div class="card" style="--k:var(--c-trust)"><h4>Uy tín &amp; an toàn</h4>
+      <p class="ent"><b>TRUST_STATE</b> <span>tier, activePoints, cleanListings, cooldownUntil, factsHash, configVersion</span></p>
+      <p class="ent"><b>STRIKE</b> <span>kind, points, expiresAt (rỗng với nghiêm trọng), voidedAt, decisionId, emailHash <span class="tag t-chg">ĐỔI</span>, inheritedFrom <span class="tag t-new">MỚI</span></span></p>
+      <p class="ent"><b>APPEAL · REPORT · REPORTER_SCORE · PROBE</b> <span>khiếu nại, báo cáo (giữ bản lưu đối tượng <span class="tag t-new">MỚI</span>), điểm tin cậy người báo, lượt dò luật</span></p></div>
+    <div class="card" style="--k:var(--c-msg)"><h4>Nhắn tin</h4>
+      <p class="ent"><b>CONVERSATION</b> <span>listingId, buyerId, sellerId, hiddenFor, evidenceHoldUntil</span></p>
+      <p class="ent"><b>MESSAGE · BLOCK</b> <span>tin nhắn; người chặn, người bị chặn</span></p></div>
+    <div class="card" style="--k:var(--c-noti)"><h4>Thông báo</h4>
+      <p class="ent"><b>NOTIFICATION</b> <span>nhóm, readAt</span></p>
+      <p class="ent"><b>PUSH_DEVICE · PUSH_PREFERENCE · PUSH_TICKET</b> <span>thiết bị, tuỳ chọn, biên nhận</span></p></div>
+    <div class="card" style="--k:var(--c-ops)"><h4>Hạ tầng &amp; vận hành</h4>
+      <p class="ent"><b>OUTBOX_EVENT</b> <span>type, payload, publishedAt</span></p>
+      <p class="ent"><b>AUDIT_LOG</b> <span>actorRef, action, targetRef; tham chiếu bằng mã, ẩn danh hoá cùng lúc với gậy</span></p>
+      <p class="ent"><b>JOB_RUN</b> <span>việc, kết quả làm hết · một phần</span></p></div>
+  </div>
+  <p class="legend">Hoãn, chỉ giữ chỗ: <span class="tag t-def">WALLET · LEDGER</span> <span class="tag t-def">LISTING_PRODUCT</span> <span class="tag t-def">SELLER_REVIEW</span> <span class="tag t-def">IMAGE_TEXT</span> <span class="tag t-def">phone · phoneHash trong ACCOUNT, STRIKE</span>. Module khác cần dữ liệu thì đọc qua API của chủ hoặc giữ bản chiếu riêng cập nhật bằng sự kiện.</p>
+</section>

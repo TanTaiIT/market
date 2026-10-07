@@ -1,0 +1,65 @@
+<!-- ======================================================================= 3 ROLES -->
+<section class="pg">
+  <div class="ph"><span class="num">3</span><h2>Vai trò và quyền · một trục</h2><span class="ctx">Tầng nền tảng gắn trên tài khoản · tầng nhóm gắn trên thành viên</span></div>
+  <figure class="fig" id="d3" data-name="03-vai-tro-va-quyen" data-src="m-d3" data-maxh="400"><div class="canvas"></div></figure>
+  <div class="cols three" style="grid-template-columns:1fr 1fr 1fr 1fr; gap:5mm; margin-top:6px">
+    <div>
+      <h3 style="margin-top:0">Master <span class="tag t-chg">ĐỔI</span></h3>
+      <ul>
+        <li>Toàn quyền trên mọi module, kể cả đăng tin, vào nhóm, gỡ, gậy, ân xá, khoá.</li>
+        <li>Quyết định của master là cuối cùng; không có khiếu nại lên ai khác.</li>
+        <li>Mọi thao tác vào nhật ký để tra cứu, không để duyệt.</li>
+        <li>Một tài khoản chính, một dự phòng cùng quyền, cả hai tạo bằng CLI; bắt buộc xác thực hai lớp.</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Staff theo danh mục</h3>
+      <ul>
+        <li>Hậu kiểm tin sàn trong danh mục: kiểm mẫu, gỡ, khôi phục</li>
+        <li>Xử báo cáo về tin trong danh mục</li>
+        <li>Xử khiếu nại gậy do staff khác ký</li>
+        <li>Soạn template; master phát hành</li>
+        <li>Xem số liệu và tồn hàng chờ của danh mục</li>
+        <li>Quyền toàn cục master giao thêm: hỗ trợ, an toàn, KYC</li>
+      </ul>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Điều hành nhóm</h3>
+      <ul>
+        <li>Không duyệt tin trước khi đăng; máy làm</li>
+        <li>Gỡ tin khỏi nhóm của mình, gỡ huy hiệu nhóm</li>
+        <li>Xử báo cáo về tin trong nhóm</li>
+        <li>Duyệt đơn vào, mời, gỡ, cấm thành viên</li>
+        <li>Không ra gậy; vi phạm quy định sàn thì chuyển staff</li>
+      </ul>
+    </div>
+    <div class="box" style="margin-top:0"><p><b>Staff là tài khoản công việc</b>, không đăng tin, không vào nhóm. Lý do không còn là "tránh tự duyệt", vì máy duyệt lúc đăng; lý do còn lại là hậu kiểm, báo cáo và khiếu nại không được chạm vào tin của chính người xử. Staff muốn bán đồ thì dùng tài khoản cá nhân, và hai tài khoản được liên kết để hệ thống loại việc liên quan khỏi hàng đợi của họ. Master không chịu ràng buộc này.</p></div>
+  </div>
+<script type="text/x-mermaid" id="m-d3">
+flowchart LR
+  classDef plat fill:#e8eef6,stroke:#1f4e79,color:#1b1f24
+  classDef grp fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef usr fill:#ffffff,stroke:#5b6470,color:#1b1f24,stroke-width:1.5px
+  classDef top fill:#1f4e79,stroke:#1f4e79,color:#ffffff
+  subgraph P["Tầng nền tảng · quyền trên TÀI KHOẢN"]
+    M["Master<br/>toàn quyền, quyết định cuối<br/>1 chính + 1 dự phòng"]:::top
+    S["Staff<br/>tài khoản công việc<br/>không đăng, không vào nhóm"]:::plat
+    SA["Phân công<br/>staff × danh mục"]:::plat
+  end
+  U["Người dùng<br/>tự đăng ký"]:::usr
+  subgraph G["Tầng nhóm · quyền trên THÀNH VIÊN"]
+    O["Chủ nhóm<br/>đúng 1, chuyển nhượng được"]:::grp
+    MOD["Điều hành viên<br/>phạm vi: cả nhóm<br/>hoặc một đơn vị con"]:::grp
+    MEM["Thành viên"]:::grp
+    ALU["Đã rời, bị gỡ<br/>bị cấm, cựu thành viên"]:::grp
+  end
+  M -- "tạo, khoá" --> S
+  M -- "gán, thu" --> SA
+  SA -. "của" .-> S
+  M -- "tạo nhóm, giao" --> O
+  U -- "tham gia" --> MEM
+  U -. "có thể giữ vai" .-> O
+  O -- "bổ nhiệm, miễn" --> MOD
+  MEM -- "rời, bị gỡ, bị cấm" --> ALU
+</script>
+</section>

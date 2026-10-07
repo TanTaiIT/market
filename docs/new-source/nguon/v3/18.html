@@ -1,0 +1,42 @@
+<!-- ======================================================================= 18 HUMAN DECISION -->
+<section class="pg">
+  <div class="ph"><span class="num">18</span><h2>Người duyệt · một quyết định từ đầu tới cuối</h2><span class="ctx">Module Duyệt người · một màn hình cho cả việc máy giữ lẫn việc hậu kiểm; khác nhau ở chỗ tin đã hiện hay chưa</span></div>
+  <div class="cols" style="grid-template-columns:1fr 82mm">
+    <figure class="fig" id="d13" data-name="18-nguoi-duyet" data-wrap="wide" data-src="m-d13" data-maxh="615"><div class="canvas"></div></figure>
+    <div class="side">
+      <h3 style="margin-top:0">Năm kết quả</h3>
+      <table class="t">
+        <tr><th>Kết quả</th><th>Hệ quả</th></tr>
+        <tr><td>Đạt <span class="tag t-chg">ĐỔI</span></td><td>Máy giữ: tin sang Đang hiển thị, phơi bày theo ma trận trừ lý do giữ. Hậu kiểm: giữ tin, gỡ lý do <code>machine</code>. Ghi "máy đúng" hay "máy quá tay"</td></tr>
+        <tr><td>Từ chối · gỡ, sai sót</td><td>Bị từ chối hoặc Bị gỡ với lý do mẫu; chủ tin sửa rồi qua lại cổng; không đụng uy tín</td></tr>
+        <tr><td>Từ chối · gỡ, vi phạm</td><td>+ gậy có trích quy định; chỉ staff, master</td></tr>
+        <tr><td>Gỡ khỏi nhóm</td><td>Chỉ với tin nhóm, do điều hành; tin mất nhóm đích, không gậy; trái quy định sàn thì chuyển hàng 4</td></tr>
+        <tr><td>Khôi phục</td><td>Tin đã gỡ trở lại Đang hiển thị; đồng hồ hiển thị chạy tiếp từ chỗ dừng</td></tr>
+      </table>
+      <ul>
+        <li>Mọi lượt ghi là <b>ghi có điều kiện</b> theo trạng thái lúc mở việc; tin đã đổi thì trả 409 và người xử tải lại.</li>
+        <li>Nhật ký mỗi quyết định: ai, việc nào, hành động, mức độ, quy định, lý do, kết quả máy trước đó, và <b>hệ quả thật</b> (gậy nào, mức sau đó).</li>
+        <li>Người xử thấy: tin, điểm và luật máy đã trúng, lịch sử gậy và tin sạch của người bán, báo cáo liên quan, tin cùng ảnh của tài khoản khác, tài khoản trùng thiết bị.</li>
+        <li>Quá 10 phút chưa quyết thì việc tự trả về hàng đợi. Tin của master không hiện với staff.</li>
+      </ul>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d13">
+flowchart TB
+  classDef ok fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef warn fill:#fff4e5,stroke:#b25e09,color:#1b1f24
+  classDef bad fill:#fdecea,stroke:#c53030,color:#1b1f24
+  classDef dec fill:#fffbea,stroke:#b7791f,color:#1b1f24
+  cl["Nhận việc, giữ 10 phút<br/>xem tin, điểm và luật máy trúng<br/>lịch sử người bán, báo cáo, thiết bị trùng"] --> dec["Quyết định?"]:::dec
+  dec -- "đạt" --> keep["Máy giữ: Đang hiển thị<br/>Hậu kiểm: giữ, gỡ hạn chế do máy<br/>ghi máy đúng hoặc máy quá tay"]:::ok
+  dec -- "sai sót" --> q1["Từ chối hoặc gỡ, lý do mẫu<br/>sửa rồi qua lại cổng<br/>không đụng uy tín"]:::warn
+  dec -- "vi phạm" --> who["Người xử là?"]:::dec
+  who -- "staff, master" --> strike["Từ chối hoặc gỡ + gậy<br/>trích quy định"]:::bad
+  who -- "điều hành nhóm" --> local["Từ chối hoặc gỡ khỏi nhóm<br/>không gậy"]:::warn
+  local --> esc["Trái quy định sàn?"]:::dec
+  esc -- "có" --> eq["Hàng 4: staff danh mục<br/>hạn 72 giờ"]
+  esc -- "chỉ nội quy nhóm" --> gb["Tuỳ chọn<br/>cấm khỏi nhóm"]
+  eq -- "xác nhận" --> strike2["Gậy<br/>do staff ký"]:::bad
+  eq -- "bác" --> none["Không thêm gì<br/>tin vẫn ngoài nhóm"]
+</script>
+</section>

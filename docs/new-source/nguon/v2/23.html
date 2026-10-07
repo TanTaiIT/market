@@ -1,0 +1,57 @@
+<!-- ======================================================================= 23 JOBS + RETENTION -->
+<section class="pg">
+  <div class="ph"><span class="num">23</span><h2>Công việc nền và vòng đời dữ liệu</h2><span class="ctx">Vận hành · Ảnh &amp; dữ liệu</span></div>
+  <div class="cols half" style="grid-template-columns:124mm 1fr">
+    <div>
+      <figure class="fig" id="d17" data-name="23-cong-viec-nen" data-wrap="wide" data-src="m-d17" data-maxh="250"><div class="canvas"></div><figcaption>Việc chạy theo sự kiện: chạy ngay khi outbox có dòng mới</figcaption></figure>
+      <h3 style="margin-top:4px">Việc chạy theo lịch</h3>
+      <table class="t" style="font-size:8.2pt">
+        <tr><th>Việc</th><th style="width:22%">Nhịp</th></tr>
+        <tr><td>Thu hồi việc hậu kiểm quá hạn nhận; chuyển cấp việc quá hạn xử</td><td>1 phút</td></tr>
+        <tr><td>Kiểm lại tin Đang kiểm quá 5 phút, tin đang hiện thiếu kết quả ảnh</td><td>5 phút</td></tr>
+        <tr><td>Lấy mẫu hậu kiểm theo rủi ro</td><td>1 giờ</td></tr>
+        <tr><td>Gỡ cờ <code>reported_hold</code> quá 24 giờ; mở phơi bày hạn chế quá 72 giờ</td><td>1 giờ</td></tr>
+        <tr><td>Hạ tin quá 30 ngày sang Hết hạn</td><td>1 giờ</td></tr>
+        <tr><td>Nhắc tin sắp hết hạn</td><td>9 giờ sáng</td></tr>
+        <tr><td>Phát dữ kiện tin sạch, gậy hết hạn → tính lại mức</td><td>Hằng ngày</td></tr>
+        <tr><td>Dọn nháp, ảnh chưa xác nhận, tài khoản chưa xác thực</td><td>6 giờ</td></tr>
+        <tr><td>Dọn theo hạn lưu trữ; ẩn danh hoá gậy và nhật ký liên quan</td><td>Hằng ngày</td></tr>
+        <tr><td>Đối chiếu toàn kho ảnh, lưới an toàn</td><td>Hằng tháng</td></tr>
+      </table>
+      <div class="box"><p><b>Ba luật cho mọi công việc nền:</b> giới hạn chạy song song đặt theo từng việc; kết quả nói rõ làm hết hay làm một phần; khoá giữ trùm cả lượt chạy.</p></div>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Vòng đời dữ liệu <span class="tag t-chg">ĐỔI</span></h3>
+      <table class="t" style="font-size:8.2pt">
+        <tr><th>Dữ liệu</th><th>Giữ</th><th>Rồi sao</th></tr>
+        <tr><td>Nháp</td><td>7 ngày từ lần sửa cuối</td><td>Xoá cứng kèm ảnh</td></tr>
+        <tr><td>Ảnh chưa xác nhận</td><td>48 giờ</td><td>Xoá</td></tr>
+        <tr><td>Tin máy từ chối</td><td>30 ngày từ lần sửa cuối</td><td>Xoá cứng kèm ảnh</td></tr>
+        <tr><td>Tin bị gỡ mức sai sót; tin nhóm gỡ</td><td>90 ngày</td><td>Xoá cứng kèm ảnh</td></tr>
+        <tr><td>Tin bị gỡ vì vi phạm</td><td>Tới khi gậy hết hạn + 30 ngày; gậy nghiêm trọng: 2 năm</td><td>Xoá nội dung, giữ quyết định</td></tr>
+        <tr><td>Tin chủ xoá</td><td>30 ngày; có gậy hoặc báo cáo mở thì theo dòng trên</td><td>Xoá cứng</td></tr>
+        <tr><td>Tin đã bán</td><td>180 ngày</td><td>Xoá cứng kèm ảnh</td></tr>
+        <tr><td>Tin hết hạn</td><td>1 năm, nhắc trước 7 ngày</td><td>Xoá cứng kèm ảnh</td></tr>
+        <tr><td>Tài khoản chưa xác thực</td><td>7 ngày</td><td>Xoá cứng</td></tr>
+        <tr><td>Tài khoản đã xoá</td><td>Ẩn ngay, giữ 90 ngày; băm số điện thoại giữ 2 năm cùng gậy</td><td>Xoá tin, ảnh, hồ sơ</td></tr>
+        <tr><td>Hội thoại</td><td>Phía người xoá ẩn ngay; có báo cáo mở thì giữ tới khi đóng</td><td>Xoá khi cả hai đã xoá hoặc 1 năm im</td></tr>
+        <tr><td>Thông báo</td><td>90 ngày</td><td>Xoá</td></tr>
+        <tr><td>Nhật ký chấm máy</td><td>180 ngày</td><td>Gộp thành số liệu</td></tr>
+        <tr><td>Gậy</td><td>2 năm sau khi hết hạn hoặc sau khi khoá</td><td>Ẩn danh hoá, kể cả dòng nhật ký tham chiếu</td></tr>
+        <tr><td>Quyết định, nhật ký kiểm toán</td><td>Vô hạn</td><td>Chỉ còn mã giả sau khi ẩn danh hoá; không chứa nội dung tin</td></tr>
+      </table>
+      <p class="legend">Ảnh mang nhãn "chưa xác nhận" từ lúc tải lên và chỉ được gỡ nhãn khi thực thể chủ lưu thành công, nên dọn ảnh không cần đọc cơ sở dữ liệu. Toàn bộ bảng này cần luật sư đối chiếu với quy định bảo vệ dữ liệu cá nhân và nền tảng trực tuyến trước khi chốt.</p>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d17">
+flowchart LR
+  classDef ev fill:#e2f2f5,stroke:#0e7490,color:#1b1f24
+  classDef src fill:#1f4e79,stroke:#1f4e79,color:#ffffff
+  tx["Giao dịch ghi dữ liệu<br/>+ dòng outbox"]:::src --> relay["Bộ chuyển phát<br/>outbox"]:::src
+  relay --> w1["Kiểm ảnh · xác nhận ảnh"]:::ev
+  relay --> w2["Thông báo, push"]:::ev
+  relay --> w4["Áp, gỡ cờ ẩn và hạn chế"]:::ev
+  relay --> w5["Tính lại mức tin cậy"]:::ev
+  relay --> w6["Tạo việc hậu kiểm"]:::ev
+</script>
+</section>

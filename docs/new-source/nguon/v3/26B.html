@@ -1,0 +1,26 @@
+<!-- ======================================================================= 26B REVIEW RESPONSE 2 -->
+<section class="pg">
+  <div class="ph"><span class="num">26</span><h2>Phản hồi 30 mục rà soát bản v1 · phần 2</h2><span class="ctx">Mục 16–30 · ba việc rà soát xếp ưu tiên đều đã vào thiết kế</span></div>
+  <table class="t" style="font-size:8.3pt">
+    <tr><th style="width:4%">#</th><th style="width:30%">Mục rà soát</th><th style="width:11%">Kết luận</th><th>Xử lý</th></tr>
+    <tr><td>16</td><td>Không có thời hạn xử tin chờ, báo cáo, khiếu nại; tạm ẩn vô thời hạn</td><td class="y">Đóng</td><td>Tin máy giữ có hạn 24 giờ, quá hạn chuyển master và vẫn giữ; năm hàng hậu kiểm đều có hạn; <code>reported_hold</code> giữ tới khi có người xử, đỏ trên bảng tồn (mục 12, 19, N-09) <span class="tag t-chg">v3</span></td></tr>
+    <tr><td>17</td><td>Gậy nghiêm trọng bỏ ngỏ</td><td class="y">Đóng</td><td>Khoá vô thời hạn, master mở; dữ liệu giữ 2 năm; khiếu nại 30 ngày qua kênh không cần đăng nhập (mục 16, 17)</td></tr>
+    <tr><td>18</td><td>Thiếu hạn lưu cho tin đã bán, gỡ sai sót, nhóm gỡ</td><td class="y">Đóng</td><td>Thêm ba dòng vào bảng lưu trữ (mục 23)</td></tr>
+    <tr><td>19</td><td>Hệ quả với tin đang hiển thị khi bị phạt hoặc tụt mức</td><td class="y">Đóng</td><td>2 điểm: tin đang hiện về hạn chế với lý do <code>strike</code>; nghiêm trọng: ẩn hết. Tụt mức không gỡ tin, chỉ chặn đăng mới và gia hạn (mục 10, 15, N-18)</td></tr>
+    <tr><td>20</td><td>Khiếu nại gậy do master ra; gậy về người đi cho ai</td><td class="p">Theo nguyên tắc</td><td>Gậy của master: master tự xem lại, quyết định cuối. Gậy về người: master (mục 17)</td></tr>
+    <tr><td>21</td><td>Nhóm mất chủ; nhóm đã đóng</td><td class="y">Đóng</td><td>Sự kiện <code>OwnerLost</code> đưa nhóm về Chờ giao chủ, đề cử điều hành lâu nhất; đóng nhóm đặt cờ <code>group_closed</code>, chủ nhóm tự đóng được (mục 7)</td></tr>
+    <tr><td>22</td><td>Người ngoài gửi tin vào nhóm: bậc nào, tìm nhóm kín cách nào</td><td class="y">Đóng</td><td>Chỉ nhóm công khai nhận; chỉ bậc "nhóm công khai"; máy duyệt như mọi tin, máy giữ thì điều hành nhóm xử (mục 7)</td></tr>
+    <tr><td>23</td><td>Tài khoản quyền cao chưa được bảo vệ; chưa có đổi số điện thoại</td><td class="y">Đóng</td><td>Hai lớp TOTP bắt buộc, tối đa 3 phiên cho staff và master (mục 1, 21, N-24); đổi số điện thoại hoãn cùng số điện thoại <span class="tag t-chg">v3</span></td></tr>
+    <tr><td>24</td><td>Người duyệt đang có gậy vẫn được duyệt</td><td class="y">Đóng</td><td>Điều hành, chủ nhóm có gậy nặng thì tạm mất vai (mục 8, 16). Staff không có tin nên không có gậy; tài khoản cá nhân liên kết nhận gậy nặng thì staff bị đình chỉ <span class="tag t-chg">v3</span></td></tr>
+    <tr><td>25</td><td>Không có chế tài cho báo cáo sai</td><td class="y">Đóng</td><td>Điểm tin cậy báo cáo; dưới −3 không tính vào tạm ẩn, dưới −6 mất quyền 30 ngày (mục 19)</td></tr>
+    <tr><td>26</td><td>Quyền master không bị kiểm soát</td><td class="n">Không áp dụng</td><td>Nguyên tắc chốt: master toàn quyền, không có cơ chế kiểm soát. Nhật ký vẫn ghi để tra cứu</td></tr>
+    <tr><td>27</td><td>Khối lượng việc cho người duyệt vượt sức</td><td class="y">Đóng</td><td>Máy quyết phần đạt chuẩn; người chỉ nhận phần máy giữ và hậu kiểm. Bảng tồn theo hàng, cảnh báo master khi 50% việc chạm hạn (mục 12) <span class="tag t-chg">v3</span></td></tr>
+    <tr><td>28</td><td>Hậu kiểm ngẫu nhiên đều chưa hiệu quả</td><td class="y">Đóng</td><td>Lấy mẫu theo rủi ro: 100% điểm 45–59, 20% T0 và T1, 5% còn lại; bỏ tin đang có việc (mục 12)</td></tr>
+    <tr><td>29</td><td>Tính lại không nhất quán khi đổi con số; "tuần" chưa định nghĩa</td><td class="y">Đóng</td><td>Mức tin cậy ghi phiên bản bảng con số; đổi con số là phát hành phiên bản và tính lại theo lô có thông báo; tuần = 7 ngày cuốn chiếu (mục 15, N-06)</td></tr>
+    <tr><td>30</td><td>Cần rà soát pháp lý</td><td class="p">Ghi rõ</td><td>Câu hỏi chốt số 7; bảng lưu trữ, băm email, dấu thiết bị và kênh giữ hội thoại ghi chú cần luật sư đối chiếu (mục 23, 25)</td></tr>
+  </table>
+  <div class="cols half" style="margin-top:4px">
+    <div class="box"><p><b>Số liệu rà soát</b>: 30 mục. Đóng bằng thiết kế 23 · đổi cách, hoãn theo hoặc ghi rõ giới hạn 5 · không áp dụng vì nguyên tắc chốt 2 (mục 1 và 26, đều về master). Mục 11 từ "đóng" sang "hoãn theo" vì số điện thoại hoãn ở v3.</p></div>
+    <div class="box"><p><b>Lưu ý về số mục</b>: bản rà soát trích "phần 4, cam kết 11, ví dụ chị Lan" theo một bản diễn giải khác, không trùng số mục của tài liệu này. Bảng trên đối chiếu theo nội dung, cột "Xử lý" ghi số mục hiện hành; dòng đánh dấu <span class="tag t-chg">v3</span> là dòng bản v3 viết lại.</p></div>
+  </div>
+</section>

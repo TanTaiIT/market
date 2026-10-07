@@ -1,0 +1,34 @@
+<!-- ======================================================================= 17 STRIKE + APPEAL FLOW -->
+<section class="pg">
+  <div class="ph"><span class="num">17</span><h2>Gậy và khiếu nại</h2><span class="ctx">Uy tín &amp; an toàn ghi gậy · Duyệt người xét khiếu nại · master là cấp cuối</span></div>
+  <figure class="fig" id="d12" data-name="17-gay-va-khieu-nai" data-src="m-d12" data-maxh="430"><div class="canvas"></div></figure>
+  <div class="cols half" style="margin-top:6px">
+    <ul>
+      <li>Mỗi gậy khiếu nại được <b>một lần</b>: 14 ngày trong app; gậy nghiêm trọng thì 30 ngày qua kênh hỗ trợ công khai, xác thực bằng email đã đăng ký <span class="tag t-chg">ĐỔI</span>.</li>
+      <li>Người xét là staff <b>khác</b> người đã ký; danh mục chỉ có một staff hoặc gậy từ báo cáo về người thì lên master. Gậy do master ký: master tự xem lại, quyết định là cuối cùng.</li>
+      <li>Hạn xét 7 ngày. Quá hạn: <b>gậy thường tự thắng</b>, gậy huỷ, tin trở lại, mức tính lại; <b>gậy nặng và nghiêm trọng chuyển master, giữ nguyên</b> <span class="tag t-chg">ĐỔI</span>. Gậy nặng là hàng giả, quấy rối, lừa đảo chưa thành; để nó tự rơi vì thiếu người là mở cửa cho đúng người cần chặn.</li>
+      <li>Khiếu nại thắng: gậy bị huỷ (không xoá, giữ dấu vết), tin trở lại Đang hiển thị, lý do hạn chế <code>strike</code> được gỡ, mức tính lại ngay.</li>
+      <li>Ân xá của master: huỷ một hoặc nhiều gậy kèm lý do, ghi nhật ký. Cùng một đường với khiếu nại thắng.</li>
+    </ul>
+    <div class="box" style="margin-top:0"><p>Hệ cũ có "khoá 3 lần cần người gỡ tay" và "5 bài sạch để lên bậc" chạy song song mà không nối nhau. Ở đây khoá suy ra từ điểm gậy, điểm có ngày hết hạn, nên khoá tự mở đúng ngày và người bán đọc được ngày đó. Gậy nghiêm trọng là ngoại lệ duy nhất không có ngày hết hạn, và người bị khoá vẫn có một kênh khiếu nại không cần đăng nhập.</p></div>
+  </div>
+<script type="text/x-mermaid" id="m-d12">
+flowchart LR
+  classDef src fill:#fbe9e9,stroke:#c53030,color:#1b1f24
+  classDef ts fill:#fbf3e2,stroke:#b7791f,color:#1b1f24
+  classDef ok fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef dec fill:#fffbea,stroke:#b7791f,color:#1b1f24
+  classDef top fill:#1f4e79,stroke:#1f4e79,color:#ffffff
+  src["<b>Staff hoặc master</b><br/>từ chối, gỡ mức vi phạm<br/>xử báo cáo đúng"]:::src --> st
+  st["Ghi gậy: loại, điểm, hạn<br/>quy định, người ký<br/>tính lại mức, áp hạn chế<br/>báo người bán"]:::ts --> ap["Khiếu nại?<br/>14 ngày, nghiêm trọng 30"]:::dec
+  ap -- "gậy của staff" --> qa["Staff khác người ký<br/>hạn 7 ngày"]
+  ap -- "gậy của master<br/>hoặc về người" --> qm["Master xem lại<br/>quyết định cuối"]:::top
+  qa -- "huỷ · gậy thường quá hạn" --> void["Huỷ gậy<br/>tin trở lại, gỡ hạn chế<br/>tính lại mức"]:::ok
+  qa -- "giữ nguyên" --> run["Gậy chạy tới hạn<br/>90 hoặc 180 ngày<br/>rồi tự rơi khỏi điểm"]:::ts
+  qa -. "gậy nặng quá hạn<br/>giữ nguyên" .-> qm
+  qm -- "huỷ" --> void
+  qm -- "giữ" --> run
+  ap -- "không" --> run
+  am["Master ân xá<br/>kèm lý do"]:::top -.-> void
+</script>
+</section>

@@ -1,0 +1,50 @@
+<!-- ======================================================================= 8 JOIN -->
+<section class="pg">
+  <div class="ph"><span class="num">8</span><h2>Nhóm · đường vào và thành viên</h2><span class="ctx">Module Nhóm</span></div>
+  <figure class="fig" id="d5b" data-name="08-nhom-duong-vao" data-src="m-d5b" data-maxh="350"><div class="canvas"></div></figure>
+  <div class="cols three" style="margin-top:6px">
+    <div>
+      <h3 style="margin-top:0">Trạng thái và đường vào của thành viên</h3>
+      <table class="t">
+        <tr><th>Trường</th><th>Giá trị</th></tr>
+        <tr><td>Trạng thái</td><td>Đang hoạt động · đã rời · bị gỡ · bị cấm <span class="tag t-new">MỚI</span> · cựu thành viên</td></tr>
+        <tr><td>Đường vào <span class="tag t-new">MỚI</span></td><td>Bấm tham gia · được duyệt · lời mời · danh sách lớp · master giao. Quyết định huy hiệu và không đổi về sau</td></tr>
+        <tr><td>Vai</td><td>Chủ nhóm · điều hành viên (phạm vi) · thành viên</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Con số</h3>
+      <table class="t">
+        <tr><td>Đơn tự hết hiệu lực</td><td>21 ngày</td></tr>
+        <tr><td>Bị từ chối, chờ gửi lại</td><td>7 ngày</td></tr>
+        <tr><td>Đơn đang chờ mỗi người</td><td>3</td></tr>
+        <tr><td>Hiệu lực lời mời</td><td>14 ngày</td></tr>
+        <tr><td>Mã nhóm</td><td>6 ký tự, xoay được</td></tr>
+        <tr><td>Giữ vai điều hành, chủ nhóm</td><td>Mức T1 trở lên, không có gậy nặng còn hiệu lực</td></tr>
+      </table>
+    </div>
+    <div>
+      <div class="box" style="margin-top:0"><p>Rời, bị gỡ, bị cấm đều phát <code>MembershipEnded</code>: tin chỉ-thành-viên của người đó trong nhóm mang cờ ẩn; tin sàn của họ mất huy hiệu nhóm; việc "máy giữ" trong nhóm của họ bị huỷ. Điều hành viên nhận gậy nặng thì <b>tạm mất vai</b> tới khi gậy hết.</p></div>
+      <div class="box"><p>Vào nhóm mở vẫn ghi một bản đơn đã duyệt với đường vào "bấm tham gia", để trả lời được "ai vào lúc nào, bằng đường nào" và để huy hiệu không bao giờ cấp nhầm cho người chưa ai duyệt.</p></div>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d5b">
+flowchart LR
+  classDef ok fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef no fill:#fdecea,stroke:#c53030,color:#1b1f24
+  classDef q fill:#eef3f9,stroke:#1f4e79,color:#1b1f24
+  classDef dec fill:#fffbea,stroke:#b7791f,color:#1b1f24
+  ban(["Muốn vào nhóm<br/>bị cấm khỏi nhóm này?"]):::dec
+  ban -- "có" --> no1["Từ chối"]:::no
+  ban -- "không" --> pol["Cách vào<br/>của nhóm?"]:::dec
+  pol -- "Mở" --> join["Vào ngay<br/>đường vào: bấm tham gia"]:::ok
+  pol -- "Duyệt" --> elig["Bị từ chối trong 7 ngày,<br/>hoặc đã có 3 đơn chờ?"]:::dec
+  elig -- "có" --> no2["Chờ hết 7 ngày<br/>hoặc rút bớt đơn"]:::no
+  elig -- "không" --> req["Đơn chờ duyệt<br/>tự hết sau 21 ngày"]:::q
+  req -- "duyệt" --> join2["Vào<br/>đường vào: được duyệt"]:::ok
+  req -- "từ chối" --> no4["Từ chối,<br/>ghi thời điểm"]:::no
+  pol -- "Chỉ lời mời" --> inv["Có lời mời còn hạn<br/>hoặc trong danh sách lớp?"]:::dec
+  inv -- "có" --> join3["Vào<br/>đường vào: lời mời"]:::ok
+  inv -- "không" --> no5["Không vào được"]:::no
+</script>
+</section>

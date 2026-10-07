@@ -1,0 +1,58 @@
+<!-- ======================================================================= 16 STRIKES + GANTT -->
+<section class="pg">
+  <div class="ph"><span class="num">16</span><h2>Gậy, hạn chế và ví dụ một người bán</h2><span class="ctx">Module Uy tín &amp; an toàn</span></div>
+  <div class="cols half">
+    <div>
+      <h3 style="margin-top:0">Ba loại gậy</h3>
+      <table class="t">
+        <tr><th>Loại</th><th>Ví dụ</th><th class="c">Điểm</th><th>Hiệu lực</th><th>Khiếu nại</th></tr>
+        <tr><td>Thường</td><td>Cố ý sai danh mục, spam lặp lại, thông tin sai</td><td class="c">1</td><td>90 ngày</td><td>14 ngày, trong app; quá hạn xét thì tự thắng</td></tr>
+        <tr><td>Nặng</td><td>Hàng giả, quấy rối người mua, lừa đảo chưa thành</td><td class="c">2</td><td>180 ngày</td><td>14 ngày, trong app; quá hạn xét thì lên master <span class="tag t-chg">ĐỔI</span></td></tr>
+        <tr><td>Nghiêm trọng</td><td>Hàng cấm, lừa đảo đã xác nhận</td><td class="c">—</td><td>Khoá tài khoản vô thời hạn; master mở. Dữ liệu giữ 2 năm từ ngày khoá</td><td>30 ngày, qua kênh hỗ trợ không cần đăng nhập, xác thực bằng email đã đăng ký</td></tr>
+      </table>
+      <h3>Ai ra gậy</h3>
+      <ul>
+        <li>Staff hoặc master, khi từ chối hay gỡ tin <b>mức vi phạm</b>, hoặc xử báo cáo đúng, và trích một điều trong quy định sàn.</li>
+        <li><b>Không bao giờ:</b> máy; điều hành nhóm; staff với tin của tài khoản cá nhân đã liên kết hay của người trùng thiết bị với mình; staff với tin của master.</li>
+        <li>Gậy do master ký không khiếu nại lên ai khác; master tự xem lại nếu người bán gửi khiếu nại.</li>
+      </ul>
+      <h3>Thứ không phải gậy</h3>
+      <table class="t">
+        <tr><th>Sự việc</th><th>Hệ quả</th></tr>
+        <tr><td>Máy giữ cho người <span class="tag t-chg">ĐỔI</span></td><td>Người duyệt trong 24 giờ; từ 3 lần trong 7 ngày thành tín hiệu rủi ro</td></tr>
+        <tr><td>Máy giữ vì cổng cứng</td><td>Đếm lượt dò luật; 3 lần trong 24 giờ thì chờ 24 giờ</td></tr>
+        <tr><td>Từ chối hoặc gỡ mức sai sót</td><td>Sửa rồi qua lại cổng; không đụng uy tín</td></tr>
+        <tr><td>Nhóm gỡ tin, cấm khỏi nhóm</td><td>Chỉ có hiệu lực trong nhóm đó</td></tr>
+        <tr><td>Báo cáo bị bác</td><td>Không gì với người bị báo; người báo bị trừ điểm tin cậy báo cáo (mục 19)</td></tr>
+      </table>
+    </div>
+    <div>
+      <h3 style="margin-top:0">Ví dụ: người bán T2 có 20 tin đang hiện nhận hai gậy thường</h3>
+      <figure class="fig" id="d11b" data-name="16-vi-du-gay-theo-thoi-gian" data-src="m-d11b" data-maxh="250"><div class="canvas"></div></figure>
+      <ul>
+        <li>Ngày 0: gậy 1 → 1 điểm, mức về T1; 20 tin cũ giữ nguyên, tin mới mang lý do hạn chế <code>strike</code>.</li>
+        <li>Ngày 40: gậy 2 → 2 điểm; cả 20 tin đang hiện về phơi bày hạn chế, vẫn xem được qua tìm kiếm và hồ sơ.</li>
+        <li>Ngày 90: gậy 1 hết → còn 1 điểm; lý do <code>strike</code> trên 20 tin cũ được gỡ, tin trở lại đầy đủ.</li>
+        <li>Ngày 130: gậy 2 hết → 0 điểm, mức tính lại về T2 nếu dữ kiện vẫn đủ.</li>
+      </ul>
+      <p class="legend">Người ít đăng vẫn có đường ra, và đường đó nói được thành một câu: "còn 40 ngày". Không ai phải "nuôi lại" 5 bài sạch qua tay người duyệt như hệ cũ.</p>
+      <div class="box"><p><b>Điều hành nhóm, chủ nhóm nhận gậy nặng</b>: tạm mất vai tới khi gậy hết; chủ nhóm thì nhóm về Chờ giao chủ (mục 7). <b>Tài khoản cá nhân đã liên kết với staff nhận gậy nặng</b> <span class="tag t-new">MỚI</span>: staff bị đình chỉ, master quyết. Staff không có tin nên không có gậy; staff vi phạm là việc của master.</p></div>
+      <div class="box"><p><b>Bảng uy tín cho người bán</b> trả lời mọi lúc: mức hiện tại, còn thiếu gì để lên mức, từng gậy với lý do và ngày hết hạn, tin nào đang bị hạn chế vì lý do nào, tin nào đang chờ người duyệt, thời gian chờ nếu có.</p></div>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d11b">
+gantt
+  dateFormat YYYY-MM-DD
+  axisFormat %d/%m
+  section Gậy
+  Gậy 1 · 90 ngày :g1, 2026-01-01, 90d
+  Gậy 2 · 90 ngày :g2, 2026-02-10, 90d
+  section Điểm
+  1 điểm :p1, 2026-01-01, 40d
+  2 điểm · tin cũ hạn chế :crit, p2, 2026-02-10, 50d
+  1 điểm :p3, 2026-04-01, 40d
+  section Mức
+  T1 do gậy :active, t1, 2026-01-01, 130d
+  T2 :done, t2, 2026-05-11, 30d
+</script>
+</section>

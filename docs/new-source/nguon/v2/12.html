@@ -1,0 +1,45 @@
+<!-- ======================================================================= 12 POST-CHECK QUEUES -->
+<section class="pg">
+  <div class="ph"><span class="num">12</span><h2>Hậu kiểm · năm hàng đợi và thời hạn</h2><span class="ctx">Module Hậu kiểm · mọi việc đều là sau khi tin đã có kết quả máy · mỗi hàng có hạn xử và đường quá hạn</span></div>
+  <figure class="fig" id="d8" data-name="12-hau-kiem-hang-doi" data-wrap="wide" data-src="m-d8" data-maxh="370"><div class="canvas"></div></figure>
+  <div class="cols" style="grid-template-columns:1fr 96mm; margin-top:6px">
+    <table class="t" style="font-size:8.5pt">
+      <tr><th>Hàng đợi</th><th>Người xử</th><th style="width:13%">Hạn</th><th>Quá hạn thì</th></tr>
+      <tr><td><b>1. Báo cáo</b> · tin sàn, tin nhóm, người</td><td>Staff danh mục · điều hành nhóm · staff an toàn</td><td>72 giờ</td><td>Chuyển master; cờ <code>reported_hold</code> tự gỡ sau 24 giờ dù chưa ai xử</td></tr>
+      <tr><td><b>2. Khiếu nại</b> gậy</td><td>Staff khác người ký; gậy của master thì master</td><td>7 ngày</td><td>Tự thắng: gậy huỷ, tin trở lại</td></tr>
+      <tr><td><b>3. Phơi bày hạn chế</b> · tin dải Vừa, tin của người có gậy</td><td>Staff danh mục</td><td>72 giờ</td><td>Tự mở phơi bày đầy đủ</td></tr>
+      <tr><td><b>4. Danh mục rủi ro cao</b> · 100% tin</td><td>Staff danh mục</td><td>24 giờ</td><td>Chuyển master; tin vẫn hạn chế</td></tr>
+      <tr><td><b>5. Mẫu theo rủi ro</b> · tin đã lên bảng</td><td>Staff danh mục</td><td>7 ngày</td><td>Việc tự huỷ, tính vào số liệu "bỏ sót"</td></tr>
+    </table>
+    <div class="side">
+      <ul style="margin-top:0">
+        <li><b>Nhận việc</b>: bấm nhận, giữ 10 phút; người khác thấy "đang xử". Quá hạn nhận thì việc tự trả về.</li>
+        <li><b>Không xử việc về tin của mình</b>: việc liên quan tin của tài khoản cá nhân đã liên kết không hiện với staff đó. Master không bị loại.</li>
+        <li><b>Mẫu theo rủi ro</b> <span class="tag t-new">MỚI</span>: 100% tin điểm 45–59, 20% tin của T0 và T1, 5% còn lại; tỉ lệ nằm trong bảng con số.</li>
+        <li><b>Bảng tồn</b> theo hàng và theo tuổi việc hiện trên bàn vận hành; quá 50% việc chạm hạn trong 24 giờ là cảnh báo master.</li>
+      </ul>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d8">
+flowchart TB
+  classDef q fill:#fbe9e9,stroke:#c53030,color:#1b1f24,stroke-width:1.5px
+  classDef fb fill:#fff4e5,stroke:#b25e09,color:#1b1f24
+  classDef src fill:#eef3f9,stroke:#1f4e79,color:#1b1f24
+  classDef who fill:#ffffff,stroke:#5b6470,color:#1b1f24
+  s1["Người dùng<br/>báo cáo"]:::src --> q1["1 · Báo cáo<br/>72 giờ"]:::q
+  s2["Người bán<br/>khiếu nại gậy"]:::src --> q2["2 · Khiếu nại<br/>7 ngày"]:::q
+  s3["Máy cho qua hạn chế<br/>người bán có gậy"]:::src --> q3["3 · Phơi bày hạn chế<br/>72 giờ"]:::q
+  s4["Tin thuộc danh mục<br/>rủi ro cao"]:::src --> q4["4 · Rủi ro cao<br/>24 giờ"]:::q
+  s5["Bộ lấy mẫu<br/>chạy hằng giờ"]:::src --> q5["5 · Mẫu<br/>7 ngày"]:::q
+  q1 -- "tin sàn" --> st["Staff danh mục"]:::who
+  q1 -- "tin nhóm" --> gm["Điều hành nhóm<br/>hết người: staff"]:::who
+  q1 -- "người" --> sa["Staff an toàn<br/>thiếu: master"]:::who
+  q2 --> ap["Staff khác người ký<br/>gậy của master: master"]:::who
+  q3 --> st
+  q4 --> st
+  q5 --> st
+  st -. "quá hạn" .-> M["Master"]:::fb
+  gm -. "quá hạn" .-> M
+  sa -. "quá hạn" .-> M
+</script>
+</section>

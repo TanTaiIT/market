@@ -1,0 +1,38 @@
+<!-- ======================================================================= 19 REPORTS -->
+<section class="pg">
+  <div class="ph"><span class="num">19</span><h2>Báo cáo vi phạm</h2><span class="ctx">Uy tín &amp; an toàn nhận báo cáo · Hậu kiểm xử · hạn 72 giờ</span></div>
+  <div class="cols" style="grid-template-columns:1fr 84mm">
+    <figure class="fig" id="d14" data-name="19-bao-cao-vi-pham" data-wrap="wide" data-src="m-d14" data-maxh="650"><div class="canvas"></div></figure>
+    <div class="side">
+      <ul>
+        <li>Năm loại đóng: lừa đảo, sai thông tin, quấy rối, hàng cấm, khác.</li>
+        <li>Báo cáo về tin đi theo bậc phủ sóng của <b>tin</b>; báo cáo về người đi tới staff an toàn, thiếu thì master.</li>
+        <li>Báo cáo trùng đối tượng gộp vào báo cáo đang mở, chỉ tăng số người báo.</li>
+        <li>Người bị báo cáo không thấy tên người báo. Đối tượng bị gỡ hoặc xoá thì mọi báo cáo về nó tự đóng.</li>
+        <li>Hội thoại có báo cáo mở được <b>giữ làm bằng chứng</b> tới khi báo cáo đóng, dù cả hai bên đã xoá <span class="tag t-new">MỚI</span>.</li>
+      </ul>
+      <div class="box"><p><b>Tạm ẩn khi nhiều người báo</b>: từ 3 người báo độc lập trong 24 giờ, chỉ tính người báo từ mức T1 và có điểm tin cậy báo cáo bình thường, thì tin sàn mang cờ ẩn <code>reported_hold</code>. <b>Cờ tự gỡ sau 24 giờ</b> nếu chưa ai xử <span class="tag t-chg">ĐỔI</span>, nên đối thủ không ẩn được tin vô thời hạn.</p></div>
+      <div class="box"><p><b>Điểm tin cậy báo cáo</b> <span class="tag t-new">MỚI</span>: mỗi báo cáo bị bác trừ một điểm, báo cáo đúng cộng một. Dưới −3 thì báo cáo của người đó không tính vào ngưỡng tạm ẩn và xếp cuối hàng; dưới −6 thì mất quyền báo cáo 30 ngày.</p></div>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d14">
+flowchart TB
+  classDef no fill:#fdecea,stroke:#c53030,color:#1b1f24
+  classDef q fill:#fbe9e9,stroke:#c53030,color:#1b1f24,stroke-width:1.5px
+  classDef ok fill:#e6f4ea,stroke:#2f855a,color:#1b1f24
+  classDef dec fill:#fffbea,stroke:#b7791f,color:#1b1f24
+  rp(["Báo cáo tin hoặc người"]) --> ab["Hợp lệ? không tự báo cáo,<br/>dưới 10 lượt mỗi giờ,<br/>còn quyền báo cáo"]:::dec
+  ab -- "không" --> no["Từ chối"]:::no
+  ab -- "có" --> rt["Đối tượng?"]:::dec
+  rt -- "tin sàn" --> qs["Staff danh mục"]:::q
+  rt -- "tin nhóm" --> qg["Điều hành nhóm"]:::q
+  rt -- "người" --> qt["Staff an toàn<br/>hoặc master"]:::q
+  qs --> th["Từ 3 người báo đủ tin cậy<br/>trong 24 giờ?"]:::dec
+  th -- "có: cờ ẩn reported_hold<br/>tự gỡ sau 24 giờ" --> wk["Nhận việc và xử<br/>hạn 72 giờ, quá hạn lên master"]
+  th -- "không" --> wk
+  qg --> wk
+  qt --> wk
+  wk -- "bác" --> dis["Đóng, gỡ cờ ẩn<br/>người báo −1 điểm tin cậy"]:::ok
+  wk -- "đúng" --> act["Gỡ tin, gậy nếu staff<br/>cấm khỏi nhóm, khoá tài khoản<br/>đóng mọi báo cáo cùng đối tượng<br/>người báo +1"]:::ok
+</script>
+</section>

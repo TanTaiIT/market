@@ -1,0 +1,34 @@
+<!-- ======================================================================= 0 PRINCIPLES -->
+<section class="pg">
+  <div class="ph"><span class="num">0</span><h2>Nguyên tắc thiết kế · Hệ cũ → hệ mới</h2><span class="ctx">Vì sao các tính năng không còn giẫm lên nhau</span></div>
+  <div class="cols" style="grid-template-columns:150mm 1fr">
+    <div>
+      <table class="t">
+        <tr><th style="width:36%">Hệ cũ</th><th style="width:36%">Hệ mới</th><th>Vì sao</th></tr>
+        <tr><td>Hai trục: nhóm và ô danh mục × tỉnh × phường</td><td>Một trục nhóm; sàn chung do máy duyệt, staff hậu kiểm theo danh mục</td><td>Bỏ luật một-người-một-trục và ba ca ô đè nhau</td></tr>
+        <tr><td>Người thật duyệt trước khi tin lên bảng; 4 hàng đợi</td><td>Máy là người duyệt duy nhất lúc đăng; người chỉ hậu kiểm</td><td>Đạt chuẩn thì lên ngay; không còn tin nằm chờ vô hạn</td></tr>
+        <tr><td>Tự duyệt tin của mình hợp lệ</td><td>Không ai duyệt tin lúc đăng, nên không còn ca tự duyệt; hậu kiểm không xử việc về chính mình</td><td>Hết cả lớp lỗ hổng "đăng một tay, duyệt một tay"</td></tr>
+        <tr><td>Người dùng được cấp quyền phụ trách ô</td><td>Staff là tài khoản công việc do master tạo</td><td>Tách người bán khỏi người hậu kiểm ngay từ gốc</td></tr>
+        <tr><td>Bậc 0–2, cộng trừ bộ đếm</td><td>Mức T0–T3 tính từ dữ kiện; gậy có hạn</td><td>Không trôi số, giải thích được, có hạn chót</td></tr>
+        <tr><td>Máy từ chối = án phạt không tên</td><td>Máy từ chối kèm lý do và thời gian chờ; gậy chỉ do người ký</td><td>Hết mức độ thứ ba mơ hồ</td></tr>
+        <tr><td>Máy quét 2 phút một lần, ảnh không kiểm</td><td>Chữ và ảnh kiểm xong trước khi tin hiện</td><td>Không có khoảng trống ảnh xấu hiện công khai</td></tr>
+        <tr><td>Trần 50 triệu và 10× median chung</td><td>Trần và phân phối theo danh mục; giá 0 có luật riêng</td><td>Bất động sản, xe cộ, đồ cho tặng</td></tr>
+        <tr><td>"Đã ẩn" gộp cả án lẫn hệ thống</td><td>Trạng thái · cờ ẩn hệ thống · mức phơi bày là ba thứ riêng</td><td>Mở khoá trả đúng nguyên trạng</td></tr>
+        <tr><td>Nhóm ẩn được tin sàn</td><td>Nhóm gỡ tin khỏi nhóm và gỡ huy hiệu; tin sàn là việc của staff</td><td>Không giẫm quyền staff</td></tr>
+      </table>
+    </div>
+    <div class="side">
+      <h3 style="margin-top:0">Tám nguyên tắc</h3>
+      <ol style="margin:0 0 0 16px">
+        <li><b>Master toàn quyền.</b> Mọi luật dưới đây ràng buộc người dùng, điều hành nhóm và staff. Master đứng ngoài; quyết định của master là cuối cùng và được ghi nhật ký.</li>
+        <li><b>Máy duyệt lúc đăng, người hậu kiểm.</b> Không có bước người duyệt trước khi tin hiện. Mọi việc của người là sau khi tin đã có kết quả máy.</li>
+        <li><b>Mỗi module sở hữu dữ liệu của mình.</b> Module khác chỉ đọc qua API hoặc nhận sự kiện.</li>
+        <li><b>Tác động chéo đi qua sự kiện</b> ghi vào outbox trong cùng giao dịch.</li>
+        <li><b>Một loại quyết định, một chủ.</b> Chỉ Duyệt máy ra kết quả lúc đăng; chỉ Hậu kiểm ghi quyết định sau đăng; chỉ Uy tín &amp; an toàn ghi gậy; chỉ Tin đăng đổi trạng thái tin.</li>
+        <li><b>Trạng thái do người quyết tách khỏi cờ do hệ thống áp.</b> Gỡ cờ là trả nguyên trạng, không đoán.</li>
+        <li><b>Uy tín tính lại từ dữ kiện</b>, không cộng trừ bộ đếm. Máy không trừng phạt: từ chối và thời gian chờ không phải gậy.</li>
+        <li><b>Mọi con số nằm ở một bảng cấu hình có phiên bản.</b> Kết quả nào, kể cả mức tin cậy, cũng ghi được nó dùng phiên bản nào.</li>
+      </ol>
+    </div>
+  </div>
+</section>

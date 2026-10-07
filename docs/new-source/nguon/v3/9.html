@@ -1,0 +1,51 @@
+<!-- ======================================================================= 9 LISTING LIFECYCLE -->
+<section class="pg">
+  <div class="ph"><span class="num">9</span><h2>Vòng đời tin đăng</h2><span class="ctx">Module Tin đăng · bảng chuyển trạng thái đóng: ngoài các mũi tên này là từ chối · "Chờ duyệt" chỉ dành cho phần máy giữ</span></div>
+  <div class="cols" style="grid-template-columns:1fr 60mm">
+    <figure class="fig" id="d6" data-name="09-vong-doi-tin-dang" data-wrap="wide" data-src="m-d6" data-maxh="650"><div class="canvas"></div></figure>
+    <div class="side">
+      <h3 style="margin-top:0">Ai đi mũi tên nào</h3>
+      <ul>
+        <li><b>Chủ tin:</b> gửi, rút về nháp, sửa, gia hạn, đã bán, xoá.</li>
+        <li><b>Máy:</b> cho qua, giữ cho người, hết hạn.</li>
+        <li><b>Người duyệt phần máy giữ</b> (staff, master; điều hành nhóm với tin nhóm): duyệt, từ chối.</li>
+        <li><b>Hậu kiểm:</b> gỡ, khôi phục. <b>Người xét khiếu nại:</b> khiếu nại thắng.</li>
+      </ul>
+      <div class="box"><p><b>Đang kiểm</b> kéo dài tới khi chữ lẫn ảnh có kết quả, thường dưới một phút; quá 5 phút thì máy coi là không chắc và giữ cho người. Gửi, sửa, gia hạn, sửa sau từ chối hay sau gỡ đều qua <b>cùng một cổng</b>.</p></div>
+      <div class="box"><p><b>Chờ duyệt</b> <span class="tag t-new">MỚI</span>: tin chưa hiện với ai, vẫn đếm vào trần tin sống. Chủ tin sửa được ngay; sửa thì qua máy lại, việc đang mở được cập nhật, hoặc huỷ nếu máy cho qua.</p></div>
+      <div class="box"><p><b>Đang hiển thị</b> có hai mức phơi bày kèm lý do (mục 10). Đồng hồ 30 ngày <b>dừng</b> khi tin bị gỡ và chạy tiếp khi khôi phục <span class="tag t-new">MỚI</span>.</p></div>
+      <div class="box warn"><p><b>Bị từ chối</b> và <b>Bị gỡ</b> theo cùng một luật hai mức: sai sót thì sửa rồi qua lại cổng; vi phạm thì khoá, chỉ còn khiếu nại, và chủ tin không xoá được tới khi gậy hết hạn + 30 ngày (mục 10).</p></div>
+    </div>
+  </div>
+<script type="text/x-mermaid" id="m-d6">
+stateDiagram-v2
+  direction TB
+  state "Nháp" as Draft
+  state "Đang kiểm" as Screening
+  state "Chờ duyệt" as Held
+  state "Đang hiển thị" as Live
+  state "Bị từ chối" as Rejected
+  state "Đã bán" as Sold
+  state "Hết hạn" as Expired
+  state "Bị gỡ" as Removed
+  [*] --> Draft : tạo nháp, gắn ảnh
+  Draft --> Screening : gửi
+  Screening --> Live : máy cho qua
+  Screening --> Held : máy giữ cho người
+  Screening --> Draft : chủ tin rút về
+  Held --> Live : người duyệt
+  Held --> Rejected : người từ chối
+  Held --> Screening : chủ tin sửa
+  Held --> Draft : chủ tin rút về
+  Rejected --> Screening : sửa, mức sai sót
+  Rejected --> Live : khiếu nại thắng
+  Live --> Screening : sửa · gia hạn 7 ngày cuối
+  Live --> Sold : chủ tin
+  Live --> Expired : hết 30 ngày hiển thị
+  Live --> Removed : hậu kiểm gỡ
+  Expired --> Screening : gia hạn
+  Expired --> Sold : chủ tin
+  Removed --> Screening : sửa, mức sai sót
+  Removed --> Live : khôi phục · khiếu nại thắng
+</script>
+</section>
